@@ -7,26 +7,32 @@ if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     }
 }
 
-################################################################################################################################
-# Install Oh-My-Posh Module in Powershell (https://ohmyposh.dev/)
-################################################################################################################################
-
 cls
+Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
+Write-Host "|                                                                                                                                             |"
+Write-Host "|                                     Installing Oh-My-Posh Modules in Powershell (https://ohmyposh.dev/)                                     |"
+Write-Host "|                                                                                                                                             |"
+Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
+Write-Host ""
+
 $ModuleList = @('posh-git','oh-my-posh','git-aliases')
 Foreach ($item in $ModuleList) { 
     if (!(Get-Module -ListAvailable $item -ErrorAction SilentlyContinue)) {
-        Write-Host "Installing $item module..."
+        Write-Host "     Installing $item module..."
         Install-Module -Name $item -Scope CurrentUser
-        Write-Host "Yayy! $item installed succesfully 🎉"
+        Write-Host "     Yayy! $item installed succesfully 🎉"
     }
     else {
-        Write-Host "Yayy! $item already installed 🎉"
+        Write-Host "     Yayy! $item already installed 🎉"
     }
 }
+
+Write-Host ""
+Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
 # Get-PoshThemes
 
 # -----------------------------------------------------------------------------------
-# Setup Powershell Profile
+# Setup Powershell Profilecode 
 # -----------------------------------------------------------------------------------
 
 $PowershellProfile = @"
@@ -36,7 +42,9 @@ Import-Module git-aliases -DisableNameChecking
 cls
 "@
 
-echo $PowershellProfile > $PROFILE
+Write-Host ""
+Write-Host "     Setting up OH-MY-POSH theme into file: $PROFILE"
+Set-Content -Path $PROFILE -Value $PowershellProfile
 
 # -----------------------------------------------------------------------------------
 # Setup Nerd Font
@@ -44,12 +52,16 @@ echo $PowershellProfile > $PROFILE
 
 #Install this Font manually -> https://github.com/ryanoasis/nerd-fonts/tree/master/patched-fonts/FantasqueSansMono
 
+Write-Host ""
 $WindowsSettings = "$Env:LocalAppData\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState"
-echo "
-Deleting default windows terminal settings at: $WindowsSettings"
+Write-Host "     Deleting default windows terminal settings at: $WindowsSettings"
 Remove-Item -Path $WindowsSettings -Force -Recurse | out-null
-echo "Setting up symbolic Link for windows terminal settings to: $PSScriptRoot\settings"
+Write-Host "     Setting up symbolic Link for windows terminal settings as: $PSScriptRoot\settings"
 New-Item -ItemType SymbolicLink -Path $WindowsSettings -Target "$PSScriptRoot\settings" | out-null
 
-ECHO ""
+Write-Host ""
+Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
+Write-Host ""
+Write-Host ""
+Write-Host ""
 PAUSE
