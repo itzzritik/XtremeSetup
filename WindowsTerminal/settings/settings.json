@@ -3,6 +3,22 @@
     "actions": 
     [
         {
+            "command": "unbound",
+            "keys": "alt+shift+plus"
+        },
+        {
+            "command": "unbound",
+            "keys": "alt+shift+minus"
+        },
+        {
+            "command": 
+            {
+                "action": "splitPane",
+                "split": "vertical"
+            },
+            "keys": "ctrl+shift+plus"
+        },
+        {
             "command": 
             {
                 "action": "copy",
@@ -13,6 +29,14 @@
         {
             "command": "find",
             "keys": "ctrl+shift+f"
+        },
+        {
+            "command": 
+            {
+                "action": "splitPane",
+                "split": "horizontal"
+            },
+            "keys": "ctrl+shift+minus"
         },
         {
             "command": "paste",
@@ -37,10 +61,17 @@
     {
         "defaults": 
         {
+            "acrylicOpacity": 0.83999999999999997,
+            "bellStyle": 
+            [
+                "audible",
+                "taskbar"
+            ],
             "font": 
             {
                 "face": "FantasqueSansMono NF"
-            }
+            },
+            "useAcrylic": true
         },
         "list": 
         [
@@ -304,5 +335,6 @@
             "yellow": "#808000"
         }
     ],
-    "useAcrylicInTabRow": true
+    "useAcrylicInTabRow": true,
+    "windowingBehavior": "useAnyExisting"
 }
