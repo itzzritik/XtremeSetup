@@ -1,4 +1,5 @@
 {
+    "$help": "https://aka.ms/terminal-documentation",
     "$schema": "https://aka.ms/terminal-profiles-schema",
     "actions": 
     [
@@ -13,18 +14,22 @@
         {
             "command": 
             {
-                "action": "splitPane",
-                "split": "vertical"
-            },
-            "keys": "ctrl+shift+plus"
-        },
-        {
-            "command": 
-            {
                 "action": "copy",
                 "singleLine": false
             },
             "keys": "ctrl+c"
+        },
+        {
+            "command": 
+            {
+                "action": "splitPane",
+                "split": "right"
+            },
+            "keys": "ctrl+shift+plus"
+        },
+        {
+            "command": "paste",
+            "keys": "ctrl+v"
         },
         {
             "command": "find",
@@ -34,13 +39,9 @@
             "command": 
             {
                 "action": "splitPane",
-                "split": "horizontal"
+                "split": "down"
             },
             "keys": "ctrl+shift+minus"
-        },
-        {
-            "command": "paste",
-            "keys": "ctrl+v"
         },
         {
             "command": 
@@ -61,7 +62,6 @@
     {
         "defaults": 
         {
-            "acrylicOpacity": 0.84999999999999998,
             "bellStyle": 
             [
                 "audible",
@@ -71,6 +71,7 @@
             {
                 "face": "FantasqueSansMono NF"
             },
+            "opacity": 85,
             "useAcrylic": true
         },
         "list": 
@@ -81,7 +82,7 @@
                 "hidden": false,
                 "name": "PowerShell",
                 "source": "Windows.Terminal.PowershellCore",
-                "startingDirectory": "D:\\Projects"
+                "startingDirectory": "D:/Projects"
             },
             {
                 "antialiasingMode": "cleartype",
@@ -100,13 +101,11 @@
                 "name": "Jarvis"
             },
             {
-                "commandline": "powershell.exe",
                 "guid": "{61c54bbd-c2c6-5271-96e7-009a87ff44bf}",
                 "hidden": false,
                 "name": "Windows PowerShell"
             },
             {
-                "commandline": "cmd.exe",
                 "guid": "{0caa0dad-35be-5f56-a8ff-afceeeaa6101}",
                 "hidden": false,
                 "name": "Command Prompt"
@@ -122,6 +121,18 @@
                 "hidden": false,
                 "name": "Git Bash",
                 "source": "Git"
+            },
+            {
+                "guid": "{edf22674-b5a1-5bb1-88f0-0bd3ba7ee86a}",
+                "hidden": false,
+                "name": "Developer Command Prompt for VS 2019",
+                "source": "Windows.Terminal.VisualStudio"
+            },
+            {
+                "guid": "{036b936c-c3e6-5ba1-862f-f94308130ea0}",
+                "hidden": false,
+                "name": "Developer PowerShell for VS 2019",
+                "source": "Windows.Terminal.VisualStudio"
             }
         ]
     },
@@ -335,6 +346,8 @@
             "yellow": "#808000"
         }
     ],
+    "tabSwitcherMode": "inOrder",
+    "tabWidthMode": "equal",
     "useAcrylicInTabRow": true,
-    "windowingBehavior": "useAnyExisting"
+    "windowingBehavior": "useExisting"
 }

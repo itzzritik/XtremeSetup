@@ -17,7 +17,7 @@ Write-Host ""
 
 Write-Host "     Installing Oh-My-Posh Modules in Powershell (https://ohmyposh.dev)"
 Write-Host ""
-$ModuleList = @('posh-git','oh-my-posh', 'git-aliases')
+$ModuleList = @('posh-git','oh-my-posh', 'git-aliases', 'z')
 for($i=0; $i -lt $ModuleList.Length; $i++) {
     $item = $ModuleList[$i]
     $index = $i + 1
