@@ -14,17 +14,41 @@ Write-Host "|                                                         SETTING UP
 Write-Host "|                                                                                                                                             |"
 Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
 Write-Host ""
-
-Write-Host "     Installing Oh-My-Posh Modules in Powershell (https://ohmyposh.dev)"
+Write-Host "     Installing Scoop - A command-line installer for Windows (https://scoop.sh)"
 Write-Host ""
-$ModuleList = @('posh-git','oh-my-posh', 'git-aliases', 'z')
+$ScoopCommand = "-command `"iwr -useb get.scoop.sh | iex`""
+$ScoopCode = (Start-Process -FilePath pwsh -ArgumentList $ScoopCommand -PassThru -Wait).ExitCode
+Write-Host "     Done! Scoop installed succesfully (Exitcode: $ScoopCode ) 🎉" -ForeGroundColor Green
+Write-Host ""
+Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
+Write-Host ""
+Write-Host "     Installing Oh-My-Posh with Scoop (https://ohmyposh.dev)"
+Write-Host ""
+$OMPExistsCommand = "-command `"oh-my-posh --version`""
+$OMPExistsCode = (Start-Process -FilePath pwsh -ArgumentList $OMPExistsCommand -PassThru -Wait).ExitCode
+if ($OMPExistsCode) {
+    $OMPInstallCommand = "-command `"scoop install https://github.com/JanDeDobbeleer/oh-my-posh/releases/latest/download/oh-my-posh.json`""
+    $OMPInstallCode = (Start-Process -FilePath pwsh -ArgumentList $OMPInstallCommand -PassThru -Wait).ExitCode
+    Write-Host "     Done! Oh-My-Posh installed succesfully (Exitcode: $OMPInstallCode ) 🎉" -ForeGroundColor Green
+}
+else {
+    Write-Host "     Yayy! Oh-My-Posh already installed 🎉" -ForeGroundColor Green
+}
+Add-MpPreference -ExclusionPath (Get-Command oh-my-posh).Source
+Write-Host "     Oh-My-Posh added to Windows Defender exclusion list 🎉" -ForeGroundColor Green
+Write-Host ""
+Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
+Write-Host ""
+Write-Host "     Installing Oh-My-Posh Extension in Powershell"
+Write-Host ""
+$ModuleList = @('posh-git', 'git-aliases', 'z')
 for($i=0; $i -lt $ModuleList.Length; $i++) {
     $item = $ModuleList[$i]
     $index = $i + 1
     if (!(Get-Module -ListAvailable $item -ErrorAction SilentlyContinue)) {
         Write-Host -NoNewLine "     •)   Installing $item module..." -ForeGroundColor Yellow
         $CommandLine = "-command `"Install-Module -Name $item -Scope CurrentUser -Force`""
-        Start-Process -FilePath pwsh -ArgumentList $CommandLine -Wait
+        Start-Process -FilePath pwsh -ArgumentList $CommandLine -PassThru -Wait
         # wt -w 0 sp -d . pwsh -command "Install-Module -Name $item -Scope CurrentUser"
         Write-Host "`r     $index)   Done! $item installed succesfully 🎉" -ForeGroundColor Green
     }
@@ -32,10 +56,10 @@ for($i=0; $i -lt $ModuleList.Length; $i++) {
         Write-Host "     $index)   Yayy! $item already installed 🎉" -ForeGroundColor Green
     }
 }
-# Get-PoshThemes
 
+# Get-PoshThemes
 $PowershellProfile = @"
-Set-PoshPrompt -Theme space | out-null
+oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\space.omp.json" | Invoke-Expression
 Import-Module posh-git
 Import-Module git-aliases -DisableNameChecking
 cls
@@ -61,6 +85,24 @@ Write-Host ""
 Write-Host "     2)  Setting up symbolic link for windows terminal settings as:"
 Write-Host "          •   $PSScriptRoot\settings" -ForeGroundColor Green
 New-Item -ItemType SymbolicLink -Path $WindowsSettings -Target "$PSScriptRoot\settings" | out-null
+
+Write-Host ""
+Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
+Write-Host ""
+Write-Host "     Installing Doppler CLI (https://docs.doppler.com/docs/install-cli)"
+Write-Host ""
+$DopplerExistsCommand = "-command `"doppler --version`""
+$DopplerExistsCode = (Start-Process -FilePath pwsh -ArgumentList $DopplerExistsCommand -PassThru -Wait).ExitCode
+if ($DopplerExistsCode) {
+    $DopplerAddCommand = "-command `"scoop bucket add doppler https://github.com/DopplerHQ/scoop-doppler.git`""
+    $DopplerAddCode = (Start-Process -FilePath pwsh -ArgumentList $DopplerAddCommand -PassThru -Wait).ExitCode
+    $DopplerInstallCommand = "-command `"scoop install doppler`""
+    $DopplerInstallCode = (Start-Process -FilePath pwsh -ArgumentList $DopplerInstallCommand -PassThru -Wait).ExitCode
+    Write-Host "     Done! Doppler CLI installed succesfully (Exitcode: $DopplerInstallCode ) 🎉" -ForeGroundColor Green
+}
+else {
+    Write-Host "     Yayy! Doppler already installed 🎉" -ForeGroundColor Green
+}
 
 Write-Host ""
 Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"

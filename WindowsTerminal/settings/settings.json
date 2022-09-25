@@ -85,7 +85,7 @@
             ],
             "font": 
             {
-                "face": "FantasqueSansMono NF"
+                "face": "FantasqueSansMono NFM"
             },
             "opacity": 85,
             "useAcrylic": true
@@ -99,14 +99,6 @@
                 "name": "PowerShell",
                 "source": "Windows.Terminal.PowershellCore",
                 "startingDirectory": "D:/Projects"
-            },
-            {
-                "antialiasingMode": "cleartype",
-                "guid": "{07b52e3e-de2c-5db4-bd2d-ba144ed6c273}",
-                "hidden": false,
-                "icon": "C:\\XtremeSetup\\WindowsTerminal\\img\\ubuntu.png",
-                "name": "Ubuntu-20.04",
-                "source": "Windows.Terminal.Wsl"
             },
             {
                 "antialiasingMode": "cleartype",
@@ -137,18 +129,6 @@
                 "hidden": false,
                 "name": "Git Bash",
                 "source": "Git"
-            },
-            {
-                "guid": "{edf22674-b5a1-5bb1-88f0-0bd3ba7ee86a}",
-                "hidden": false,
-                "name": "Developer Command Prompt for VS 2019",
-                "source": "Windows.Terminal.VisualStudio"
-            },
-            {
-                "guid": "{036b936c-c3e6-5ba1-862f-f94308130ea0}",
-                "hidden": false,
-                "name": "Developer PowerShell for VS 2019",
-                "source": "Windows.Terminal.VisualStudio"
             }
         ]
     },
