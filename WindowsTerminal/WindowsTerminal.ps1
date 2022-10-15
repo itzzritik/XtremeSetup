@@ -1,12 +1,3 @@
-# Self-elevate the script if required
-if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
-    if ([int](Get-CimInstance -Class Win32_OperatingSystem | Select-Object -ExpandProperty BuildNumber) -ge 6000) {
-        $CommandLine = "-w 0 -d . pwsh `"" + $MyInvocation.MyCommand.Path + "`" " + $MyInvocation.UnboundArguments
-        Start-Process -FilePath wt.exe -Verb Runas -ArgumentList $CommandLine
-        Exit
-    }
-}
-
 cls
 Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
 Write-Host "|                                                                                                                                             |"
@@ -21,6 +12,16 @@ $ScoopCode = (Start-Process -FilePath pwsh -ArgumentList $ScoopCommand -PassThru
 Write-Host "     Done! Scoop installed succesfully (Exitcode: $ScoopCode ) 🎉" -ForeGroundColor Green
 Write-Host ""
 Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
+
+# Self-elevate the script if required
+if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
+    if ([int](Get-CimInstance -Class Win32_OperatingSystem | Select-Object -ExpandProperty BuildNumber) -ge 6000) {
+        $CommandLine = "-w 0 -d . pwsh `"" + $MyInvocation.MyCommand.Path + "`" " + $MyInvocation.UnboundArguments
+        Start-Process -FilePath wt.exe -Verb Runas -ArgumentList $CommandLine
+        Exit
+    }
+}
+
 Write-Host ""
 Write-Host "     Installing Oh-My-Posh with Scoop (https://ohmyposh.dev)"
 Write-Host ""
@@ -58,12 +59,16 @@ for($i=0; $i -lt $ModuleList.Length; $i++) {
 }
 
 # Get-PoshThemes
-$PowershellProfile = @"
-oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\space.omp.json" | Invoke-Expression
-Import-Module posh-git
-Import-Module git-aliases -DisableNameChecking
+$PowershellProfile = @'
+try {
+    oh-my-posh --version | Out-Null
+    oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\space.omp.json" | Invoke-Expression
+    Import-Module posh-git
+    Import-Module git-aliases -DisableNameChecking
+}
+catch [System.Management.Automation.CommandNotFoundException] {}
 cls
-"@
+'@
 
 Write-Host ""
 Write-Host "     Setting up OH-MY-POSH theme into file:"
