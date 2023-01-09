@@ -35,8 +35,24 @@ if ($OMPExistsCode) {
 else {
     Write-Host "     Yayy! Oh-My-Posh already installed 🎉" -ForeGroundColor Green
 }
-Add-MpPreference -ExclusionPath (Get-Command oh-my-posh).Source
+$OMPAddToDefender = "-command `"Add-MpPreference -ExclusionPath (Get-Command oh-my-posh).Source`""
+Start-Process -FilePath pwsh -ArgumentList $OMPAddToDefender -PassThru -Wait
 Write-Host "     Oh-My-Posh added to Windows Defender exclusion list 🎉" -ForeGroundColor Green
+Write-Host ""
+Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
+Write-Host ""
+Write-Host "     Installing Git (https://git-scm.com)"
+Write-Host ""
+winget install --id Git.Git -e --source winget
+ssh-keygen -t ed25519 -C "ritik.space@gmail.com"
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+git config --global user.name "Ritik Srivastava"
+git config --global user.email "ritik.space@gmail.com"
+git config --global gpg.format ssh
+git config --global commit.gpgsign true
+git config --global user.signingkey ~/.ssh/id_ed25519
+Write-Host "     Git installed and setup succesfully 🎉" -ForeGroundColor Green
 Write-Host ""
 Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
 Write-Host ""
@@ -78,6 +94,7 @@ Write-Host "+-------------------------------------------------------------------
 Set-Content -Path $PROFILE -Value $PowershellProfile
 
 #Install this Font manually -> https://github.com/ryanoasis/nerd-fonts/tree/master/patched-fonts/FantasqueSansMono
+# https://github.com/ryanoasis/nerd-fonts/blob/master/patched-fonts/FantasqueSansMono/Regular/complete/Fantasque%20Sans%20Mono%20Regular%20Nerd%20Font%20Complete.ttf
 
 Write-Host ""
 Write-Host "     Setting up Windows Terminal 'Settings.json' file as a Symbolic Link"
