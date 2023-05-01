@@ -28,6 +28,15 @@
             "keys": "ctrl+shift+w"
         },
         {
+            "command": 
+            {
+                "action": "splitPane",
+                "split": "auto",
+                "splitMode": "duplicate"
+            },
+            "keys": "alt+shift+d"
+        },
+        {
             "command": "find",
             "keys": "ctrl+shift+f"
         },
@@ -58,15 +67,6 @@
                 "split": "down"
             },
             "keys": "ctrl+shift+d"
-        },
-        {
-            "command": 
-            {
-                "action": "splitPane",
-                "split": "auto",
-                "splitMode": "duplicate"
-            },
-            "keys": "alt+shift+d"
         },
         {
             "command": 
@@ -111,7 +111,7 @@
             {
                 "antialiasingMode": "cleartype",
                 "colorScheme": "Campbell",
-                "commandline": "ssh jarvis@192.168.1.100",
+                "commandline": "ssh jarvis.local",
                 "guid": "{ad5be843-0c2b-4440-8ba0-42eb32c12c7c}",
                 "icon": "C:\\XtremeSetup\\WindowsTerminal\\img\\raspberry.png",
                 "name": "Jarvis"
@@ -137,18 +137,6 @@
                 "hidden": false,
                 "name": "Git Bash",
                 "source": "Git"
-            },
-            {
-                "guid": "{59b72ad2-09f7-55ec-af87-65d062af8472}",
-                "hidden": false,
-                "name": "Ubuntu 20.04.5 LTS",
-                "source": "CanonicalGroupLimited.Ubuntu20.04LTS_79rhkp1fndgsc"
-            },
-            {
-                "guid": "{07b52e3e-de2c-5db4-bd2d-ba144ed6c273}",
-                "hidden": true,
-                "name": "Ubuntu-20.04",
-                "source": "Windows.Terminal.Wsl"
             }
         ]
     },
@@ -410,6 +398,7 @@
     ],
     "tabSwitcherMode": "inOrder",
     "tabWidthMode": "equal",
+    "themes": [],
     "useAcrylicInTabRow": true,
     "windowingBehavior": "useExisting"
 }

@@ -1,0 +1,33 @@
+version: "2.1"
+services:
+  flood:
+    hostname: flood
+    image: jesec/flood:latest
+    user: ${PUID}:${PGID}
+    restart: always
+    command: --port 3000 --allowedpath /data
+    environment:
+      HOME: /config
+    volumes:
+      - /media/drive1/.config/torrent:/config
+      - /media/drive1/Downloads/Torrent:/data
+    ports:
+      - 0.0.0.0:3000:3000
+
+  transmission:
+    hostname: transmission
+    image: lscr.io/linuxserver/transmission:latest
+    restart: always
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=Asia/Kolkata
+      - USER=ritik
+      - PASS=112233
+    volumes:
+      - /media/drive1/.config/torrent:/config
+      - /media/drive1/Downloads/Torrent:/downloads
+    ports:
+      - 9091:9091
+      - 51413:51413
+      - 51413:51413/udp
