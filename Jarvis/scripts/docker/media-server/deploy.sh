@@ -19,8 +19,7 @@ then
 fi
 
 SERVICES=(
-    "Deluge https://deluge-torrent.org"
-    "NZBGet https://nzbget.net"
+    "qBittorrent https://www.qbittorrent.org"
     "Jackett https://github.com/Jackett/Jackett"
     "Sonarr https://sonarr.tv"
     "Radarr https://radarr.video"
@@ -44,13 +43,12 @@ echo
 
 MEDIA_DIRS=(
     # Create config dirs
-    "$DRIVE_ROOT/.config/deluge"
+    "$DRIVE_ROOT/.config/qbittorrent"
     "$DRIVE_ROOT/.config/jackett"
-    "$DRIVE_ROOT/.config/nzbget"
     "$DRIVE_ROOT/.config/sonarr"
     "$DRIVE_ROOT/.config/radarr"
-    "$DRIVE_ROOT/.config/jellyfin"
     "$DRIVE_ROOT/.config/bazarr"
+    "$DRIVE_ROOT/.config/jellyfin"
 
     "$DRIVE_ROOT/Downloads"
     "$DRIVE_ROOT/Downloads/torrent-blackhole"
