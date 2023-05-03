@@ -1,9 +1,9 @@
 #!/bin/bash -e
 
 # Check super user permission
-if [ $(id -u) -ne 0 ];
+if [ $(id -u) -eq 0 ];
 then
-    echo ⛔ This script needs to run WITH superuser permission!
+    echo ⛔ This script needs to run WITHOUT superuser permission!
     exit 1
 fi
 
@@ -28,6 +28,6 @@ echo "→ Deploying new containers"
 echo
 docker compose -f $SCRIPT_DIR/compose.yml up -d
 echo
-echo "Jelly installed successfully."
+echo "Homebridge deployed successfully."
 
 

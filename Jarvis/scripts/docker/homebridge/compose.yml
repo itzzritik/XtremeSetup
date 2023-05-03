@@ -1,4 +1,4 @@
-version: "2"
+version: "3.8"
 services:
   homebridge:
     container_name: homebridge

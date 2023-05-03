@@ -61,15 +61,11 @@ sudo bash ./scripts/docker/docker_setup.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-sudo bash ./scripts/docker/homebridge/deploy.sh
+bash ./scripts/docker/homebridge/deploy.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-sudo bash ./scripts/docker/flood-transmission/deploy.sh
-echo
-echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
-echo
-sudo bash ./scripts/docker/jellyfin/deploy.sh
+bash ./scripts/docker/media-server/deploy.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo

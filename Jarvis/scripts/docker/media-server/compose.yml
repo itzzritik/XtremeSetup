@@ -10,22 +10,8 @@ services:
       - PGID=${PGID} # default group id, defined in .env
       - TZ=${TZ} # timezone, defined in .env
     volumes:
-      - ${ROOT}/Downloads:/downloads # downloads folder
-      - ${ROOT}/.config/deluge:/config # config files
-
-  jackett:
-    container_name: jackett
-    image: linuxserver/jackett:latest
-    restart: unless-stopped
-    network_mode: host
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - ${ROOT}/downloads/torrent-blackhole:/downloads # place where to put .torrent files for manual download
-      - ${ROOT}/.config/jackett:/config # config files
+      - ${ROOT}/.config/deluge:/config
+      - ${ROOT}/Downloads:/downloads
 
   nzbget:
     container_name: nzbget
@@ -36,9 +22,26 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
+      - NZBGET_USER=ritik
+      - NZBGET_PASS=112233
     volumes:
-      - ${ROOT}/downloads:/downloads # download folder
-      - ${ROOT}/.config/nzbget:/config # config files
+      - ${ROOT}/.config/nzbget:/config
+      - ${ROOT}/Downloads:/downloads
+
+  jackett:
+    container_name: jackett
+    image: linuxserver/jackett:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - AUTO_UPDATE=true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${ROOT}/.config/jackett:/config
+      - ${ROOT}/Downloads/torrent-blackhole:/downloads # place where to put .torrent files for manual download
 
   sonarr:
     container_name: sonarr
@@ -51,9 +54,9 @@ services:
       - TZ=${TZ}
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - ${ROOT}/.config/sonarr:/config # config files
-      - ${ROOT}/complete/tv:/tv # tv shows folder
-      - ${ROOT}/downloads:/downloads # download folder
+      - ${ROOT}/.config/sonarr:/config
+      - ${ROOT}/Public/Series:/tv
+      - ${ROOT}/Downloads:/downloads
 
   radarr:
     container_name: radarr
@@ -66,27 +69,9 @@ services:
       - TZ=${TZ}
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - ${ROOT}/.config/radarr:/config # config files
-      - ${ROOT}/complete/movies:/movies # movies folder
-      - ${ROOT}/downloads:/downloads # download folder
-
-  jellyfin:
-    container_name: jellyfin
-    image: linuxserver/jellyfin:latest
-    restart: unless-stopped
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-    volumes:
-      - ${ROOT}/.config/jellyfin:/config
-      - ${ROOT}/Public/Series:/data/tvshows
-      - ${ROOT}/Public/Movies:/data/movies
-    ports:
-      - 8096:8096
-      - 8920:8920
-      - 7359:7359/udp
-      - 1900:1900/udp
+      - ${ROOT}/.config/radarr:/config
+      - ${ROOT}/Public/Movies:/movies
+      - ${ROOT}/Downloads:/downloads
 
   bazarr:
     container_name: bazarr
@@ -97,8 +82,21 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      - UMASK_SET=022 #optional
     volumes:
-      - ${ROOT}/.config/bazarr:/config # config files
-      - ${ROOT}/complete/movies:/movies # movies folder
-      - ${ROOT}/complete/tv:/tv # tv shows folder
+      - ${ROOT}/.config/bazarr:/config
+      - ${ROOT}/Public/Movies:/movies
+      - ${ROOT}/Public/Series:/tv
+
+  jellyfin:
+    container_name: jellyfin
+    image: linuxserver/jellyfin:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${ROOT}/.config/jellyfin:/config
+      - ${ROOT}/Public/Movies:/data/movies
+      - ${ROOT}/Public/Series:/data/tvshows
