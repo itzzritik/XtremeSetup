@@ -1,9 +1,9 @@
 #!/bin/bash -e
 
 # Check super user permission
-if [ $(id -u) -ne 0 ];
+if [ $(id -u) -eq 0 ];
 then
-  echo "⛔ This script needs to run WITH superuser permission"
+  echo "⛔ This script needs to run WITHOUT superuser permission"
   exit 1
 fi
 
@@ -12,14 +12,14 @@ echo
 
 if [[ $(findmnt --fstab --target /media/drive1 -A) ]];
 then
-  echo "Drive is already mounted!"
+  echo "✔ Drive is already mounted!"
   exit 1
 fi
 
 DRIVE="/media/drive1"
 
 # Create mount point
-sudo mkdir -p $DRIVE
+mkdir -p $DRIVE
 
 # Show drive details
 lsblk -o NAME,FSTYPE,UUID,MOUNTPOINTS
@@ -36,11 +36,11 @@ cat << EOF >> /etc/fstab
 EOF
 
 echo
-echo "Successfully created fstab entry."
+echo "✔ Successfully created fstab entry."
 
 if [[ $(sudo findmnt --verify) == "Success, no errors or warnings detected" ]];
 then
-  echo "Automounting verified, Rebooting..."
+  echo "✔ Automounting verified, Rebooting..."
   echo .
   echo .
   echo .

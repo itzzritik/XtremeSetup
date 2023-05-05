@@ -6,5 +6,5 @@ services:
     network_mode: host
     restart: unless-stopped
     volumes:
-      - /media/drive1/.config/homebridge:/homebridge
+      - ${ROOT}/.config/homebridge:/homebridge
     

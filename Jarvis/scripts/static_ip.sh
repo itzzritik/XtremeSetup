@@ -29,15 +29,40 @@ fi
 # Request user to enter desired static ip
 read -e -p "Enter the desired static ip: " -i "192.168.0.100" IP
 
+HOSTNAME="jarvis"
+CURRENT_ACTIVE_INTERFACE=$(ip route | grep default | awk '{print $5}')
+ROUTER_IP=$(ip route | grep default | awk '{print $3}')
+DOMAIN_NAME_SERVER=$(awk '/nameserver/{dns=dns" "$2} END {sub(/^ */,"",dns); print dns}' < /etc/resolv.conf)
+
 # Write static ip configuration into /etc/dhcpcd.conf file
 cat << EOF >> /etc/dhcpcd.conf
 
-# Static IP Configuration for Jarvis
-interface $(ip route | grep default | awk '{print $5}')
+# Request Static IP on Wifi from DHCP Server for Jarvis
+interface wlan0
+request $IP
+
+# Request Static IP on Ethernet from DHCP Server for Jarvis
+interface eth0
+request $IP
+
+# Static IP Configuration on Wifi for Jarvis
+interface wlan0
 static ip_address=$IP/24
-static routers=$(ip route | grep default | awk '{print $3}')
-static domain_name_servers=$(awk '/nameserver/{dns=dns" "$2} END {sub(/^ */,"",dns); print dns}' < /etc/resolv.conf)
+static routers=$ROUTER_IP
+static domain_name_servers=$DOMAIN_NAME_SERVER
+
+# Static IP Configuration on Ethernet for Jarvis
+interface eth0
+static ip_address=$IP/24
+static routers=$ROUTER_IP
+static domain_name_servers=$DOMAIN_NAME_SERVER
 EOF
 
+echo "✔ Static ip successfully set as $IP"
+
+# Setting hostname as "jarvis"
+hostnamectl set-hostname $HOSTNAME
+
+echo "✔ Hostname successfully set as \"$HOSTNAME\""
 echo
-echo "Static ip successfully set, Restart Raspberry Pi for changes to take effect."
+echo "Restart the device for changes to take effect."

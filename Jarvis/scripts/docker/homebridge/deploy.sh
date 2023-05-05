@@ -19,6 +19,24 @@ then
 fi
 
 SCRIPT_DIR=$(realpath "$(dirname "${BASH_SOURCE[0]}")")
+DRIVE_ROOT="/media/drive1"
+
+echo "→ Creating required directories"
+echo
+
+MEDIA_DIRS=(
+    "$DRIVE_ROOT/.config/homebridge"
+)
+
+for DIRECTORY in ${MEDIA_DIRS[*]}
+do
+    mkdir -p $DIRECTORY
+    echo "✔ $DIRECTORY"
+done
+echo
+
+# Write .env file for docker compose
+echo "ROOT=$DRIVE_ROOT" | tee .env > /dev/null
 
 echo "→ Removing existing containers"
 echo
@@ -28,6 +46,6 @@ echo "→ Deploying new containers"
 echo
 docker compose -f $SCRIPT_DIR/compose.yml up -d
 echo
-echo "Homebridge deployed successfully."
+echo "✔ Homebridge deployed successfully."
 
 
