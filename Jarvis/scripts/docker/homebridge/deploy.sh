@@ -36,7 +36,11 @@ done
 echo
 
 # Write .env file for docker compose
-echo "ROOT=$DRIVE_ROOT" | tee .env > /dev/null
+echo "TZ=Asia/Kolkata
+ROOT=$DRIVE_ROOT
+PUID=$(id -u ritik)
+PGID=$(id -g ritik)
+" | tee .env > /dev/null
 
 echo "→ Removing existing containers"
 echo
