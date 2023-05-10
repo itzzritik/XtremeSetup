@@ -39,20 +39,25 @@ echo
 echo "→ Converting the discovered movies"
 echo
 
-progressbar() {
-  local width=50
-  local percent=$1
-  local progress=$(( width * percent / 100 ))
+function SHOW_PROGRESS_BAR {
+    local current="$1"
+    local total="$2"
+    local bar_size=100
+    local bar_char_done="█"
+    local bar_char_todo="░"
+    local bar_percentage_scale=2
+    local percent=$(bc <<< "scale=$bar_percentage_scale; 100 * $current / $total" )
+    
+    # The number of done and todo characters
+    done=$(bc <<< "scale=0; $bar_size * $percent / 100" )
+    todo=$(bc <<< "scale=0; $bar_size - $done" )
 
-  # Set color codes
-  local color_complete="\e[92m"
-  local color_incomplete="\e[37m"
-  local color_reset="\e[0m"
+    # build the done and todo sub-bars
+    done_sub_bar=$(printf "%-${done}s" | sed "s/ /$bar_char_done/g")
+    todo_sub_bar=$(printf "%-${todo}s" | sed "s/ /$bar_char_todo/g")
 
-  # Print progress bar
-  printf "\r"
-  printf "${color_complete}$(printf '█%.0s' $(seq 1 "$progress"))${color_incomplete}$(printf ' %.0s' $(seq 1 "$((width-progress))"))${color_reset}"
-  printf " %3d%%" "$percent"
+    # output the bar
+    printf "\r${done_sub_bar}${todo_sub_bar} ${percent}%%"
 }
 
 for FILE in "$DIRECTORY"/**/*.mkv;
@@ -68,17 +73,16 @@ do
 
         ffmpeg -i "$INPUT" -c copy "$OUTPUT" >/dev/null 2>&1 &
         pid=$!  # Get the PID of the ffmpeg process
-        progress=0
         while kill -0 $pid >/dev/null 2>&1;
         do
             PROGRESS_FILE_SIZE=$(stat -c "%s" "$OUTPUT" 2>/dev/null || echo 0)
-            PROGRESS=$(echo "($PROGRESS_FILE_SIZE * 100) / $INPUT_FILE_SIZE" | bc)
-            progressbar "$PROGRESS"
+            SHOW_PROGRESS_BAR $PROGRESS_FILE_SIZE $INPUT_FILE_SIZE
             sleep 0.5
         done
         
-        # Move original file to backup
-        # mv "$FILE" "$FILE.bak"
+        #Original file to backup file
+        mv "$FILE" "$FILE.bak"
+
         echo
         echo "✔ Movie converted successfully"
         echo
