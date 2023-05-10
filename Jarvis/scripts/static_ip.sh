@@ -27,7 +27,7 @@ then
 fi
 
 # Request user to enter desired static ip
-read -e -p "Enter the desired static ip: " -i "192.168.0.100" IP
+read -e -p "Enter the desired static ip: " -i "192.168.0.200" IP
 
 HOSTNAME="jarvis"
 CURRENT_ACTIVE_INTERFACE=$(ip route | grep default | awk '{print $5}')
@@ -35,7 +35,7 @@ ROUTER_IP=$(ip route | grep default | awk '{print $3}')
 DOMAIN_NAME_SERVER=$(awk '/nameserver/{dns=dns" "$2} END {sub(/^ */,"",dns); print dns}' < /etc/resolv.conf)
 
 # Write static ip configuration into /etc/dhcpcd.conf file
-cat << EOF >> /etc/dhcpcd.conf
+sudo cat << EOF >> /etc/dhcpcd.conf
 
 # Request Static IP on Wifi from DHCP Server for Jarvis
 interface wlan0

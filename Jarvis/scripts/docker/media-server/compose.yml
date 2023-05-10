@@ -13,8 +13,8 @@ services:
     volumes:
       - ${ROOT}/.config/qbittorrent:/config
       - ${ROOT}/Downloads:/downloads
-    # username: admin
-    # password: adminadmin
+    # default username: admin
+    # default password: adminadmin
 
   jackett:
     container_name: jackett
