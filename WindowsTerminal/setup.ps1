@@ -23,6 +23,14 @@ if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 Write-Host ""
+Write-Host "     Increasing hibernation file size to 100% of RAM"
+Write-Host ""
+powercfg /hibernate /size 100
+Write-Host ""
+Write-Host "     Hibernation file size increased succesfully 🎉" -ForeGroundColor Green
+Write-Host ""
+Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
+Write-Host ""
 Write-Host "     Installing Oh-My-Posh with Scoop (https://ohmyposh.dev)"
 Write-Host ""
 $OMPExistsCommand = "-command `"oh-my-posh --version`""
