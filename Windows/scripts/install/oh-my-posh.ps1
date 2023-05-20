@@ -23,12 +23,6 @@ else {
     Write-Host "     ✔ Yayy! Oh-My-Posh already installed 🎉" -ForeGroundColor Green
 }
 
-# Install Nerd Fonts
-Write-Host "     Installing Nerd Fonts with Oh-My-Posh"
-$OMPInstallNerdFontCommand = "-command `"oh-my-posh font install`""
-$OMPInstallNerdFontCode = (Start-Process -FilePath pwsh -ArgumentList $OMPInstallNerdFontCommand -PassThru -Wait).ExitCode
-Write-Host "     ✔ Nerd Font installed succesfully (Exitcode: $OMPInstallNerdFontCode ) 🎉" -ForeGroundColor Green
-
 # Add Oh-My-Posh to Windows Defender exclusion list
 $OMPAddToDefender = "-command `"Add-MpPreference -ExclusionPath (Get-Command oh-my-posh).Source`""
 Start-Process -FilePath pwsh -ArgumentList $OMPAddToDefender -PassThru -Wait
@@ -68,6 +62,12 @@ Set-Content -Path $PROFILE -Value $PowershellProfile
 Write-Host ""
 Write-Host "     Setting up OH-MY-POSH theme into file:"
 Write-Host "     •    $PROFILE" -ForeGroundColor Green
+
+# Install Nerd Fonts
+Write-Host "     Installing Nerd Fonts with Oh-My-Posh"
+$OMPInstallNerdFontCommand = "-command `"oh-my-posh font install`""
+$OMPInstallNerdFontCode = (Start-Process -FilePath pwsh -ArgumentList $OMPInstallNerdFontCommand -PassThru -Wait).ExitCode
+Write-Host "     ✔ Nerd Font installed succesfully (Exitcode: $OMPInstallNerdFontCode ) 🎉" -ForeGroundColor Green
 
 #Install this Font manually -> https://github.com/ryanoasis/nerd-fonts/tree/master/patched-fonts/FantasqueSansMono
 # https://github.com/ryanoasis/nerd-fonts/blob/master/patched-fonts/FantasqueSansMono/Regular/complete/Fantasque%20Sans%20Mono%20Regular%20Nerd%20Font%20Complete.ttf

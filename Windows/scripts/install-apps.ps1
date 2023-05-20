@@ -13,8 +13,9 @@ function InstallApps($folderPath) {
     # Loop through each file in the list
     foreach ($file in $fileList) {
         $AppName = ConvertKebabToStartCase -inputString $file.BaseName
-        # Start-Process powershell.exe -ArgumentList "-File `"$file.FullName`"" -NoNewWindow
-        Write-Host "     $AppName Installed Successfully" -ForeGroundColor Green
+        $FilePath = $file.FullName
+        $AppInstallCode = (Start-Process -FilePath pwsh -ArgumentList "-File `"$FilePath`"" -PassThru -Wait).ExitCode
+        Write-Host "     $AppName Installed Successfully (Exitcode: $AppInstallCode )" -ForeGroundColor Green
         Write-Host ""
     }
 }

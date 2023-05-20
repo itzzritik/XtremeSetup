@@ -4,6 +4,10 @@
 		"setAsDefault",
 		"closeOnExitInfo"
 	],
-	"generatedProfiles" : [],
-	"settingsHash" : "a0bc02cf95a6431a-01d9896c3ee29bc9"
+	"generatedProfiles" : 
+	[
+		"{17f703e6-0df0-519d-8ee9-dea7759b19a5}",
+		"{73fc8c6b-c59e-53d3-9bee-e9258997edc3}"
+	],
+	"settingsHash" : "a7dd109929766ace-01d98ab4ab4c409a"
 }

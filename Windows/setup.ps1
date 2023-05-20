@@ -15,7 +15,7 @@ Write-Host "|                                                                   
 Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
 Write-Host ""
 # Install apps
-Invoke-Expression -Command "$PSScriptRoot/scripts/install/install-apps.ps1"
+Invoke-Expression -Command "$PSScriptRoot/scripts/install-apps.ps1"
 Write-Host ""
 Write-Host "+---------------------------------------------------------------------------------------------------------------------------------------------+"
 Write-Host ""

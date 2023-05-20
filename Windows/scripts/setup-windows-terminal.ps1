@@ -1,6 +1,10 @@
 Write-Host "     Setting up Windows Terminal 'Settings.json' file as a Symbolic Link"
 Write-Host ""
 
+# Create Projects Directory
+New-Item -ItemType Directory -Force -Path "D:/Projects" | Out-Null
+
+# Initialize Windows Terminal Settings Directories
 $GlobalWindowsSettings = "$Env:LocalAppData\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState"
 $LocalWindowsSettings = Resolve-Path("$PSScriptRoot\..\config\windows_terminal\settings")
 

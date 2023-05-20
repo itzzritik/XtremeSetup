@@ -43,18 +43,18 @@
         {
             "command": 
             {
-                "action": "splitPane",
-                "split": "right"
-            },
-            "keys": "ctrl+d"
-        },
-        {
-            "command": 
-            {
                 "action": "copy",
                 "singleLine": false
             },
             "keys": "ctrl+c"
+        },
+        {
+            "command": 
+            {
+                "action": "splitPane",
+                "split": "right"
+            },
+            "keys": "ctrl+d"
         },
         {
             "command": "paste",
@@ -95,7 +95,7 @@
             ],
             "font": 
             {
-                "face": "FantasqueSansMono Nerd Font"
+                "face": "FantasqueSansM Nerd Font Mono"
             },
             "opacity": 85,
             "useAcrylic": true,
@@ -136,10 +136,16 @@
                 "source": "Windows.Terminal.Azure"
             },
             {
-                "guid": "{2ece5bfe-50ed-5f3a-ab87-5cd4baafed2b}",
+                "guid": "{17f703e6-0df0-519d-8ee9-dea7759b19a5}",
                 "hidden": false,
-                "name": "Git Bash",
-                "source": "Git"
+                "name": "Developer Command Prompt for VS 2019",
+                "source": "Windows.Terminal.VisualStudio"
+            },
+            {
+                "guid": "{73fc8c6b-c59e-53d3-9bee-e9258997edc3}",
+                "hidden": false,
+                "name": "Developer PowerShell for VS 2019",
+                "source": "Windows.Terminal.VisualStudio"
             }
         ]
     },
