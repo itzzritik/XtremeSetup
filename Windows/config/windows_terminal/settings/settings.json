@@ -37,10 +37,6 @@
             "keys": "ctrl+shift+w"
         },
         {
-            "command": "find",
-            "keys": "ctrl+shift+f"
-        },
-        {
             "command": 
             {
                 "action": "copy",
@@ -52,9 +48,13 @@
             "command": 
             {
                 "action": "splitPane",
-                "split": "right"
+                "split": "down"
             },
-            "keys": "ctrl+d"
+            "keys": "ctrl+shift+d"
+        },
+        {
+            "command": "find",
+            "keys": "ctrl+shift+f"
         },
         {
             "command": "paste",
@@ -64,9 +64,9 @@
             "command": 
             {
                 "action": "splitPane",
-                "split": "down"
+                "split": "right"
             },
-            "keys": "ctrl+shift+d"
+            "keys": "ctrl+d"
         },
         {
             "command": 
@@ -98,8 +98,7 @@
                 "face": "FantasqueSansM Nerd Font Mono"
             },
             "opacity": 85,
-            "useAcrylic": true,
-            "useAtlasEngine": true
+            "useAcrylic": true
         },
         "list": 
         [
@@ -136,16 +135,10 @@
                 "source": "Windows.Terminal.Azure"
             },
             {
-                "guid": "{17f703e6-0df0-519d-8ee9-dea7759b19a5}",
+                "guid": "{2ece5bfe-50ed-5f3a-ab87-5cd4baafed2b}",
                 "hidden": false,
-                "name": "Developer Command Prompt for VS 2019",
-                "source": "Windows.Terminal.VisualStudio"
-            },
-            {
-                "guid": "{73fc8c6b-c59e-53d3-9bee-e9258997edc3}",
-                "hidden": false,
-                "name": "Developer PowerShell for VS 2019",
-                "source": "Windows.Terminal.VisualStudio"
+                "name": "Git Bash",
+                "source": "Git"
             }
         ]
     },
@@ -407,8 +400,6 @@
     ],
     "tabSwitcherMode": "inOrder",
     "tabWidthMode": "equal",
-    "themes": [],
-    "trimPaste": true,
     "useAcrylicInTabRow": true,
     "windowingBehavior": "useExisting"
 }
