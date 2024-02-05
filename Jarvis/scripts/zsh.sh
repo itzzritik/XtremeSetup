@@ -1,9 +1,9 @@
 #!/bin/bash -e
 
 # Check super user permission
-if [ $(id -u) -ne 0 ]; then
-  echo "⛔ This script needs to run WITH superuser permission!"
-  exit 1
+if [ $(id -u) -eq 0 ]; then
+   echo "⛔ This script needs to run WITHOUT superuser permission"
+   exit 1
 fi
 
 echo "⚪ Setting up zsh and oh-my-zsh"
@@ -13,7 +13,7 @@ if command -v zsh &> /dev/null; then
     echo "Zsh is already installed."
 else
     echo "Installing ZSH..."
-    sudo apt install zsh -y
+    apt install zsh -y
     echo "zsh installed successfully"
 fi
 
