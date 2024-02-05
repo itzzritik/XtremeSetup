@@ -1,50 +1,47 @@
 #!/bin/bash -e
 
-# Check super user permission
-if [ $(id -u) -eq 0 ];
-then
-  echo "⛔ This script needs to run WITHOUT superuser permission"
-  exit 1
-fi
-
 echo "⚪ Creating auto mount entry for drive in Fstab"
 echo
 
-if [[ $(findmnt --fstab --target /media/drive1 -A) ]];
+# Check super user permission
+if [ $(id -u) -ne 0 ]; then
+  echo "⛔ This script needs to run WITH superuser permission!"
+  exit 1
+fi
+
+MOUNT_POINT="/mnt/drive1"
+
+if [[ $(findmnt --fstab --target $MOUNT_POINT -A) ]];
 then
   echo "✔ Drive is already mounted!"
   exit 1
 fi
 
-DRIVE="/media/drive1"
+# Create the mount point if it doesn't exist
+if [ ! -d "$MOUNT_POINT" ]; then
+    sudo mkdir $MOUNT_POINT
+fi
 
-# Create mount point
-mkdir -p $DRIVE
+# Get the UUID of the drive
+UUID=$(blkid -s UUID -o value $DRIVE)
 
-# Show drive details
-lsblk -o NAME,FSTYPE,UUID,MOUNTPOINTS
+# Check if the drive is available
+if [ -z "$UUID" ]; then
+    echo "Drive not found."
+    exit 1
+fi
 
-# Input drive uuid and filesystem type
-echo
-echo "Please find your drive from above table."
-read -p "Enter the UUID here: " UUID
-read -e -p "Enter the File system type here: " -i "ext4" FS
-
-# Write the entry to fstab
-cat << EOF >> /etc/fstab
-  UUID=$UUID $DRIVE   $FS    defaults        0       0
-EOF
-
+# Add the mount to /etc/fstab
+echo "UUID=$UUID $MOUNT_POINT auto defaults,nofail 0 0" | sudo tee -a /etc/fstab
 echo
 echo "✔ Successfully created fstab entry."
 
-if [[ $(sudo findmnt --verify) == "Success, no errors or warnings detected" ]];
-then
-  echo "✔ Automounting verified, Rebooting..."
-  echo .
-  echo .
-  echo .
-  sudo reboot
+# Mount all drives in /etc/fstab
+sudo mount -a
+
+if [[ $(findmnt --fstab --target $MOUNT_POINT -A) ]]; then
+  echo "✔ Drive mounted succesfully"
+  exit 1
 else
   echo "⛔ Oops! Automounting not working! please check."
 fi

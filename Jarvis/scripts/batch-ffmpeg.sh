@@ -7,7 +7,7 @@ then
     exit 1
 fi
 
-ROOT="/media/drive1"
+ROOT="/mnt/drive1"
 DIRECTORY="$ROOT/Public/Movies/Bollywood"
 ALREADY_CONVERTED=()
 

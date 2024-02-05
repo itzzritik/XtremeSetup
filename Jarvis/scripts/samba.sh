@@ -32,7 +32,7 @@ cat << EOF >> /etc/samba/smb.conf
 
 [JarvisCloud]
   comment = Jarvis Cloud
-  path = /media/drive1
+  path = /mnt/drive1
   writeable = Yes
   create mask = 0777
   directory mask = 0777
@@ -40,7 +40,7 @@ cat << EOF >> /etc/samba/smb.conf
 
 [Media]
   comment = Jarvis Media Cloud
-  path = /media/drive1/Public
+  path = /mnt/drive1/Public
   read only = yes
   writeable = No
   guest ok = yes

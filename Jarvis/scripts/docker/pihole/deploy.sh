@@ -19,7 +19,7 @@ then
 fi
 
 SCRIPT_DIR=$(realpath "$(dirname "${BASH_SOURCE[0]}")")
-DRIVE_ROOT="/media/drive1"
+DRIVE_ROOT="/mnt/drive1"
 
 echo "→ Creating required directories"
 echo
