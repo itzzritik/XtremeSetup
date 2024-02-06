@@ -1,5 +1,8 @@
 #!/bin/bash -e
 
+echo "⚪ Setting up node environment"
+echo
+
 # Check super user permission
 if [ $(id -u) -eq 0 ]; then
    echo "⛔ This script needs to run WITHOUT superuser permission"

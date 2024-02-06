@@ -22,7 +22,6 @@ SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "$0")" )" && pwd )"
 DRIVE_ROOT="/mnt/drive1"
 
 echo "→ Creating required directories"
-echo
 
 MEDIA_DIRS=(
     "$DRIVE_ROOT/.config/homebridge"
