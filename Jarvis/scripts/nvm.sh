@@ -6,26 +6,20 @@ if [ $(id -u) -eq 0 ]; then
    exit 1
 fi
 
-# Check if NVM is installed
-if ! command -v nvm &> /dev/null
-then
-    echo "Installing NVM..."
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | zsh
-    echo -e '\nexport NVM_DIR="$HOME/.nvm"\n[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"\n[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> ~/.zshrc
-    source ~/.zshrc
-else
+# Install NVM if not already
+if [ -s "$HOME/.nvm/nvm.sh" ]; then
     echo "NVM is already installed."
+else
+    echo "Installing NVM..."
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash
+    source ~/.bashrc
 fi
 
-nvm install --lts
-nvm use --lts
-
-# Check if Node LTS is installed
-if ! command -v node &> /dev/null
-then
+# Install NODE if not already
+if which node &> /dev/null; then
+    echo "Node is already installed."
+else
     echo "Installing Node LTS version..."
     nvm install --lts
     nvm use --lts
-else
-    echo "Node is already installed."
 fi

@@ -13,8 +13,7 @@ echo
 read -p "Enter the ssh public key: " KEY
 
 # write and repalce the ssh key into /home/ritik/.ssh/authorized_keys file
-if [ "$KEY" != "" ];
-then
+if [ "$KEY" != "" ]; then
    echo $KEY > /home/ritik/.ssh/authorized_keys
 fi
 

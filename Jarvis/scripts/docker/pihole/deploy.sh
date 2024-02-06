@@ -18,7 +18,7 @@ then
     echo
 fi
 
-SCRIPT_DIR=$(realpath "$(dirname "${BASH_SOURCE[0]}")")
+SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "$0")" )" && pwd )"
 DRIVE_ROOT="/mnt/drive1"
 
 echo "→ Creating required directories"
@@ -40,7 +40,7 @@ echo "TZ=Asia/Kolkata
 ROOT=$DRIVE_ROOT
 PUID=$(id -u ritik)
 PGID=$(id -g ritik)
-" | tee .env > /dev/null
+" | tee $SCRIPT_DIR/.env > /dev/null
 
 echo "→ Removing existing containers"
 echo

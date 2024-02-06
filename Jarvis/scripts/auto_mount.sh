@@ -10,6 +10,7 @@ if [ $(id -u) -ne 0 ]; then
 fi
 
 MOUNT_POINT="/mnt/drive1"
+DRIVE="/dev/sda1"
 
 if [[ $(findmnt --fstab --target $MOUNT_POINT -A) ]];
 then
@@ -32,14 +33,15 @@ if [ -z "$UUID" ]; then
 fi
 
 # Add the mount to /etc/fstab
-echo "UUID=$UUID $MOUNT_POINT auto defaults,nofail 0 0" | sudo tee -a /etc/fstab
+echo "UUID=$UUID $MOUNT_POINT   ext4    defaults        0       0" | sudo tee -a /etc/fstab
 echo
 echo "✔ Successfully created fstab entry."
 
 # Mount all drives in /etc/fstab
+systemctl daemon-reload
 sudo mount -a
 
-if [[ $(findmnt --fstab --target $MOUNT_POINT -A) ]]; then
+if [[ $(sudo findmnt --fstab --target $MOUNT_POINT -A) ]]; then
   echo "✔ Drive mounted succesfully"
   exit 1
 else
