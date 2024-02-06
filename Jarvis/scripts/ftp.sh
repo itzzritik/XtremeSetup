@@ -20,41 +20,34 @@ else
 fi
 
 # Create users for the directory
-useradd -m -c "FTP User" -s /usr/sbin/nologin jarvis
-echo "jarvis:password" | chpasswd
+sudo useradd -m ftpuser -s /usr/sbin/nologin
+echo "ftpuser:password" | sudo chpasswd
 
 echo "FTP user created"
 
-chown jarvis:jarvis /home/ritik
-chown jarvis:jarvis /mnt/drive1
-chmod a-w /mnt/drive1/Public
+sudo chown ftpuser:ftpuser /home/ritik
+sudo chown ftpuser:ftpuser /mnt/drive1
+sudo chmod a-w /mnt/drive1/Public
 
 echo "FTP user granted access to folders"
 
 # Create the vsftpd user config files
-echo "jarvis" | tee -a /etc/vsftpd.userlist
+echo "ftpuser" | tee -a /etc/vsftpd.userlist
 
 # Create the vsftpd config files
-cat > /etc/vsftpd.conf <<EOF
-listen=YES
-listen_port=2100
+sudo sh -c 'echo "
 anonymous_enable=NO
 local_enable=YES
 write_enable=YES
-local_umask=022
-dirmessage_enable=YES
-use_localtime=YES
-xferlog_enable=YES
-secure_chroot_dir=/var/run/vsftpd/empty
-pam_service_name=vsftpd
-rsa_cert_file=/etc/ssl/private/ssl-cert-snakeoil.pem
-rsa_private_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
-userlist_enable=YES
-userlist_file=/etc/vsftpd.userlist
-userlist_deny=NO
-EOF
+chroot_local_user=YES
+local_root=/home/$USER
+force_dot_files=YES
+pasv_min_port=40000
+pasv_max_port=50000
+user_sub_token=$USER
+" > /etc/vsftpd.conf'
 
 echo "vsftpd configuration successful"
 
 # Restart the vsftpd service
-service vsftpd restart
+sudo systemctl restart vsftpd

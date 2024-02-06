@@ -34,8 +34,8 @@ echo "|                                                       UPDATING RASPBERRY
 echo "|                                                                                                                                   |"
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-# sudo apt update && sudo apt upgrade -y
-# sudo apt autoremove
+# sudo apt update -y && sudo apt upgrade -y
+# sudo apt autoremove -y
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo "|                                                                                                                                   |"
