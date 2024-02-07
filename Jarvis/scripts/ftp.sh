@@ -16,7 +16,7 @@ if ! dpkg -l | grep vsftpd > /dev/null; then
     echo "Installing vsftpd server"
     sudo apt install vsftpd -y
 else
-    echo "vsftpd is already installed"
+    echo "✔ vsftpd is already installed"
 fi
 
 # Create users for the directory

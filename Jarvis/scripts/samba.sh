@@ -13,8 +13,8 @@ echo
 # Check if samba is already installed
 if [[ $(which samba) && $(samba --version) ]];
 then
-  echo "Samba is already setup!"
-  exit 1
+  echo "✔ Samba is already setup!"
+  exit 0
 fi
 
 # Install samba packages

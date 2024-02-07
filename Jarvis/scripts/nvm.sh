@@ -9,20 +9,26 @@ if [ $(id -u) -eq 0 ]; then
    exit 1
 fi
 
+currentUser=$(who am i | awk '{print $1}')
+echo "Executing as user: $currentUser"
+
 # Install NVM if not already
 if [ -s "$HOME/.nvm/nvm.sh" ]; then
-    echo "NVM is already installed."
+    echo "✔ NVM is already installed."
 else
     echo "Installing NVM..."
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash
-    source ~/.bashrc
+    su - $currentUser -c "$(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash)"
+    source ~/.nvm/nvm.sh
 fi
 
 # Install NODE if not already
 if which node &> /dev/null; then
-    echo "Node is already installed."
+    echo "✔ Node is already installed."
 else
     echo "Installing Node LTS version..."
-    nvm install --lts
-    nvm use --lts
+    su - $currentUser -c "
+        source ~/.nvm/nvm.sh
+        nvm install --lts
+        nvm use --lts
+    "
 fi

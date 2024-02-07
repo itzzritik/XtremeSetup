@@ -9,6 +9,15 @@ fi
 echo "⚪ Setting ssh key to \".ssh/authorized_keys\""
 echo
 
+while read -r line
+do
+    if [[ $line == *"HVJW2" ]]
+    then
+        echo "✔ Authorized SSH key already set"
+        exit 0
+    fi
+done < ~/.ssh/authorized_keys
+
 # Input ssh public key
 read -p "Enter the ssh public key: " KEY
 

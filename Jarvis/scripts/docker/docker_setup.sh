@@ -13,8 +13,8 @@ echo
 # Check if docker is already installed
 if [[ $(which docker) && $(docker --version) ]];
 then
-  echo "Docker is already installed!"
-  exit 1
+  echo "✔ Docker is already installed!"
+  exit 0
 fi
 
 # Install dependencies

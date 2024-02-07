@@ -10,6 +10,17 @@ fi
 echo "⚪ Setting static ip address"
 echo
 
+if ! dpkg -l | grep -q openvswitch-switch; then
+  echo "Open vSwitch is not installed. Installing..."
+  sudo apt install -y openvswitch-switch
+  echo
+  echo
+else
+  echo "✔ Open vSwitch is already installed."
+fi
+
+sudo systemctl start openvswitch-switch
+
 # Backup current configuration
 sudo cp /etc/netplan/50-cloud-init.yaml /etc/netplan/50-cloud-init.yaml.bak
 echo "Configuration backed up successfully"
