@@ -20,7 +20,7 @@ then
 fi
 
 # Install dependencies
-sudo apt-get install ca-certificates curl gnupg
+sudo apt install ca-certificates gnupg
 
 # Add Docker’s official GPG key
 sudo install -m 0755 -d /etc/apt/keyrings
@@ -33,8 +33,8 @@ echo \
   "$(lsb_release -cs)" stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 # Install Docker
-sudo apt-get update
-sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
+sudo apt update
+sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
 
 # Provide Docker right permissions
 # sudo usermod -a -G docker ritik
