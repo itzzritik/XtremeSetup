@@ -1,19 +1,20 @@
 #!/bin/bash -e
 
+echo
+echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
+echo
+echo "⚪ Setting up ftp server"
+echo
+
 # Check super user permission
-if [ $(id -u) -ne 0 ];
-then
+if [ $(id -u) -ne 0 ]; then
   echo "⛔ This script needs to run WITH superuser permission!"
   exit 1
 fi
 
-echo "⚪ Setting up ftp server"
-echo
-
-# Check if vsftpd is installed
+# Install vsftpd
 if ! dpkg -l | grep vsftpd > /dev/null; then
-    # Install vsftpd
-    echo "Installing vsftpd server"
+    echo "Installing vsftpd server..."
     sudo apt install vsftpd -y
 else
     echo "✔ vsftpd is already installed"
@@ -47,7 +48,8 @@ pasv_max_port=50000
 user_sub_token=$USER
 " > /etc/vsftpd.conf'
 
-echo "vsftpd configuration successful"
 
 # Restart the vsftpd service
 sudo systemctl restart vsftpd
+
+echo "✔vsftpd configuration successful"

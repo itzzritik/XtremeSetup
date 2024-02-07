@@ -1,14 +1,16 @@
 #!/bin/bash -e
 
+echo
+echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
+echo
+echo "⚪ Setting up samba server"
+echo
+
 # Check super user permission
-if [ $(id -u) -ne 0 ];
-then
+if [ $(id -u) -ne 0 ]; then
   echo "⛔ This script needs to run WITH superuser permission!"
   exit 1
 fi
-
-echo "⚪ Setting up samba server"
-echo
 
 # Check if samba is already installed
 if [[ $(which samba) && $(samba --version) ]];
@@ -53,4 +55,4 @@ echo Please create a password for user ritik:
 sudo smbpasswd -a ritik
 sudo systemctl restart smbd
 echo
-echo "Successfully setup samba server."
+echo "✔ Successfully setup samba server."

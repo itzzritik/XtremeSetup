@@ -1,13 +1,16 @@
 #!/bin/bash -e
 
+echo
+echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
+echo
+printf '⚪ Setting up \e]8;;https://www.docker.com\e\\Docker\e]8;;\e\\\n'
+echo
+
 # Check super user permission
 if [ $(id -u) -ne 0 ]; then
   echo ⛔ This script needs to run WITH superuser permission!
   exit 1
 fi
-
-printf '⚪ Setting up \e]8;;https://www.docker.com\e\\Docker\e]8;;\e\\\n'
-echo
 
 # Check if docker is already installed
 if [[ $(which docker) && $(docker --version) ]];
@@ -39,4 +42,4 @@ sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin 
 sudo chmod 666 /var/run/docker.sock
 
 echo
-echo "Docker installed successfully."
+echo "✔ Docker installed successfully."

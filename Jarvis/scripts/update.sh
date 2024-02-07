@@ -1,10 +1,11 @@
 #!/bin/bash -e
 
-# Check super user permission
-if [ $(id -u) -ne 0 ]; then
-  echo ⛔ This script needs to run WITH superuser permission!
-  exit 1
-fi
+echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
+echo "|                                                                                                                                   |"
+echo "|                                                       UPDATING RASPBERRY PI                                                       |"
+echo "|                                                                                                                                   |"
+echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
+echo
 
 if [ -f /sys/firmware/devicetree/base/model ]; then
     DEVICE=$(tr -d '\0' </sys/firmware/devicetree/base/model)
@@ -14,6 +15,12 @@ fi
 
 echo "⚪ Updating $DEVICE..."
 echo
+
+# Check super user permission
+if [ $(id -u) -ne 0 ]; then
+  echo ⛔ This script needs to run WITH superuser permission!
+  exit 1
+fi
 
 # Check the last modified date of the package lists
 last_update=$(stat -c %Y /var/lib/apt/periodic/update-success-stamp)

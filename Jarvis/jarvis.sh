@@ -1,5 +1,7 @@
 #!/bin/bash
 
+clear
+
 JarvisLocation="$HOME/.jarvis"
 RepoName="XtremeSetup"
 RepoUrl="https://github.com/itzzritik/$RepoName.git"

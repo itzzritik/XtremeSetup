@@ -1,13 +1,13 @@
 #!/bin/bash -e
 
+echo "⚪ Setting ssh key to \".ssh/authorized_keys\""
+echo
+
 # Check super user permission
 if [ $(id -u) -eq 0 ]; then
   echo "⛔ This script needs to run WITHOUT superuser permission"
   exit 1
 fi
-
-echo "⚪ Setting ssh key to \".ssh/authorized_keys\""
-echo
 
 while read -r line
 do
@@ -26,4 +26,4 @@ if [ "$KEY" != "" ]; then
 fi
 
 echo
-echo "Successfully added ssh key."
+echo "✔ Successfully added ssh key."

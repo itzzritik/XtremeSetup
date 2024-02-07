@@ -1,5 +1,11 @@
 #!/bin/bash -e
 
+echo
+echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
+echo
+echo "⚪ Setting static ip address"
+echo
+
 # Check super user permission
 if [ $(id -u) -ne 0 ];
 then
@@ -8,9 +14,6 @@ then
 fi
 
 Banner="#Jarvis Network Configuration"
-
-echo "⚪ Setting static ip address"
-echo
 
 if ! dpkg -l | grep -q openvswitch-switch; then
   echo "Open vSwitch is not installed. Installing..."
@@ -54,9 +57,9 @@ ROUTER_IP=$(ip route | grep default | awk '{print $3}' | head -n 1)
 DOMAIN_NAME_SERVER=$(awk '/nameserver/{dns=dns" "$2} END {sub(/^ */,"",dns); print dns}' < /etc/resolv.conf)
 
 # Create new configuration
-echo "
-  $Banner
-  network:
+echo "$Banner
+
+network:
   version: 2
   renderer: networkd
   ethernets:

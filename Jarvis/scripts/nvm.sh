@@ -1,5 +1,8 @@
 #!/bin/bash -e
 
+echo
+echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
+echo
 echo "⚪ Setting up node environment"
 echo
 
@@ -19,6 +22,8 @@ else
     echo "Installing NVM..."
     su - $currentUser -c "$(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash)"
     source ~/.nvm/nvm.sh
+    echo
+    echo "✔ NVM installed successfully."
 fi
 
 # Install NODE if not already
@@ -32,4 +37,5 @@ else
         nvm alias default lts/*
         nvm use --lts
     "
+    echo "✔ Node LTS version installed successfully."
 fi

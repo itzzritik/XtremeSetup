@@ -1,13 +1,16 @@
 #!/bin/bash -e
 
+echo
+echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
+echo
+echo '⚪ Setting up a Media Server using Docker'
+echo
+
 # Check super user permission
 if [ $(id -u) -ne 0 ]; then
   echo ⛔ This script needs to run WITH superuser permission!
   exit 1
 fi
-
-echo '⚪ Setting up a Media Server using Docker'
-echo
 
 # Install docker if not installed already
 if ! [[ $(which docker) && $(docker --version) ]];
