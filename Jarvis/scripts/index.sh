@@ -34,8 +34,9 @@ echo "|                                                       UPDATING RASPBERRY
 echo "|                                                                                                                                   |"
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-# sudo apt update -y && sudo apt upgrade -y
-# sudo apt autoremove -y
+sudo apt update -y
+sudo apt upgrade -y
+sudo apt autoremove -y
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo "|                                                                                                                                   |"
@@ -43,43 +44,43 @@ echo "|                                                         SETTING UP JARVI
 echo "|                                                                                                                                   |"
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-bash $SCRIPT_DIR/scripts/ssh.sh
+bash $SCRIPT_DIR/ssh.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-bash $SCRIPT_DIR/scripts/nvm.sh
+bash $SCRIPT_DIR/nvm.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-sudo bash $SCRIPT_DIR/scripts/auto_mount.sh
+sudo bash $SCRIPT_DIR/auto_mount.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-sudo bash $SCRIPT_DIR/scripts/static_ip.sh
+sudo bash $SCRIPT_DIR/static_ip.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-sudo bash $SCRIPT_DIR/scripts/docker/docker_setup.sh
+sudo bash $SCRIPT_DIR/docker/docker_setup.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-bash $SCRIPT_DIR/scripts/docker/homebridge/deploy.sh
+bash $SCRIPT_DIR/docker/homebridge/deploy.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-# bash $SCRIPT_DIR/scripts/docker/media-server/deploy.sh
+# bash $SCRIPT_DIR/docker/media-server/deploy.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-# bash $SCRIPT_DIR/scripts/docker/pihole/deploy.sh
+# bash $SCRIPT_DIR/docker/pihole/deploy.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-# sudo bash $SCRIPT_DIR/scripts/samba.sh
+# sudo bash $SCRIPT_DIR/samba.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-sudo bash $SCRIPT_DIR/scripts/ftp.sh
+sudo bash $SCRIPT_DIR/ftp.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo

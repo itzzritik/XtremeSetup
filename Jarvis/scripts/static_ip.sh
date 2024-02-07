@@ -24,7 +24,7 @@ sudo hostnamectl set-hostname $hostname
 
 # Prompt for WiFi credentials and desired static ip
 read -e -p "Enter your WiFi SSID: " -i "ACTFIBERNET_5G" ssid
-read -p "Enter your WiFi password: " password
+read -e -p "Enter your WiFi password: " -i "VeryComplexPassword" password
 read -e -p "Enter the desired static ip: " -i "192.168.0.200" IP
 echo
 
