@@ -1,10 +1,9 @@
 #!/bin/bash -e
 
 # Check super user permission
-if [ $(id -u) -eq 0 ];
-then
-    echo ⛔ This script needs to run WITHOUT superuser permission!
-    exit 1
+if [ $(id -u) -ne 0 ]; then
+  echo ⛔ This script needs to run WITH superuser permission!
+  exit 1
 fi
 
 printf '⚪ Deploying \e]8;;https://pi-hole.net\e\\PiHole\e]8;;\e\\ in Docker\n'

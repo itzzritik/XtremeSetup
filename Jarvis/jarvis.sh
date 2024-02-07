@@ -18,4 +18,5 @@ cd $RepoName || { echo "Error: Unable to change to the repository directory."; e
 bash "$JarvisLocation/$RepoName/Jarvis/scripts/index.sh" || { echo "Error: Script execution failed."; exit 1; }
 
 # delete the hidden dir after script completion
+echo "Cleaning up downloaded scripts"
 rm -rf "$JarvisLocation"

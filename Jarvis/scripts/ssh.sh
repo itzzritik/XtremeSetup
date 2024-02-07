@@ -2,8 +2,8 @@
 
 # Check super user permission
 if [ $(id -u) -eq 0 ]; then
-   echo "⛔ This script needs to run WITHOUT superuser permission"
-   exit 1
+  echo "⛔ This script needs to run WITHOUT superuser permission"
+  exit 1
 fi
 
 echo "⚪ Setting ssh key to \".ssh/authorized_keys\""
@@ -11,12 +11,11 @@ echo
 
 while read -r line
 do
-    if [[ $line == *"HVJW2" ]]
-    then
-        echo "✔ Authorized SSH key already set"
-        exit 0
-    fi
-done < ~/.ssh/authorized_keys
+  if [[ $line == *"HVJW2" ]]; then
+    echo "✔ Authorized SSH key already set"
+    exit 0
+  fi
+done < $HOME/.ssh/authorized_keys
 
 # Input ssh public key
 read -p "Enter the ssh public key: " KEY

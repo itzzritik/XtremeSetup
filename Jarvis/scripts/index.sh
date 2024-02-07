@@ -34,9 +34,7 @@ echo "|                                                       UPDATING RASPBERRY
 echo "|                                                                                                                                   |"
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-sudo apt update -y
-sudo apt upgrade -y
-sudo apt autoremove -y
+sudo bash $SCRIPT_DIR/update.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo "|                                                                                                                                   |"
@@ -68,11 +66,11 @@ bash $SCRIPT_DIR/docker/homebridge/deploy.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-# bash $SCRIPT_DIR/docker/media-server/deploy.sh
+# sudo bash $SCRIPT_DIR/docker/media-server/deploy.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-# bash $SCRIPT_DIR/docker/pihole/deploy.sh
+# sudo bash $SCRIPT_DIR/docker/pihole/deploy.sh
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo

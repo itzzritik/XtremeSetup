@@ -1,8 +1,7 @@
 #!/bin/bash -e
 
 # Check super user permission
-if [ $(id -u) -ne 0 ];
-then
+if [ $(id -u) -ne 0 ]; then
   echo ⛔ This script needs to run WITH superuser permission!
   exit 1
 fi

@@ -5,8 +5,8 @@ echo
 
 # Check super user permission
 if [ $(id -u) -eq 0 ]; then
-   echo "⛔ This script needs to run WITHOUT superuser permission"
-   exit 1
+    echo "⛔ This script needs to run WITHOUT superuser permission"
+    exit 1
 fi
 
 currentUser=$(who am i | awk '{print $1}')
@@ -29,6 +29,7 @@ else
     su - $currentUser -c "
         source ~/.nvm/nvm.sh
         nvm install --lts
+        nvm alias default lts/*
         nvm use --lts
     "
 fi
