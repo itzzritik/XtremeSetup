@@ -47,9 +47,9 @@ read -e -p "Enter the desired hostname: " -i "jarvis" hostname
 sudo hostnamectl set-hostname $hostname
 
 # Prompt for WiFi credentials and desired static ip
-read -e -p "Enter your WiFi SSID: " -i "ACTFIBERNET_5G" ssid
+read -e -p "Enter your WiFi SSID: " -i "Ritik" ssid
 read -e -p "Enter your WiFi password: " -i "VeryComplexPassword" password
-read -e -p "Enter the desired static ip: " -i "192.168.0.200" IP
+read -e -p "Enter the desired static ip: " -i "192.168.68.255" IP
 echo
 
 CURRENT_ACTIVE_INTERFACE=$(ip route | grep default | awk '{print $5}')

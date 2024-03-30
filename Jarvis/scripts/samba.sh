@@ -41,7 +41,7 @@ cat << EOF >> /etc/samba/smb.conf
   public = no
 
 [Media]
-  comment = Jarvis Media Cloud
+  comment = Jarvis Media
   path = /mnt/drive1/Public
   read only = yes
   writeable = No

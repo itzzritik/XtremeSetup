@@ -3,6 +3,12 @@
 clear
 
 JarvisLocation="$HOME/.jarvis"
+
+if [ -d "$JarvisLocation" ];
+then
+  rm -r "$JarvisLocation"
+fi
+
 RepoName="XtremeSetup"
 RepoUrl="https://github.com/itzzritik/$RepoName.git"
 

@@ -45,7 +45,7 @@ sudo bash $SCRIPT_DIR/docker/docker_setup.sh
 sudo bash $SCRIPT_DIR/docker/homebridge/deploy.sh
 # sudo bash $SCRIPT_DIR/docker/media-server/deploy.sh
 # sudo bash $SCRIPT_DIR/docker/pihole/deploy.sh
-# sudo bash $SCRIPT_DIR/samba.sh
+sudo bash $SCRIPT_DIR/samba.sh
 # sudo bash $SCRIPT_DIR/ftp.sh
 
 echo
