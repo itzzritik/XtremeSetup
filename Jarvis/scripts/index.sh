@@ -40,7 +40,7 @@ echo
 bash $SCRIPT_DIR/ssh.sh
 bash $SCRIPT_DIR/nvm.sh
 sudo bash $SCRIPT_DIR/auto_mount.sh
-sudo bash $SCRIPT_DIR/static_ip.sh
+# sudo bash $SCRIPT_DIR/static_ip.sh
 sudo bash $SCRIPT_DIR/docker/docker_setup.sh
 sudo bash $SCRIPT_DIR/docker/homebridge/deploy.sh
 # sudo bash $SCRIPT_DIR/docker/media-server/deploy.sh
