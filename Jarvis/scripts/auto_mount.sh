@@ -7,9 +7,9 @@ echo "⚪ Creating auto mount entry for drive in Fstab"
 echo
 
 # Check super user permission
-if [ $(id -u) -ne 0 ]; then
-  echo "⛔ This script needs to run WITH superuser permission!"
-  exit 1
+if [ $(id -u) -eq 0 ]; then
+    echo "⛔ This script needs to run WITHOUT superuser permission"
+    exit 1
 fi
 
 MOUNT_POINT="/mnt/drive1"
@@ -23,7 +23,7 @@ fi
 
 # Create the mount point if it doesn't exist
 if [ ! -d "$MOUNT_POINT" ]; then
-    sudo mkdir $MOUNT_POINT
+    mkdir $MOUNT_POINT
 fi
 
 # Get the UUID of the drive
