@@ -17,6 +17,18 @@
             "keys": "alt+shift+d"
         },
         {
+            "command": "find",
+            "keys": "ctrl+shift+f"
+        },
+        {
+            "command": 
+            {
+                "action": "splitPane",
+                "split": "down"
+            },
+            "keys": "ctrl+shift+d"
+        },
+        {
             "command": "unbound",
             "keys": "alt+shift+plus"
         },
@@ -43,18 +55,6 @@
                 "singleLine": false
             },
             "keys": "ctrl+c"
-        },
-        {
-            "command": 
-            {
-                "action": "splitPane",
-                "split": "down"
-            },
-            "keys": "ctrl+shift+d"
-        },
-        {
-            "command": "find",
-            "keys": "ctrl+shift+f"
         },
         {
             "command": "paste",
@@ -84,6 +84,12 @@
     "experimental.rendering.software": false,
     "launchMode": "maximized",
     "minimizeToNotificationArea": false,
+    "newTabMenu": 
+    [
+        {
+            "type": "remainingProfiles"
+        }
+    ],
     "profiles": 
     {
         "defaults": 
@@ -400,6 +406,7 @@
     ],
     "tabSwitcherMode": "inOrder",
     "tabWidthMode": "equal",
+    "themes": [],
     "useAcrylicInTabRow": true,
     "windowingBehavior": "useExisting"
 }
