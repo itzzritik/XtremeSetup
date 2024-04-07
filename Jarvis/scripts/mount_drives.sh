@@ -12,6 +12,13 @@ if [ $(id -u) -eq 0 ]; then
     exit 1
 fi
 
+if dpkg -l | grep -q "ntfs-3g"; then
+    echo "✔ NTFS support is already installed."
+else
+    echo "Installing NTFS support..."
+    apt-get install ntfs-3g -y
+fi
+
 MOUNT_POINT="/mnt/drive1"
 DRIVE="/dev/sda1"
 

@@ -41,11 +41,6 @@ echo "Configuration backed up successfully"
 
 sudo cp /etc/netplan/50-cloud-init.yaml.bak /etc/netplan/50-cloud-init.yaml.bak.bak
 
-# Set hostname as jarvis
-echo "Setting hostname as jarvis"
-read -e -p "Enter the desired hostname: " -i "jarvis" hostname
-sudo hostnamectl set-hostname $hostname
-
 # Prompt for WiFi credentials and desired static ip
 read -e -p "Enter your WiFi SSID: " -i "Ritik" ssid
 read -e -p "Enter your WiFi password: " -i "VeryComplexPassword" password
