@@ -29,6 +29,7 @@ SERVICES=(
     "Jellyfin https://jellyfin.org"
 )
 SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "$0")" )" && pwd )"
+CONFIG_ROOT="/mnt/configs"
 DRIVE_ROOT="/mnt/drive1"
 
 echo ' → Deploying services:'

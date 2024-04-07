@@ -13,6 +13,7 @@ if [ $(id -u) -eq 0 ]; then
 fi
 
 MOUNT_POINT="/mnt/configs"
+SYNC_IGNORE="jellyfin/data/metadata/library|radarr/logs|radarr/Backups|sonarr/logs|sonarr/Backups|bazarr/logs|bazarr/backups|bazarr/cache"
 
 # Check if bucket is already mounted
 if mount | grep -q "$MOUNT_POINT"; then
@@ -53,15 +54,23 @@ fi
 
 # Mount Cloudflare R2 Storage using s3fs
 echo
-sudo s3fs jarvis:/configs /mnt/configs -o url="$ENDPOINT" -o allow_other -o passwd_file="$S3FS_CREDS" -o dbglevel=info
+sudo s3fs jarvis:/configs /mnt/configs -o url="$ENDPOINT" -o passwd_file="$S3FS_CREDS" -o ignore="$SYNC_IGNORE" -o allow_other -o dbglevel=info
 
 # Allow mount point read-write permission to user "ritik"
 sudo chown -R ritik $MOUNT_POINT
 sudo chmod -R 700 $MOUNT_POINT
 
+$FSTAB_ENTRY="s3fs#jarvis:/configs /mnt/configs fuse.s3fs url=$ENDPOINT,passwd_file=$S3FS_CREDS,ignore=$SYNC_IGNORE,allow_other,dbglevel=info 0 0"
+
+# Remove if entry already exists in /etc/fstab
+EXISTING_ENTRY=$(grep "^s3fs#jarvis:/configs" /etc/fstab)
+if [ -n "$EXISTING_ENTRY" ]; then
+    echo "Removing existing \"s3fs#jarvis:/configs\" entry found in fstab."
+    sudo sed -i "\|^$EXISTING_ENTRY|d" /etc/fstab
+fi
+
 # Add the mount entry to /etc/fstab
 echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab
-echo "s3fs#jarvis:/configs /mnt/configs fuse.s3fs url=$ENDPOINT,allow_other,passwd_file=$S3FS_CREDS,dbglevel=info 0 0" | sudo tee -a /etc/fstab
 
 echo
 

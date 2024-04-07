@@ -40,6 +40,14 @@ cat << EOF >> /etc/samba/smb.conf
   directory mask = 0777
   public = no
 
+[JarvisConfigs]
+  comment = Jarvis Configs
+  path = /mnt/configs
+  writeable = Yes
+  create mask = 0777
+  directory mask = 0777
+  public = no
+
 [Media]
   comment = Jarvis Media
   path = /mnt/drive1/Public
