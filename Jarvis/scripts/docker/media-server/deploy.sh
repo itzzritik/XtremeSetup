@@ -81,6 +81,6 @@ echo "→ Deploying new containers"
 echo
 docker compose -f $SCRIPT_DIR/compose.yml up -d
 echo
-echo "✔ Media Server installed successfully."
+echo "✔ Media Server installed successfully"
 
 

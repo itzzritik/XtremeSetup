@@ -12,4 +12,4 @@ if (!(Test-Path $VerboseStatusRegistryPath)) {
 # Set the registry value to enable verbose status messages
 Set-ItemProperty -Path $VerboseStatusRegistryPath -Name $VerboseStatusRegistryValue -Value 1
 Write-Host ""
-Write-Host "     ✔ Done! Please restart your computer for the changes to take effect."
+Write-Host "     ✔ Done! Please restart your computer for the changes to take effect"

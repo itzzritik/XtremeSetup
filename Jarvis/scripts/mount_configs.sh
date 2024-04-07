@@ -24,60 +24,62 @@ fi
 # Install S3FS if not already
 if [[ $(which s3fs ) && $(s3fs  --version) ]];
 then
-    echo "✔ S3FS is already installed."
+    echo "✔ S3FS is already installed"
+    echo
 else
     echo "Installing S3FS..."
     sudo apt install s3fs -y
     echo
-    echo "✔ S3FS installed successfully."
+    echo "✔ S3FS installed successfully"
     echo
 fi
 
 # Create s3fs credential file
 S3FS_CREDS="$HOME/.passwd-s3fs"
 
-read -p "Enter the Access Key ID: " ID
-read -p "Enter the Secret Access Key: " KEY
-read -p "Enter the Endpoint: " ENDPOINT
+read -p "Enter the Access Key ID: " ACCESS_KEY_ID
+read -p "Enter the Secret Access Key: " SECRET_ACCESS_KEY
 
 cat <<EOF > "$S3FS_CREDS"
-$ID:$KEY
+$ACCESS_KEY_ID:$SECRET_ACCESS_KEY
 EOF
 chmod 600 "$S3FS_CREDS"
 
-echo "✔ S3FS credential file created."
+echo "✔ S3FS credential file created"
+echo
+read -p "Enter the Endpoint: " ENDPOINT
 
 # Check if mount directory exists, create if not
 if [ ! -d "$MOUNT_POINT" ]; then
     sudo mkdir -p "$MOUNT_POINT"
 fi
 
-# Mount Cloudflare R2 Storage using s3fs
-echo
-sudo s3fs jarvis:/configs $MOUNT_POINT -o url="$ENDPOINT" -o passwd_file="$S3FS_CREDS" -o ignore="$SYNC_IGNORE" -o allow_other -o dbglevel=info
-
-# Allow mount point read-write permission to user "ritik"
-sudo chown -R ritik $MOUNT_POINT
-sudo chmod -R 700 $MOUNT_POINT
-
-$FSTAB_ENTRY="s3fs#jarvis:/configs $MOUNT_POINT fuse.s3fs url=$ENDPOINT,passwd_file=$S3FS_CREDS,ignore=$SYNC_IGNORE,allow_other,dbglevel=info 0 0"
+FSTAB_ENTRY="jarvis:/configs "$MOUNT_POINT" fuse.s3fs url="$ENDPOINT",passwd_file="$S3FS_CREDS",allow_other,dbglevel=info 0 0"
 
 # Remove if entry already exists in /etc/fstab
-EXISTING_ENTRY=$(grep "^s3fs#jarvis:/configs $MOUNT_POINT" /etc/fstab)
+EXISTING_ENTRY=$(grep " $MOUNT_POINT" /etc/fstab)
 if [ -n "$EXISTING_ENTRY" ]; then
-    echo "Removing existing \"$MOUNT_POINT\" entry found in fstab."
+    echo "Removing existing \""$MOUNT_POINT"\" entry found in fstab"
     sudo sed -i "\|^$EXISTING_ENTRY|d" /etc/fstab
 fi
 
 # Add the mount entry to /etc/fstab
 echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab
 echo
-echo "✔ Successfully created fstab entry."
+echo "✔ Successfully created fstab entry"
 echo
+
+# Mount all drives in /etc/fstab
+systemctl daemon-reload
+sudo mount -a
+
+# Allow mount point read-write permission to user "ritik"
+sudo chown -R ritik $MOUNT_POINT
+sudo chmod -R 700 $MOUNT_POINT
 
 if mount | grep -q "$MOUNT_POINT"; then
   echo "✔ Cloudflare R2 Storage mounted at $MOUNT_POINT"
   exit 1
 else
-  echo "⛔ Oops! mount point not working! please check."
+  echo "⛔ Oops! mount point not working! please check"
 fi

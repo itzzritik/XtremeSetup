@@ -21,7 +21,7 @@ if ! dpkg -l | grep -q openvswitch-switch; then
   echo
   echo
 else
-  echo "✔ Open vSwitch is already installed."
+  echo "✔ Open vSwitch is already installed"
 fi
 
 ConfigBanner=$(sudo head -n 1 /etc/netplan/50-cloud-init.yaml)

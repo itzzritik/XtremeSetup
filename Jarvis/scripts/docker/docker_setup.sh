@@ -42,4 +42,4 @@ sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin dock
 sudo chmod 666 /var/run/docker.sock
 
 echo
-echo "✔ Docker installed successfully."
+echo "✔ Docker installed successfully"

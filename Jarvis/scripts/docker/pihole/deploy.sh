@@ -52,6 +52,6 @@ echo "→ Deploying new containers"
 echo
 docker compose -f $SCRIPT_DIR/compose.yml up -d
 echo
-echo "✔ PiHole deployed successfully."
+echo "✔ PiHole deployed successfully"
 
 

@@ -63,4 +63,4 @@ echo Please create a password for user ritik:
 sudo smbpasswd -a ritik
 sudo systemctl restart smbd
 echo
-echo "✔ Successfully setup samba server."
+echo "✔ Successfully setup samba server"

@@ -14,4 +14,7 @@ HOSTNAME="jarvis"
 sudo hostnamectl set-hostname $HOSTNAME
 
 # Update the /etc/hosts file
-sed -i "s/127.0.0.1.*localhost/127.0.0.1\tlocalhost $HOSTNAME/" /etc/hosts
+sudo sed -i "s/127.0.0.1.*localhost/127.0.0.1\tlocalhost $HOSTNAME/" /etc/hosts
+
+echo
+echo "✔ Successfully set hostname as jarvis"

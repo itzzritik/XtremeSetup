@@ -1,5 +1,8 @@
 #!/bin/bash -e
 
+echo
+echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
+echo
 echo "⚪ Setting ssh key to \".ssh/authorized_keys\""
 echo
 
@@ -26,4 +29,4 @@ if [ "$KEY" != "" ]; then
 fi
 
 echo
-echo "✔ Successfully added ssh key."
+echo "✔ Successfully added ssh key"

@@ -53,6 +53,6 @@ echo "→ Deploying new containers"
 echo
 docker compose -f $SCRIPT_DIR/compose.yml up -d
 echo
-echo "✔ Homebridge deployed successfully."
+echo "✔ Homebridge deployed successfully"
 
 

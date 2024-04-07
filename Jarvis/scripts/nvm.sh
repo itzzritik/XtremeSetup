@@ -17,18 +17,18 @@ echo "Executing as user: $currentUser"
 
 # Install NVM if not already
 if [ -s "$HOME/.nvm/nvm.sh" ]; then
-    echo "✔ NVM is already installed."
+    echo "✔ NVM is already installed"
 else
     echo "Installing NVM..."
     su - $currentUser -c "$(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash)"
     source ~/.nvm/nvm.sh
     echo
-    echo "✔ NVM installed successfully."
+    echo "✔ NVM installed successfully"
 fi
 
 # Install NODE if not already
 if which node &> /dev/null; then
-    echo "✔ Node is already installed."
+    echo "✔ Node is already installed"
 else
     echo "Installing Node LTS version..."
     su - $currentUser -c "
@@ -37,5 +37,5 @@ else
         nvm alias default lts/*
         nvm use --lts
     "
-    echo "✔ Node LTS version installed successfully."
+    echo "✔ Node LTS version installed successfully"
 fi
