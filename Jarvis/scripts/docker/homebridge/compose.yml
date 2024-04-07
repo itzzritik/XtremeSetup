@@ -5,6 +5,7 @@ services:
     image: homebridge/homebridge
     network_mode: host
     restart: unless-stopped
+    privileged: true
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -16,4 +17,3 @@ services:
       - HOMEBRIDGE_CONFIG_UI_PASSWORD=112233
     volumes:
       - ${ROOT}/.config/homebridge:/homebridge
-    

@@ -42,7 +42,7 @@ if [ -z "$UUID" ]; then
     exit 1
 fi
 
-# Add the mount to /etc/fstab
+# Add the mount entry to /etc/fstab
 echo "UUID=$UUID $MOUNT_POINT   ext4    defaults        0       0" | sudo tee -a /etc/fstab
 echo
 echo "✔ Successfully created fstab entry."
@@ -50,6 +50,10 @@ echo "✔ Successfully created fstab entry."
 # Mount all drives in /etc/fstab
 systemctl daemon-reload
 sudo mount -a
+
+# Allow mount point read-write permission to user "ritik"
+sudo chown -R ritik $MOUNT_POINT
+sudo chmod -R 700 $MOUNT_POINT
 
 if [[ $(sudo findmnt --fstab --target $MOUNT_POINT -A) ]]; then
   echo "✔ Drive mounted succesfully"
