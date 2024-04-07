@@ -43,9 +43,20 @@ if [ -z "$UUID" ]; then
 fi
 
 # Add the mount entry to /etc/fstab
-echo "UUID=$UUID $MOUNT_POINT   ext4    defaults        0       0" | sudo tee -a /etc/fstab
+$FSTAB_ENTRY="UUID=$UUID $MOUNT_POINT ext4 defaults 0 0"
+
+# Remove if entry already exists in /etc/fstab
+EXISTING_ENTRY=$(grep "^UUID=$UUID $MOUNT_POINT" /etc/fstab)
+if [ -n "$EXISTING_ENTRY" ]; then
+    echo "Removing existing \"$MOUNT_POINT\" entry found in fstab."
+    sudo sed -i "\|^$EXISTING_ENTRY|d" /etc/fstab
+fi
+
+# Add the mount entry to /etc/fstab
+echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab
 echo
 echo "✔ Successfully created fstab entry."
+echo
 
 # Mount all drives in /etc/fstab
 systemctl daemon-reload
