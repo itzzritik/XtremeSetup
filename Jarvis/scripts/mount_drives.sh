@@ -63,8 +63,8 @@ systemctl daemon-reload
 sudo mount -a
 
 # Allow mount point read-write permission to user "ritik"
-sudo chown -R ritik $MOUNT_POINT
-sudo chmod -R 700 $MOUNT_POINT
+sudo chown -R ritik:ritik /mnt
+sudo chmod -R u+rwx /mnt
 
 if [[ $(sudo findmnt --fstab --target $MOUNT_POINT -A) ]]; then
   echo "✔ Drive mounted succesfully"
