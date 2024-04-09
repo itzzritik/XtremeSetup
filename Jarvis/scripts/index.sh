@@ -41,7 +41,7 @@ echo
 bash $SCRIPT_DIR/hostname.sh
 bash $SCRIPT_DIR/ssh.sh
 bash $SCRIPT_DIR/nvm.sh
-bash $SCRIPT_DIR/mount_configs.sh
+bash $SCRIPT_DIR/mount_configs_rclone.sh
 bash $SCRIPT_DIR/mount_drives.sh
 sudo bash $SCRIPT_DIR/samba.sh
 sudo bash $SCRIPT_DIR/docker/docker_setup.sh

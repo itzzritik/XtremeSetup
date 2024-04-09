@@ -22,7 +22,7 @@ if mount | grep -q "$MOUNT_POINT"; then
 fi
 
 # Install S3FS if not already
-if [[ $(which s3fs ) && $(s3fs  --version) ]];
+if [[ $(which s3fs ) && $(s3fs --version) ]];
 then
     echo "✔ S3FS is already installed"
 else
