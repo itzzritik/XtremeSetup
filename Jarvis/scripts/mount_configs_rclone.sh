@@ -70,11 +70,12 @@ After=network-online.target
 Type=notify
 ExecStartPre=/bin/mkdir -p "$MOUNT_POINT"
 ExecStart=/usr/bin/rclone mount --allow-other --vfs-cache-mode writes --config "$CREDS" jarvis:jarvis/configs "$MOUNT_POINT"
+ExecStop=/bin/fusermount -u "$MOUNT_POINT"
 Restart=always
 RestartSec=10
 
 [Install]
-WantedBy=multi-user.target" | sudo tee "$SYSTEMD_MOUNT" > /dev/null
+WantedBy=default.target" | sudo tee "$SYSTEMD_MOUNT" > /dev/null
 
 echo
 echo "✔ Successfully systemd mount unit"
