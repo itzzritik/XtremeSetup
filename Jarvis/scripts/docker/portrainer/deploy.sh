@@ -30,6 +30,6 @@ echo "→ Deploying new containers"
 echo
 docker compose -f $SCRIPT_DIR/compose.yml up -d
 echo
-echo "✔ HomeAssistant deployed successfully"
+echo "✔ Portainer deployed successfully"
 
 

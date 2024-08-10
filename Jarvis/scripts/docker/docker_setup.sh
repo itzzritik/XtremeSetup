@@ -36,6 +36,7 @@ echo \
 sudo apt update
 sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
 
+newgrp docker
 sudo usermod -aG docker $USER
 
 echo
