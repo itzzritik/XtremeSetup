@@ -40,12 +40,12 @@ echo
 # sudo bash $SCRIPT_DIR/static_ip.sh
 bash $SCRIPT_DIR/hostname.sh
 bash $SCRIPT_DIR/ssh.sh
-bash $SCRIPT_DIR/nvm.sh
-bash $SCRIPT_DIR/mount_configs_rclone.sh
+# bash $SCRIPT_DIR/nvm.sh
 bash $SCRIPT_DIR/mount_drives.sh
-sudo bash $SCRIPT_DIR/samba.sh
+# sudo bash $SCRIPT_DIR/samba.sh
 sudo bash $SCRIPT_DIR/docker/docker_setup.sh
-sudo bash $SCRIPT_DIR/docker/homeassistant/deploy.sh
+sudo bash $SCRIPT_DIR/docker/portrainer/deploy.sh
+# sudo bash $SCRIPT_DIR/docker/homeassistant/deploy.sh
 # sudo bash $SCRIPT_DIR/docker/homebridge/deploy.sh
 # sudo bash $SCRIPT_DIR/docker/media-server/deploy.sh
 # sudo bash $SCRIPT_DIR/docker/pihole/deploy.sh

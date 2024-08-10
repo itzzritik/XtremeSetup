@@ -3,7 +3,7 @@
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-printf '⚪ Deploying \e]8;;https://www.home-assistant.io\e\\HomeAssistant\e]8;;\e\\ in Docker\n'
+printf '⚪ Deploying \e]8;;https://www.portainer.io\e\\Portainer\e]8;;\e\\ in Docker\n'
 echo
 
 # Check super user permission
@@ -21,29 +21,6 @@ then
 fi
 
 SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "$0")" )" && pwd )"
-CONFIG_ROOT="/mnt/configs"
-DRIVE_ROOT="/mnt/drive1"
-
-echo "→ Creating required directories"
-
-MEDIA_DIRS=(
-    "$CONFIG_ROOT/homeassistant"
-)
-
-for DIRECTORY in ${MEDIA_DIRS[*]}
-do
-    mkdir -p $DIRECTORY
-    echo "✔ $DIRECTORY"
-done
-echo
-
-# Write .env file for docker compose
-echo "TZ=Asia/Kolkata
-ROOT=$DRIVE_ROOT
-CONFIG=$CONFIG_ROOT
-PUID=$(id -u ritik)
-PGID=$(id -g ritik)
-" | tee $SCRIPT_DIR/.env > /dev/null
 
 echo "→ Removing existing containers"
 echo

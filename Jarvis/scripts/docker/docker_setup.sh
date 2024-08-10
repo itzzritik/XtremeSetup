@@ -36,10 +36,7 @@ echo \
 sudo apt update
 sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
 
-# Provide Docker right permissions
-# sudo usermod -a -G docker ritik
-# newgrp docker
-sudo chmod 666 /var/run/docker.sock
+sudo usermod -aG docker $USER
 
 echo
 echo "✔ Docker installed successfully"
