@@ -17,7 +17,7 @@ This script ensures up-to-date system security, facilitates secure communication
 To run the Jarvis setup, use the following command:
 
 ```
-bash -c "$(curl -fsSL https://go.ritik.me/JarvisSetup)"
+bash -c "$(curl -fsSL https://ritik.me/jarvis-setup)"
 ```
 
 This command downloads the setup script and executes it.
