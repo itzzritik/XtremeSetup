@@ -21,13 +21,13 @@ then
 fi
 
 SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "$0")" )" && pwd )"
-CONFIG_ROOT="/mnt/configs"
-DRIVE_ROOT="/mnt/drive1"
+JARVIS_CONFIG_ROOT="/mnt/configs"
+JARVIS_DRIVE_ROOT="/mnt/drive1"
 
 echo "→ Creating required directories"
 
 MEDIA_DIRS=(
-    "$DRIVE_ROOT/homebridge"
+    "$JARVIS_DRIVE_ROOT/homebridge"
 )
 
 for DIRECTORY in ${MEDIA_DIRS[*]}
@@ -39,8 +39,8 @@ echo
 
 # Write .env file for docker compose
 echo "TZ=Asia/Kolkata
-ROOT=$DRIVE_ROOT
-CONFIG=$CONFIG_ROOT
+ROOT=$JARVIS_DRIVE_ROOT
+CONFIG=$JARVIS_CONFIG_ROOT
 PUID=$(id -u ritik)
 PGID=$(id -g ritik)
 " | tee $SCRIPT_DIR/.env > /dev/null

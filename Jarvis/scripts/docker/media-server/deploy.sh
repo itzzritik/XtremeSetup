@@ -29,8 +29,8 @@ SERVICES=(
     "Jellyfin https://jellyfin.org"
 )
 SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "$0")" )" && pwd )"
-CONFIG_ROOT="/mnt/configs"
-DRIVE_ROOT="/mnt/drive1"
+JARVIS_CONFIG_ROOT="/mnt/configs"
+JARVIS_DRIVE_ROOT="/mnt/drive1"
 
 echo ' → Deploying services:'
 
@@ -46,17 +46,17 @@ echo
 
 MEDIA_DIRS=(
     # Create config dirs
-    "$DRIVE_ROOT/.config/qbittorrent"
-    "$DRIVE_ROOT/.config/jackett"
-    "$DRIVE_ROOT/.config/sonarr"
-    "$DRIVE_ROOT/.config/radarr"
-    "$DRIVE_ROOT/.config/bazarr"
-    "$DRIVE_ROOT/.config/jellyfin"
+    "$JARVIS_DRIVE_ROOT/.config/qbittorrent"
+    "$JARVIS_DRIVE_ROOT/.config/jackett"
+    "$JARVIS_DRIVE_ROOT/.config/sonarr"
+    "$JARVIS_DRIVE_ROOT/.config/radarr"
+    "$JARVIS_DRIVE_ROOT/.config/bazarr"
+    "$JARVIS_DRIVE_ROOT/.config/jellyfin"
 
-    "$DRIVE_ROOT/Downloads"
-    "$DRIVE_ROOT/Downloads/torrent-blackhole"
-    "$DRIVE_ROOT/Public/Series"
-    "$DRIVE_ROOT/Public/Movies"
+    "$JARVIS_DRIVE_ROOT/Downloads"
+    "$JARVIS_DRIVE_ROOT/Downloads/torrent-blackhole"
+    "$JARVIS_DRIVE_ROOT/Public/Series"
+    "$JARVIS_DRIVE_ROOT/Public/Movies"
 )
 
 for DIRECTORY in ${MEDIA_DIRS[*]}
@@ -68,7 +68,7 @@ echo
 
 # Write .env file for docker compose
 echo "TZ=Asia/Kolkata
-ROOT=$DRIVE_ROOT
+ROOT=$JARVIS_DRIVE_ROOT
 PUID=$(id -u ritik)
 PGID=$(id -g ritik)
 " | tee $SCRIPT_DIR/.env > /dev/null

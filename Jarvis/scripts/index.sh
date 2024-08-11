@@ -16,14 +16,12 @@ echo '        __________\/////////_______\///________\///____\///________\///___
 echo
 echo
 
-# Check super user permission
 if [ $(id -u) -eq 0 ];
 then
    echo "⛔ Please run this script WITHOUT superuser permission!"
    echo
    echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
-   echo
-   exit 1
+   echo & exit 1
 fi
 
 SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "$0")" )" && pwd )"
@@ -37,18 +35,16 @@ echo "|                                                                         
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
 
-# sudo bash $SCRIPT_DIR/static_ip.sh
+export JARVIS_DRIVE_ROOT="/mnt/drive1"
+export JARVIS_CONFIG_ROOT="/mnt/configs"
+
+bash $SCRIPT_DIR/timezone.sh
 bash $SCRIPT_DIR/hostname.sh
 bash $SCRIPT_DIR/ssh.sh
 # bash $SCRIPT_DIR/nvm.sh
 bash $SCRIPT_DIR/mount_drives.sh
 # sudo bash $SCRIPT_DIR/samba.sh
 sudo bash $SCRIPT_DIR/docker/docker_setup.sh
-sudo bash $SCRIPT_DIR/docker/portrainer/deploy.sh
-# sudo bash $SCRIPT_DIR/docker/homeassistant/deploy.sh
-# sudo bash $SCRIPT_DIR/docker/homebridge/deploy.sh
-# sudo bash $SCRIPT_DIR/docker/media-server/deploy.sh
-# sudo bash $SCRIPT_DIR/docker/pihole/deploy.sh
 # sudo bash $SCRIPT_DIR/ftp.sh
 
 echo

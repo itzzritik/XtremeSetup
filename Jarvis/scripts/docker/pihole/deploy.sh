@@ -21,13 +21,13 @@ then
 fi
 
 SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "$0")" )" && pwd )"
-DRIVE_ROOT="/mnt/drive1"
+JARVIS_DRIVE_ROOT="/mnt/drive1"
 
 echo "→ Creating required directories"
 echo
 
 MEDIA_DIRS=(
-    "$DRIVE_ROOT/.config/pihole"
+    "$JARVIS_DRIVE_ROOT/.config/pihole"
 )
 
 for DIRECTORY in ${MEDIA_DIRS[*]}
@@ -39,7 +39,7 @@ echo
 
 # Write .env file for docker compose
 echo "TZ=Asia/Kolkata
-ROOT=$DRIVE_ROOT
+ROOT=$JARVIS_DRIVE_ROOT
 PUID=$(id -u ritik)
 PGID=$(id -g ritik)
 " | tee $SCRIPT_DIR/.env > /dev/null
