@@ -3,13 +3,13 @@
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-printf '⚪ Setting hostname as jarvis'
+printf '⚪ Setting hostname as jarvis\n'
 echo
 
 HOSTNAME="jarvis"
 
 if grep -q "$HOSTNAME" /etc/hosts; then
-    echo "✔ Hostname already set as $HOSTNAME" & exit 1
+    echo "✔ Hostname already set as $HOSTNAME" && exit 0
 fi
 
 sudo hostnamectl set-hostname $HOSTNAME

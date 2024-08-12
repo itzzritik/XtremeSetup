@@ -6,11 +6,7 @@ echo
 printf '⚪ Setting up \e]8;;https://www.docker.com\e\\Docker\e]8;;\e\\\n'
 echo
 
-# Check super user permission
-if [ $(id -u) -ne 0 ]; then
-  echo ⛔ This script needs to run WITH superuser permission!
-  exit 1
-fi
+[ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
 
 # Check if docker is already installed
 if ! [[ $(which docker) && $(docker --version) ]];
@@ -41,10 +37,8 @@ else
   echo "✔ Docker is already installed!"
 fi
 
-if [ -z "$JARVIS_DRIVE_ROOT" ] || [ -z "$JARVIS_CONFIG_ROOT" ]; then
-  echo "⛔ Env variables (JARVIS_DRIVE_ROOT) and (JARVIS_CONFIG_ROOT) are not set! Quiting..."
-  exit 1
-fi
+[ -z "$JARVIS_DRIVE_ROOT" ] && echo "⛔ Env variable \"JARVIS_DRIVE_ROOT\" not set!" && exit 1
+[ -z "$JARVIS_CONFIG_ROOT" ] && echo "⛔ Env variable \"JARVIS_CONFIG_ROOT\" not set!" && exit 1
 
 SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "$0")" )" && pwd )"
 
