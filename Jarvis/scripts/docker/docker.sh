@@ -8,9 +8,7 @@ echo
 
 [ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
 
-# Check if docker is already installed
-if ! [[ $(which docker) && $(docker --version) ]];
-then
+if ! [[ $(which docker) && $(docker --version) ]]; then
   # Install dependencies
   sudo apt install ca-certificates gnupg
 
@@ -22,9 +20,8 @@ then
   # Set up the Docker’s repository
   echo \
     "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-    "$(lsb_release -cs)" stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    "$(lsb_release -cs)" stable" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
 
-  # Install Docker
   sudo apt update
   sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
 
@@ -37,14 +34,20 @@ else
   echo "✔ Docker is already installed!"
 fi
 
-[ -z "$JARVIS_DRIVE_ROOT" ] && echo "⛔ Env variable \"JARVIS_DRIVE_ROOT\" not set!" && exit 1
-[ -z "$JARVIS_CONFIG_ROOT" ] && echo "⛔ Env variable \"JARVIS_CONFIG_ROOT\" not set!" && exit 1
+REQUIRED_VARS=(
+  "JARVIS_DRIVE_ROOT"
+  "JARVIS_CONFIG_ROOT"
+  "JARVIS_TZ"
+  "JARVIS_PUID"
+  "JARVIS_PGID"
+)
 
-SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "$0")" )" && pwd )"
+for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable \"$VAR\" not set!" && exit 1; done
 
-sudo bash $SCRIPT_DIR/env.sh
-sudo bash $SCRIPT_DIR/portrainer/deploy.sh
-sudo bash $SCRIPT_DIR/docker/homeassistant/deploy.sh
-# sudo bash $SCRIPT_DIR/docker/homebridge/deploy.sh
-# sudo bash $SCRIPT_DIR/docker/media-server/deploy.sh
-# sudo bash $SCRIPT_DIR/docker/pihole/deploy.sh
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+
+bash $SCRIPT_DIR/portrainer/deploy.sh
+bash $SCRIPT_DIR/homeassistant/deploy.sh
+# sudo bash $SCRIPT_DIR/homebridge/deploy.sh
+# sudo bash $SCRIPT_DIR/media-server/deploy.sh
+# sudo bash $SCRIPT_DIR/pihole/deploy.sh

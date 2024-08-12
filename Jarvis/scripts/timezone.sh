@@ -1,26 +1,15 @@
 #!/bin/bash
 
-echo
-echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
-echo
 printf '⚪ Setting system timezone\n'
 echo
 
-if [ $(id -u) -eq 0 ]; then
-  echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
-fi
+[ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
 
-CURRENT_TIMEZONE="Asia/Kolkata"
+[ "$(timedatectl | grep 'Time zone' | awk '{print $3}')" == "$JARVIS_TZ" ] && echo "✔ Timezone is already set to $JARVIS_TZ" && exit 0
 
-if [ "$(timedatectl | grep 'Time zone' | awk '{print $3}')" == "$CURRENT_TIMEZONE" ]; then
-    echo "✔ Timezone is already set to $CURRENT_TIMEZONE." && exit 1
-fi
-
-sudo timedatectl set-timezone $CURRENT_TIMEZONE
+sudo timedatectl set-timezone $JARVIS_TZ
 sudo systemctl restart systemd-timesyncd
 
-if [ "$(timedatectl | grep 'Time zone' | awk '{print $3}')" != "$CURRENT_TIMEZONE" ]; then
-    echo "⛔ Failed to set timezone." && exit 1
-fi
+[ "$(timedatectl | grep 'Time zone' | awk '{print $3}')" != "$JARVIS_TZ" ] && echo "⛔ Failed to set timezone" && exit 1
 
-echo "✔ Timezone successfully set to $CURRENT_TIMEZONE."
+echo "✔ Timezone successfully set to $JARVIS_TZ"

@@ -6,21 +6,16 @@ echo
 printf '⚪ Deploying \e]8;;https://www.portainer.io\e\\Portainer\e]8;;\e\\ in Docker\n'
 echo
 
-# Check super user permission
-if [ $(id -u) -ne 0 ]; then
-  echo ⛔ This script needs to run WITH superuser permission!
-  exit 1
+[ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
+
+if ! [[ $(which docker) && $(docker --version) ]]; then
+  echo "⛔ \"Docker and Docker Compose\" not found, Install them first!" && exit 1
 fi
 
-# Install docker if not installed already
-if ! [[ $(which docker) && $(docker --version) ]];
-then
-    echo "⛔ \"Docker\" not found, Installing..."
-    sudo bash ./scripts/docker/docker_setup.sh
-    echo
-fi
+CREATE_DIRS=("$JARVIS_CONFIG_ROOT/portainer")
+for DIR in ${CREATE_DIRS[*]}; do mkdir -p "$DIR"; done
 
-SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "$0")" )" && pwd )"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
 echo "→ Removing existing containers"
 echo
@@ -31,5 +26,3 @@ echo
 docker compose -f $SCRIPT_DIR/compose.yml up -d
 echo
 echo "✔ Portainer deployed successfully"
-
-

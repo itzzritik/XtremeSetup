@@ -6,10 +6,10 @@ services:
     restart: unless-stopped
     privileged: true
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
+      - PUID=${JARVIS_PUID}
+      - PGID=${JARVIS_PGID}
+      - TZ=${JARVIS_TZ}
     volumes:
-      - ${CONFIG}/homeassistant:/config
+      - ${JARVIS_CONFIG_ROOT}/homeassistant:/config
       - /etc/localtime:/etc/localtime:ro
       - /run/dbus:/run/dbus:ro

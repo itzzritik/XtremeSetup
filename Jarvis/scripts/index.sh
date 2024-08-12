@@ -36,10 +36,13 @@ echo "+-------------------------------------------------------------------------
 echo
 
 export JARVIS_DRIVE_ROOT="/mnt/drive1"
-export JARVIS_CONFIG_ROOT="/mnt/configs"
+export JARVIS_CONFIG_ROOT="$JARVIS_DRIVE_ROOT/.configs"
+export JARVIS_TZ="Asia/Kolkata"
+export JARVIS_PUID=$(id -u $USER)
+export JARVIS_PGID=$(id -g $USER)
 
-bash $SCRIPT_DIR/git.sh
 bash $SCRIPT_DIR/timezone.sh
+bash $SCRIPT_DIR/git.sh
 bash $SCRIPT_DIR/hostname.sh
 bash $SCRIPT_DIR/ssh.sh
 bash $SCRIPT_DIR/automount.sh
