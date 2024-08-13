@@ -6,9 +6,9 @@ services:
     restart: unless-stopped
     privileged: true
     environment:
+      - TZ=${JARVIS_TZ}
       - PUID=${JARVIS_PUID}
       - PGID=${JARVIS_PGID}
-      - TZ=${JARVIS_TZ}
     volumes:
       - ${JARVIS_CONFIG_ROOT}/homeassistant:/config
       - /etc/localtime:/etc/localtime:ro

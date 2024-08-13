@@ -1,19 +1,19 @@
 #!/bin/bash -e
 
-NAME="Portainer"
+NAME="Duplicati"
 NAME_LOWER="${NAME,,}"
 
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-printf '⚪ Deploying \e]8;;https://www.portainer.io\e\\Portainer\e]8;;\e\\ in Docker\n'
+printf '⚪ Deploying \e]8;;https://duplicati.com\e\\Duplicati\e]8;;\e\\ in Docker\n'
 echo
 
 [ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
 
 [ -z "$(command -v docker)" ] && echo "⛔ Docker not found, Install it first!" && exit 1
 
-CREATE_DIRS=("$JARVIS_CONFIG_ROOT/$NAME_LOWER")
+CREATE_DIRS=("$JARVIS_DRIVE_ROOT/.$NAME_LOWER/configs" "$JARVIS_DRIVE_ROOT/.$NAME_LOWER/backups")
 for DIR in ${CREATE_DIRS[*]}; do mkdir -p "$DIR"; done
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"

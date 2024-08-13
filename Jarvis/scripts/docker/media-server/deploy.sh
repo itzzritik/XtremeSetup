@@ -6,19 +6,9 @@ echo
 echo '⚪ Setting up a Media Server using Docker'
 echo
 
-# Check super user permission
-if [ $(id -u) -ne 0 ]; then
-  echo ⛔ This script needs to run WITH superuser permission!
-  exit 1
-fi
+[ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
 
-# Install docker if not installed already
-if ! [[ $(which docker) && $(docker --version) ]];
-then
-    echo "⛔ \"Docker\" not found, Installing..."
-    sudo bash ./scripts/docker/docker_setup.sh
-    echo
-fi
+[ -z "$(command -v docker)" ] && echo "⛔ Docker not found, Install it first!" && exit 1
 
 SERVICES=(
     "qBittorrent https://www.qbittorrent.org"

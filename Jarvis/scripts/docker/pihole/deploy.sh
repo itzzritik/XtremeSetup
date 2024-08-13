@@ -6,19 +6,9 @@ echo
 printf '⚪ Deploying \e]8;;https://pi-hole.net\e\\PiHole\e]8;;\e\\ in Docker\n'
 echo
 
-# Check super user permission
-if [ $(id -u) -ne 0 ]; then
-  echo ⛔ This script needs to run WITH superuser permission!
-  exit 1
-fi
+[ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
 
-# Install docker if not installed already
-if ! [[ $(which docker) && $(docker --version) ]];
-then
-    echo "⛔ \"Docker\" not found, Installing..."
-    sudo bash ./scripts/docker/docker_setup.sh
-    echo
-fi
+[ -z "$(command -v docker)" ] && echo "⛔ Docker not found, Install it first!" && exit 1
 
 SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "$0")" )" && pwd )"
 JARVIS_DRIVE_ROOT="/mnt/drive1"

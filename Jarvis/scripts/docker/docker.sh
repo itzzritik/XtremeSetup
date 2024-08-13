@@ -8,16 +8,11 @@ echo
 
 [ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
 
-if ! [[ $(which docker) && $(docker --version) ]]; then
-  # Install dependencies
+if ! [[ $(docker --version) ]]; then
   sudo apt install ca-certificates gnupg
-
-  # Add Docker’s official GPG key
   sudo install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --yes --dearmor -o /etc/apt/keyrings/docker.gpg
   sudo chmod a+r /etc/apt/keyrings/docker.gpg
-
-  # Set up the Docker’s repository
   echo \
     "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
     "$(lsb_release -cs)" stable" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
@@ -31,7 +26,7 @@ if ! [[ $(which docker) && $(docker --version) ]]; then
   echo
   echo "✔ Docker installed successfully"
 else
-  echo "✔ Docker is already installed!"
+  echo "✔ Docker is already installed"
 fi
 
 REQUIRED_VARS=(
@@ -48,6 +43,7 @@ SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
 bash $SCRIPT_DIR/portrainer/deploy.sh
 bash $SCRIPT_DIR/homeassistant/deploy.sh
+bash $SCRIPT_DIR/duplicati/deploy.sh
 # sudo bash $SCRIPT_DIR/homebridge/deploy.sh
 # sudo bash $SCRIPT_DIR/media-server/deploy.sh
 # sudo bash $SCRIPT_DIR/pihole/deploy.sh
