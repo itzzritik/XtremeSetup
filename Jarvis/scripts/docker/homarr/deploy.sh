@@ -1,8 +1,8 @@
 #!/bin/bash -e
 
-NAME=Cloudflared
+NAME=Homarr
 NAME_LOWER="${NAME,,}"
-URL="https://one.dash.cloudflare.com/?to=/:account/access/tunnels"
+URL="https://homarr.dev"
 
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
@@ -22,9 +22,6 @@ CREATE_DIRS=("$JARVIS_CONFIG_ROOT/$NAME_LOWER")
 for DIR in ${CREATE_DIRS[*]}; do mkdir -p "$DIR"; done
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-
-read -s -p "→ Please enter $NAME_LOWER auth token: " AUTH_TOKEN
-export JARVIS_CLOUDFLARED_TOKEN="$AUTH_TOKEN"
 
 echo "→ Removing existing containers"
 echo

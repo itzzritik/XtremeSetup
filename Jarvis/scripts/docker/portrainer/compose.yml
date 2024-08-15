@@ -1,8 +1,8 @@
 services:
   portainer:
     container_name: portainer
-    image: portainer/portainer-ce:latest
-    restart: always
+    image: portainer/portainer-ce
+    restart: unless-stopped
     ports:
       - 8000:8000
       - 9000:9000

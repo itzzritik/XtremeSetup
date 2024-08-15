@@ -2,13 +2,13 @@ services:
   duplicati:
     container_name: duplicati
     image: linuxserver/duplicati
-    restart: always
+    restart: unless-stopped
     ports:
       - 8200:8200
     environment:
-      - TZ=${JARVIS_TZ}
-      - PUID=${JARVIS_PUID}
-      - PGID=${JARVIS_PGID}
+      TZ: ${JARVIS_TZ}
+      PUID: ${JARVIS_PUID}
+      PGID: ${JARVIS_PGID}
     volumes:
       - ${JARVIS_CONFIG_ROOT}:/source
       - ${JARVIS_DRIVE_ROOT}/.duplicati/configs:/config

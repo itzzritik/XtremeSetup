@@ -1,0 +1,12 @@
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    ports:
+      - 3000:3000
+    environment:
+      PUID: ${JARVIS_PUID}
+      PGID: ${JARVIS_PGID}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${JARVIS_CONFIG_ROOT}/homepage:/app/config
