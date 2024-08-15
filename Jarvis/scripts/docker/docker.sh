@@ -41,9 +41,15 @@ for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable 
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
-bash $SCRIPT_DIR/portrainer/deploy.sh
-bash $SCRIPT_DIR/homeassistant/deploy.sh
-bash $SCRIPT_DIR/duplicati/deploy.sh
-# sudo bash $SCRIPT_DIR/homebridge/deploy.sh
-# sudo bash $SCRIPT_DIR/media-server/deploy.sh
-# sudo bash $SCRIPT_DIR/pihole/deploy.sh
+containers=(
+  "cloudflared"
+  "duplicati"
+  "homeassistant"
+  "portrainer"
+  # "media-server"
+  # "pihole"
+)
+
+for container in "${containers[@]}"; do
+  bash "$SCRIPT_DIR/$container/deploy.sh"
+done

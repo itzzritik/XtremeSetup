@@ -1,8 +1,8 @@
 #!/bin/bash -e
 
-NAME="Portainer"
+NAME=Cloudflared
 NAME_LOWER="${NAME,,}"
-URL=https://duplicati.com
+URL=https://github.com/cloudflare/cloudflared
 
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
@@ -14,11 +14,11 @@ echo
 
 [ -z "$(command -v docker)" ] && echo "⛔ Docker not found, Install it first!" && exit 1
 
-if docker ps --filter "name=$NAME_LOWER" --filter "status=running" | grep -qw "$NAME_LOWER"; then
+if docker ps --filter "name=$NAME_LOWER" --filter "status=running" --format "{{.Names}}" | grep -q "^$NAME_LOWER$"; then
     echo "✔ Container already up and running" && exit 0
 fi
 
-CREATE_DIRS=("$JARVIS_CONFIG_ROOT/$NAME_LOWER")
+CREATE_DIRS=("$JARVIS_DRIVE_ROOT/.$NAME_LOWER/configs" "$JARVIS_DRIVE_ROOT/.$NAME_LOWER/backups")
 for DIR in ${CREATE_DIRS[*]}; do mkdir -p "$DIR"; done
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"

@@ -1,38 +1,27 @@
 #!/bin/bash -e
 
+NAME=PiHole
+NAME_LOWER="${NAME,,}"
+URL=https://pi-hole.net
+
 echo
 echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
 echo
-printf '⚪ Deploying \e]8;;https://pi-hole.net\e\\PiHole\e]8;;\e\\ in Docker\n'
+printf '⚪ Deploying \e]8;;%s\a%s\e]8;;\a in Docker\n' "$URL" "$NAME"
 echo
 
 [ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
 
 [ -z "$(command -v docker)" ] && echo "⛔ Docker not found, Install it first!" && exit 1
 
-SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "$0")" )" && pwd )"
-JARVIS_DRIVE_ROOT="/mnt/drive1"
+if docker ps --filter "name=$NAME_LOWER" --filter "status=running" --format "{{.Names}}" | grep -q "^$NAME_LOWER$"; then
+    echo "✔ Container already up and running" && exit 0
+fi
 
-echo "→ Creating required directories"
-echo
+CREATE_DIRS=("$JARVIS_CONFIG_ROOT/$NAME_LOWER")
+for DIR in ${CREATE_DIRS[*]}; do mkdir -p "$DIR"; done
 
-MEDIA_DIRS=(
-    "$JARVIS_DRIVE_ROOT/.config/pihole"
-)
-
-for DIRECTORY in ${MEDIA_DIRS[*]}
-do
-    mkdir -p $DIRECTORY
-    echo "✔ $DIRECTORY"
-done
-echo
-
-# Write .env file for docker compose
-echo "TZ=Asia/Kolkata
-ROOT=$JARVIS_DRIVE_ROOT
-PUID=$(id -u ritik)
-PGID=$(id -g ritik)
-" | tee $SCRIPT_DIR/.env > /dev/null
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
 echo "→ Removing existing containers"
 echo
@@ -42,6 +31,6 @@ echo "→ Deploying new containers"
 echo
 docker compose -f $SCRIPT_DIR/compose.yml up -d
 echo
-echo "✔ PiHole deployed successfully"
+echo "✔ $NAME deployed successfully"
 
 
