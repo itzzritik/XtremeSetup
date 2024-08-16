@@ -1,7 +1,7 @@
 #!/bin/bash -e
 
 echo
-echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
+printf '+%131s+\n' | tr ' ' '-'
 echo
 printf '⚪ Setting up \e]8;;https://www.docker.com\e\\Docker\e]8;;\e\\\n'
 echo
@@ -41,17 +41,6 @@ for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable 
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
-containers=(
-  "cloudflared"
-  "duplicati"
-  "homarr"
-  "homeassistant"
-  "homepage"
-  "portrainer"
-  # "media-server"
-  # "pihole"
-)
-
-for container in "${containers[@]}"; do
-  bash "$SCRIPT_DIR/$container/deploy.sh"
+for dir in "$SCRIPT_DIR"/*/ ; do
+  [ -f "$dir/deploy.sh" ] && bash "$dir/deploy.sh";
 done

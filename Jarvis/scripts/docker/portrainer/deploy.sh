@@ -4,9 +4,7 @@ NAME="Portainer"
 NAME_LOWER="${NAME,,}"
 URL=https://duplicati.com
 
-echo
-echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
-echo
+printf '\n+%131s+\n\n' | tr ' ' '-'
 printf '⚪ Deploying \e]8;;%s\a%s\e]8;;\a in Docker\n' "$URL" "$NAME"
 echo
 

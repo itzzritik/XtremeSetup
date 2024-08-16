@@ -4,9 +4,7 @@ NAME=Cloudflared
 NAME_LOWER="${NAME,,}"
 URL="https://one.dash.cloudflare.com/?to=/:account/access/tunnels"
 
-echo
-echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
-echo
+printf '\n+%131s+\n\n' | tr ' ' '-'
 printf '⚪ Deploying \e]8;;%s\a%s\e]8;;\a in Docker\n' "$URL" "$NAME"
 echo
 

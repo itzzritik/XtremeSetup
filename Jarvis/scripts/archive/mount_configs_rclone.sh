@@ -1,8 +1,6 @@
 #!/bin/bash -e
 
-echo
-echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
-echo
+printf '\n+%131s+\n\n' | tr ' ' '-'
 printf '⚪ Mounting configuration bucket (\e]8;;https://developers.cloudflare.com/r2\e\\Cloudflare R2\e]8;;\e\\) using \e]8;;https://github.com/rclone/rclone\e\\RClone\e]8;;\e\\\n'
 echo
 

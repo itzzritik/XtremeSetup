@@ -1,8 +1,6 @@
 #!/bin/bash -e
 
-echo
-echo "+-----------------------------------------------------------------------------------------------------------------------------------+"
-echo
+printf '\n+%131s+\n\n' | tr ' ' '-'
 echo "⚪ Creating auto mount entry for drive in Fstab"
 echo
 
