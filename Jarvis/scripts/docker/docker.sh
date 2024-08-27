@@ -35,11 +35,16 @@ REQUIRED_VARS=(
   "JARVIS_TZ"
   "JARVIS_PUID"
   "JARVIS_PGID"
+  "JARVIS_PASSWORD"
 )
 
 for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable \"$VAR\" not set!" && exit 1; done
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+
+echo "→ Removing unused docker images"
+docker image prune -a -f > /dev/null 2>&1
+echo "✔ All unused docker images removed"
 
 for dir in "$SCRIPT_DIR"/*/ ; do
   [ -f "$dir/deploy.sh" ] && bash "$dir/deploy.sh";

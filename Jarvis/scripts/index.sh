@@ -23,6 +23,7 @@ then
    exit 1
 fi
 
+ORIGINAL_ENV=$(export -p)
 SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "$0")" )" && pwd )"
 sudo bash $SCRIPT_DIR/update.sh
 
@@ -32,12 +33,7 @@ echo "|                                                         SETTING UP JARVI
 echo "|                                                                                                                                   |"
 printf '+%131s+\n\n' | tr ' ' '-'
 
-export JARVIS_DRIVE_ROOT="/mnt/drive1"
-export JARVIS_CONFIG_ROOT="$JARVIS_DRIVE_ROOT/.configs"
-export JARVIS_TZ="Asia/Kolkata"
-export JARVIS_PUID=$(id -u $USER)
-export JARVIS_PGID=$(id -g $USER)
-
+source $SCRIPT_DIR/environment.sh
 bash $SCRIPT_DIR/timezone.sh
 bash $SCRIPT_DIR/git.sh
 bash $SCRIPT_DIR/hostname.sh
@@ -45,4 +41,5 @@ bash $SCRIPT_DIR/ssh.sh
 bash $SCRIPT_DIR/automount.sh
 bash $SCRIPT_DIR/docker/docker.sh
 
+eval "$ORIGINAL_ENV"
 printf '\n+%131s+\n\n' | tr ' ' '-'

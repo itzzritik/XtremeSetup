@@ -1,0 +1,23 @@
+services:
+  codeserver:
+    image: codercom/code-server
+    container_name: codeserver
+    restart: unless-stopped
+    build:
+      dockerfile: Dockerfile
+    environment:
+      DOCKER_USER: ${USER}
+      PASSWORD: "${JARVIS_PASSWORD}"
+    ports:
+      - 8080:8080
+    user: "${JARVIS_PUID}:${JARVIS_PGID}"
+    volumes:
+      - "/:/host"
+      - "$HOME:/home/coder/home"
+      - "$HOME/.gitconfig:/home/coder/.gitconfig"
+      - "$HOME/.gitignore_global:/home/coder/.gitignore_global"
+      - "$HOME/.ssh:/home/coder/.ssh"
+      - "${JARVIS_CONFIG_ROOT}/codeserver:/home/coder/.config/code-server"
+      - "${JARVIS_CONFIG_ROOT}:/home/coder/AppConfigs"
+    tty: true
+    stdin_open: true

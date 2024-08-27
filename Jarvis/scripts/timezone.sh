@@ -1,5 +1,6 @@
 #!/bin/bash
 
+printf '\n+%131s+\n\n' | tr ' ' '-'
 printf '⚪ Setting system timezone\n'
 echo
 
