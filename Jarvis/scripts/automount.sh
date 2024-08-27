@@ -8,7 +8,7 @@ echo
 
 if ! dpkg -l | grep -q "ntfs-3g"; then
     echo "→ NTFS support not found. Installing...\n"
-    apt-get install ntfs-3g -y
+    sudo apt install ntfs-3g -y
 fi
 
 [ -z "$JARVIS_DRIVE_ROOT" ] && echo "⛔ Env variable \"JARVIS_DRIVE_ROOT\" not set!" && exit 1

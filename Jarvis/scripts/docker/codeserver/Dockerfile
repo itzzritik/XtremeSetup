@@ -12,3 +12,5 @@ RUN echo '{ \
         "workbench.colorTheme": "Material Theme Ocean High Contrast" \
         "workbench.iconTheme": "material-icon-theme" \
     }' > /home/coder/.local/share/code-server/User/settings.json
+
+RUN chown -R coder:coder /home/coder/.local/share/code-server
