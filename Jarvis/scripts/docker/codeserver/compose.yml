@@ -13,10 +13,10 @@ services:
     user: "${JARVIS_PUID}:${JARVIS_PGID}"
     volumes:
       - "/:/host"
-      - "$HOME:/home/coder/home"
-      - "$HOME/.gitconfig:/home/coder/.gitconfig"
-      - "$HOME/.gitignore_global:/home/coder/.gitignore_global"
-      - "$HOME/.ssh:/home/coder/.ssh"
+      - "${HOME}:/home/coder/home"
+      - "${HOME}/.gitconfig:/home/coder/.gitconfig"
+      - "${HOME}/.gitignore_global:/home/coder/.gitignore_global"
+      - "${HOME}/.ssh:/home/coder/.ssh"
       - "${JARVIS_CONFIG_ROOT}/codeserver:/home/coder/.config/code-server"
       - "${JARVIS_CONFIG_ROOT}:/home/coder/AppConfigs"
     tty: true

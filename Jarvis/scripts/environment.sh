@@ -4,7 +4,7 @@ printf '⚪ Setting jarvis environment\n'
 echo
 
 ENV_FILE="/etc/.jarvis"
-REQUIRED_VARS=("JARVIS_PASSWORD")
+REQUIRED_VARS=("JARVIS_USERNAME" "JARVIS_PASSWORD")
 
 export JARVIS_DRIVE_ROOT="/mnt/drive1"
 export JARVIS_CONFIG_ROOT="$JARVIS_DRIVE_ROOT/.configs"

@@ -1,0 +1,16 @@
+services:
+  alist:
+    image: xhofe/alist:latest-ffmpeg
+    container_name: alist
+    restart: unless-stopped
+    ports:
+      - "5244:5244"
+    environment:
+      TZ: ${JARVIS_TZ}
+      PUID: ${JARVIS_PUID}
+      PGID: ${JARVIS_PGID}
+      UMASK: 022
+    volumes:
+      - ${JARVIS_CONFIG_ROOT}/alist:/opt/alist/data
+      - ${JARVIS_DRIVE_ROOT}:/mnt
+      - ${HOME}:/home
