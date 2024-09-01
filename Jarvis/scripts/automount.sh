@@ -13,10 +13,14 @@ fi
 
 [ -z "$JARVIS_DRIVE_ROOT" ] && echo "⛔ Env variable \"JARVIS_DRIVE_ROOT\" not set!" && exit 1
 
-
 declare -A DRIVES=(
     ["083AAA5A3AAA4492"]="$JARVIS_DRIVE_ROOT"
 )
+
+SLEEP_TEXT="prevent sleep"
+DISABLE_SLEEP_CRON="*/5 * * * * /bin/bash -c '$(for mount_point in "${DRIVES[@]}"; do echo -n "echo \"$SLEEP_TEXT\" >> $mount_point/.keepawake && "; done | sed 's/ && $//')'"
+echo "✔ Adding prevent sleep cron job $DISABLE_SLEEP_CRON"
+(crontab -l 2>/dev/null | grep -vF "$SLEEP_TEXT"; echo "$DISABLE_SLEEP_CRON") | crontab -
 
 ALL_MOUNTED=true
 for UUID in "${!DRIVES[@]}"; do [[ -z $(findmnt --fstab --target ${DRIVES[$UUID]} -A) ]] && ALL_MOUNTED=false && break; done
@@ -28,12 +32,10 @@ for UUID in "${!DRIVES[@]}"; do
     DEVICE=$(blkid -t UUID=$UUID -o device)
 
     [ -z "$DEVICE" ] && echo "✕ Drive with UUID=$UUID and Mount=$MOUNT_POINT not found!" && continue
-    
     [ ! -d "$MOUNT_POINT" ] && sudo mkdir -p "$MOUNT_POINT"
 
     FORMAT=$(blkid -s TYPE -o value $DEVICE)
     MODEL=$(udevadm info --query=property --name=$DEVICE | grep "ID_MODEL=" | cut -d '=' -f 2)
-
     echo "→ Found: Model=$MODEL, UUID=$UUID, Format=$FORMAT, Path=$DEVICE, Mount=$MOUNT_POINT"
 
     # Remove existing entry from fstab
