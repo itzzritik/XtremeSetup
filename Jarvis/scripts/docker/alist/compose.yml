@@ -14,3 +14,9 @@ services:
       - ${JARVIS_CONFIG_ROOT}/alist:/opt/alist/data
       - ${JARVIS_DRIVE_ROOT}:/mnt
       - ${HOME}:/home
+    networks:
+      - caddy
+
+networks:
+  caddy:
+    external: true

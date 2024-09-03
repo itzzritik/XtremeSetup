@@ -4,13 +4,17 @@ printf '⚪ Setting jarvis environment\n'
 echo
 
 ENV_FILE="/etc/.jarvis"
-REQUIRED_VARS=("JARVIS_USERNAME" "JARVIS_PASSWORD")
+REQUIRED_VARS=("JARVIS_USERNAME" "JARVIS_PASSWORD" "JARVIS_CLOUDFLARED_TOKEN")
 
-export JARVIS_DRIVE_ROOT="/mnt/drive1"
-export JARVIS_CONFIG_ROOT="$JARVIS_DRIVE_ROOT/.configs"
+export JARVIS_HOSTNAME="jarvis"
 export JARVIS_TZ="Asia/Kolkata"
 export JARVIS_PUID=$(id -u $USER)
 export JARVIS_PGID=$(id -g $USER)
+export JARVIS_USER_NAME="Jarvis"
+export JARVIS_USER_EMAIL="ritik.jarvis@gmail.com"
+
+export JARVIS_DRIVE_ROOT="/mnt/drive1"
+export JARVIS_CONFIG_ROOT="$JARVIS_DRIVE_ROOT/.configs"
 
 prompt_and_update_file() {
     local var_name=$1 value

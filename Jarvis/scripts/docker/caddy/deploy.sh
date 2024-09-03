@@ -1,8 +1,8 @@
 #!/bin/bash -e
 
-NAME=PiHole
+NAME=Caddy
 NAME_LOWER="${NAME,,}"
-URL=https://pi-hole.net
+URL=https://caddyserver.com
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
 printf '⚪ Deploying \e]8;;%s\a%s\e]8;;\a in Docker\n' "$URL" "$NAME"
@@ -21,6 +21,9 @@ for DIR in ${CREATE_DIRS[*]}; do mkdir -p "$DIR"; done
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
+echo "→ Setting config file to $JARVIS_CONFIG_ROOT/$NAME_LOWER"
+cp -f "$SCRIPT_DIR/Caddyfile" "$JARVIS_CONFIG_ROOT/$NAME_LOWER/Caddyfile"
+
 echo "→ Removing existing containers"
 echo
 docker compose -f $SCRIPT_DIR/compose.yml rm -s -f
@@ -30,5 +33,3 @@ echo
 docker compose -f $SCRIPT_DIR/compose.yml up -d
 echo
 echo "✔ $NAME deployed successfully"
-
-

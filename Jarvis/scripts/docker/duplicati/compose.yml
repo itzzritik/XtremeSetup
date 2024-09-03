@@ -13,3 +13,9 @@ services:
       - ${JARVIS_CONFIG_ROOT}:/source
       - ${JARVIS_DRIVE_ROOT}/.duplicati/configs:/config
       - ${JARVIS_DRIVE_ROOT}/.duplicati/backups:/backups
+    networks:
+      - caddy
+
+networks:
+  caddy:
+    external: true

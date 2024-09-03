@@ -10,3 +10,9 @@ services:
       - ${JARVIS_CONFIG_ROOT}/homarr/configs:/app/data/configs
       - ${JARVIS_CONFIG_ROOT}/homarr/icons:/app/public/icons
       - ${JARVIS_CONFIG_ROOT}/homarr/data:/data
+    networks:
+      - caddy
+
+networks:
+  caddy:
+    external: true

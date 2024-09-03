@@ -1,8 +1,8 @@
 #!/bin/bash -e
 
-NAME=Cloudflared
+NAME=PiHole
 NAME_LOWER="${NAME,,}"
-URL="https://one.dash.cloudflare.com/?to=/:account/access/tunnels"
+URL=https://pi-hole.net
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
 printf '⚪ Deploying \e]8;;%s\a%s\e]8;;\a in Docker\n' "$URL" "$NAME"
@@ -27,6 +27,8 @@ docker compose -f $SCRIPT_DIR/compose.yml rm -s -f
 echo
 echo "→ Deploying new containers"
 echo
-docker compose -f $SCRIPT_DIR/compose.yml up -d
+# docker compose -f $SCRIPT_DIR/compose.yml up -d
 echo
 echo "✔ $NAME deployed successfully"
+
+

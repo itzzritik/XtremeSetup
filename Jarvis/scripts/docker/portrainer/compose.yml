@@ -9,3 +9,9 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${JARVIS_CONFIG_ROOT}/portainer:/data
+    networks:
+      - caddy
+
+networks:
+  caddy:
+    external: true

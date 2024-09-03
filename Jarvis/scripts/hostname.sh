@@ -4,13 +4,16 @@ printf '\n+%131s+\n\n' | tr ' ' '-'
 printf '⚪ Setting hostname as jarvis\n'
 echo
 
-HOSTNAME="jarvis"
+REQUIRED_VARS=(
+  "JARVIS_HOSTNAME"
+)
+for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable \"$VAR\" not set!" && exit 1; done
 
-if grep -q "$HOSTNAME" /etc/hosts; then
-    echo "✔ Hostname already set as $HOSTNAME" && exit 0
+if grep -q "$JARVIS_HOSTNAME" /etc/hosts; then
+    echo "✔ Hostname already set as $JARVIS_HOSTNAME" && exit 0
 fi
 
-sudo hostnamectl set-hostname $HOSTNAME
+sudo hostnamectl set-hostname $JARVIS_HOSTNAME
 
 echo "
 127.0.1.1 jarvis jarvis

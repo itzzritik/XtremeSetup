@@ -17,9 +17,9 @@ declare -A DRIVES=(
     ["083AAA5A3AAA4492"]="$JARVIS_DRIVE_ROOT"
 )
 
+echo "✔ Adding prevent sleep cron job"
 SLEEP_TEXT="prevent sleep"
-DISABLE_SLEEP_CRON="*/5 * * * * /bin/bash -c '$(for mount_point in "${DRIVES[@]}"; do echo -n "echo \"$SLEEP_TEXT\" >> $mount_point/.keepawake && "; done | sed 's/ && $//')'"
-echo "✔ Adding prevent sleep cron job $DISABLE_SLEEP_CRON"
+DISABLE_SLEEP_CRON="*/5 * * * * /bin/bash -c 'for mount_point in ${DRIVES[@]}; do counter_file=\"\$mount_point/.keepawake\"; if [ -f \"\$counter_file\" ]; then counter=\$(grep -o \"[0-9]*\" \"\$counter_file\" || echo 0); else counter=0; fi; counter=\$((counter + 1)); echo \"$SLEEP_TEXT \$counter\" > \"\$counter_file\"; done'"
 (crontab -l 2>/dev/null | grep -vF "$SLEEP_TEXT"; echo "$DISABLE_SLEEP_CRON") | crontab -
 
 ALL_MOUNTED=true
@@ -38,23 +38,19 @@ for UUID in "${!DRIVES[@]}"; do
     MODEL=$(udevadm info --query=property --name=$DEVICE | grep "ID_MODEL=" | cut -d '=' -f 2)
     echo "→ Found: Model=$MODEL, UUID=$UUID, Format=$FORMAT, Path=$DEVICE, Mount=$MOUNT_POINT"
 
-    # Remove existing entry from fstab
     if grep -q "UUID=$UUID" /etc/fstab; then
         echo "✔ Removing existing $MODEL ($UUID) entry found in fstab"
         sudo sed -i "\|UUID=$UUID|d" /etc/fstab
     fi
 
-    # Add the mount entry to fstab
     echo "UUID=$UUID $MOUNT_POINT $FORMAT default 0 0" | sudo tee -a /etc/fstab >/dev/null
     echo "✔ Successfully created fstab entry"
 done
 echo
 
-# Mount all drives in /etc/fstab
 sudo systemctl daemon-reload
 sudo mount -a
 
-# Allow mount point read-write permission to current user
 sudo chown -R $USER:$USER /mnt
 sudo chmod -R u+rwx /mnt
 echo "✔ Allow mount point read-write permission to user: $USER"

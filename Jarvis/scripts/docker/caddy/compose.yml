@@ -1,0 +1,43 @@
+services:
+  caddy:
+    image: caddy
+    container_name: caddy
+    environment:
+      - JARVIS_USER_EMAIL=${JARVIS_USER_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ${JARVIS_CONFIG_ROOT}/caddy:/etc/caddy
+      - ${JARVIS_CONFIG_ROOT}/caddy/data:/data
+      - ${JARVIS_CONFIG_ROOT}/caddy/config:/config
+    networks:
+      - caddy
+
+  pihole:
+    container_name: pihole
+    image: pihole/pihole
+    restart: unless-stopped
+    depends_on:
+      - caddy
+    cap_add:
+      - NET_ADMIN
+    environment:
+      TZ: ${JARVIS_TZ}
+      FTLCONF_webserver_api_password: ${JARVIS_PASSWORD}
+      FTLCONF_dns_upstreams: 8.8.8.8;8.8.4.4
+    ports:
+      - 53:53/tcp
+      - 53:53/udp
+      - 67:67/udp
+      - 853:853/tcp
+      - 8080:80/tcp
+      - 8443:443/tcp
+    volumes:
+      - ${JARVIS_CONFIG_ROOT}/pihole:/etc/pihole
+      - ${JARVIS_CONFIG_ROOT}/pihole/dnsmasq.d:/etc/dnsmasq.d
+
+networks:
+  caddy:
+    driver: bridge
