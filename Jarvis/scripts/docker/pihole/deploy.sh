@@ -27,7 +27,7 @@ docker compose -f $SCRIPT_DIR/compose.yml rm -s -f
 echo
 echo "→ Deploying new containers"
 echo
-# docker compose -f $SCRIPT_DIR/compose.yml up -d
+docker compose -f $SCRIPT_DIR/compose.yml up -d
 echo
 echo "✔ $NAME deployed successfully"
 

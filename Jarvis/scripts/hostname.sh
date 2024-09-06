@@ -1,7 +1,7 @@
 #!/bin/bash -e
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
-printf '⚪ Setting hostname as jarvis\n'
+echo '⚪ Setting hostname as jarvis'
 echo
 
 REQUIRED_VARS=(

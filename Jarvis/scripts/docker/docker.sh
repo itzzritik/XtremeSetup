@@ -46,10 +46,17 @@ for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable 
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
-echo "✔ Removing unused docker images"
-docker image prune -a -f > /dev/null 2>&1
-docker network ls --filter name=caddy -q | grep -q . || docker network create caddy
+echo "✔ Disabling systemd-resolved service to avoid port conflicts"
+sudo systemctl disable systemd-resolved.service
+sudo systemctl stop systemd-resolved
+
+echo "✔ Removing unused docker networks"
+docker network prune -f > /dev/null 2>&1
+docker network ls --filter name=caddy -q | grep -q . || docker network create --driver bridge caddy
 
 for dir in "$SCRIPT_DIR"/*/ ; do
   [ -f "$dir/deploy.sh" ] && bash "$dir/deploy.sh";
 done
+
+echo "✔ Removing unused docker images"
+docker image prune -a -f > /dev/null 2>&1

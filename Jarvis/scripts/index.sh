@@ -37,6 +37,7 @@ source $SCRIPT_DIR/environment.sh
 bash $SCRIPT_DIR/timezone.sh
 bash $SCRIPT_DIR/git.sh
 bash $SCRIPT_DIR/hostname.sh
+bash $SCRIPT_DIR/static_ip.sh
 bash $SCRIPT_DIR/ssh.sh
 bash $SCRIPT_DIR/automount.sh
 bash $SCRIPT_DIR/docker/docker.sh
