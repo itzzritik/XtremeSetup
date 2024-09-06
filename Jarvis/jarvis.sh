@@ -1,30 +1,18 @@
-#!/bin/bash
+#!/bin/bash -e
 
 clear
 
 JarvisLocation="$HOME/.jarvis"
+RepoUrl="https://github.com/itzzritik/XtremeSetup.git"
 
-if [ -d "$JarvisLocation" ];
-then
-  rm -r "$JarvisLocation"
-fi
-
-RepoName="XtremeSetup"
-RepoUrl="https://github.com/itzzritik/$RepoName.git"
-
-# Create a hidden directory
-mkdir -p $JarvisLocation
-cd $JarvisLocation || { echo "Error: Unable to change to the hidden jarvis directory"; exit 1; }
-
-# Clone the Git repository
-git clone $RepoUrl || { echo "Error: Unable to clone the repository"; exit 1; }
-
-# Change to the repository directory
-cd $RepoName || { echo "Error: Unable to change to the repository directory"; exit 1; }
-
-# Run the script inside the repository
-bash "$JarvisLocation/$RepoName/Jarvis/scripts/index.sh" || { echo "Error: Script execution failed"; exit 1; }
-
-# delete the hidden dir after script completion
-echo "Cleaning up downloaded scripts"
 rm -rf "$JarvisLocation"
+mkdir -p "$JarvisLocation"
+
+git clone "$RepoUrl" "$JarvisLocation/XtremeSetup" || { echo "⛔ Unable to clone the repository"; exit 1; }
+bash "$JarvisLocation/XtremeSetup/Jarvis/scripts/index.sh" || { echo "⛔ Script execution failed"; exit 1; }
+
+echo "⚪ Cleaning up downloaded scripts"
+rm -rf "$JarvisLocation"
+echo
+echo "✔ Jarvis is ready"
+printf '\n+%131s+\n\n' | tr ' ' '-'
