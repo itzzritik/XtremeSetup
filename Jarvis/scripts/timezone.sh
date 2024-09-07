@@ -1,8 +1,7 @@
 #!/bin/bash
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
-echo '⚪ Setting system timezone'
-echo
+echo -e '⚪ Setting system timezone\n'
 
 [ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
 

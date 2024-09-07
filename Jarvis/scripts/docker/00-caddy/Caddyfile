@@ -1,0 +1,34 @@
+# Home Assistant
+home.myjarvis.in {
+  reverse_proxy http://host.docker.internal:8123
+  tls {$JARVIS_USER_EMAIL}
+}
+
+# Code Server
+code.myjarvis.in {
+  reverse_proxy http://code_server:8888
+  tls {$JARVIS_USER_EMAIL}
+}
+
+# Alist
+file.myjarvis.in {
+  reverse_proxy http://192.168.68.255:5244
+  tls {$JARVIS_USER_EMAIL}
+}
+
+# Portainer
+portainer.myjarvis.in {
+  reverse_proxy http://portainer:9000
+  tls {$JARVIS_USER_EMAIL}
+}
+
+# Duplicati
+backup.myjarvis.in {
+  reverse_proxy http://duplicati:8200
+  tls {$JARVIS_USER_EMAIL}
+}
+
+# Redirect HTTP to HTTPS
+http:// {
+  redir https://{host}{uri}
+}

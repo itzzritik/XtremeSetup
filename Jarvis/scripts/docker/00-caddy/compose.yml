@@ -3,7 +3,9 @@ services:
     image: caddy
     container_name: caddy
     environment:
-      - JARVIS_USER_EMAIL=${JARVIS_USER_EMAIL}
+      PUID: ${JARVIS_PUID}
+      PGID: ${JARVIS_PGID}
+      JARVIS_USER_EMAIL: ${JARVIS_USER_EMAIL}
     ports:
       - 80:80
       - 443:443
@@ -19,3 +21,4 @@ services:
 networks:
   caddy:
     driver: bridge
+    name: caddy

@@ -5,24 +5,28 @@ echo "|                                                                         
 echo "|                                                          UPDATING SYSTEM                                                          |"
 echo "|                                                                                                                                   |"
 printf '+%131s+\n\n' | tr ' ' '-'
-
-DEVICE=$(tr -d '\0' </sys/firmware/devicetree/base/model || echo "System")
-
-echo "⚪ Updating $DEVICE" && echo
+echo -e "⚪ Updating $(tr -d '\0' </sys/firmware/devicetree/base/model || echo "System")\n"
 
 [ $(id -u) -ne 0 ] && echo ⛔ This script needs to run WITH superuser permission! && exit 1
 
-last_update=$(stat -c %Y /var/lib/apt/periodic/update-success-stamp)
-current_time=$(date +%s)
-time_difference=$(echo "($current_time - $last_update) / (60 * 60 * 24)" | bc)
-threshold=1
+THRESHOLD=1
+UPDATED_AT_FILE="/etc/jarvis/.updated_at"
+LAST_UPDATED=$(cat "$UPDATED_AT_FILE" 2>/dev/null || echo 0)
+CURRENT_TIME=$(date +%s)
+DIFF=$((CURRENT_TIME - LAST_UPDATED))
 
-[ ! $time_difference -gt $threshold ] && echo "✔ System already up to date" && exit 0
+DAYS=$((DIFF / 86400))
+HOURS=$(((DIFF % 86400) / 3600))
+MINUTES=$(((DIFF % 3600) / 60))
 
-echo ""
-echo ""
+if [ "$DAYS" -le "$THRESHOLD" ]; then
+    echo "✔ System was last updated $([ "$HOURS" -gt 0 ] && echo "$HOURS hrs and " || echo "")$MINUTES minutes ago" && exit 0
+fi
+
+echo -e "→ Performing system update\n"
 sudo apt update -y
 sudo apt upgrade -y
 sudo apt autoremove -y
-echo ""
-echo ""
+sudo mkdir -p "$(dirname "$UPDATED_AT_FILE")"
+date +%s | sudo tee "$UPDATED_AT_FILE" > /dev/null
+echo -e "\n✔ System update completed\n"

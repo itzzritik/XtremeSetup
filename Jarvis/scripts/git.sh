@@ -1,8 +1,7 @@
-#!/bin/bash
+#!/bin/bash -e
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
-echo "⚪ Setting up git environment"
-echo
+echo -e "⚪ Setting up git environment\n"
 
 REQUIRED_VARS=(
   "JARVIS_USER_NAME"

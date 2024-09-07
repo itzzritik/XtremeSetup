@@ -1,8 +1,7 @@
 #!/bin/bash -e
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
-echo "⚪ Setting static ip for Jarvis"
-echo
+echo -e "⚪ Setting static ip for Jarvis\n"
 
 [ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
 

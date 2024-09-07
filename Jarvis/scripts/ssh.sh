@@ -1,8 +1,7 @@
 #!/bin/bash -e
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
-echo "⚪ Setting ssh key to \".ssh/authorized_keys\""
-echo
+echo -e "⚪ Setting ssh key to \".ssh/authorized_keys\"\n"
 
 if [ $(id -u) -eq 0 ]; then
   echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
@@ -18,5 +17,4 @@ if [ "$KEY" != "" ]; then
   echo $KEY > /home/ritik/.ssh/authorized_keys
 fi
 
-echo
 echo "✔ Successfully added ssh key"

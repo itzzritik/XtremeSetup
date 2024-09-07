@@ -50,13 +50,14 @@ echo "✔ Disabling systemd-resolved service to avoid port conflicts"
 sudo systemctl disable systemd-resolved.service
 sudo systemctl stop systemd-resolved
 
-echo "✔ Removing unused docker networks"
-docker network prune -f > /dev/null 2>&1
-docker network ls --filter name=caddy -q | grep -q . || docker network create --driver bridge caddy
+echo "✔ Removing unused docker containers"
+docker rm $(docker ps -a -q) >/dev/null 2>&1
 
-for dir in "$SCRIPT_DIR"/*/ ; do
-  [ -f "$dir/deploy.sh" ] && bash "$dir/deploy.sh";
+echo "✔ Removing unused docker networks"
+docker network prune -f >/dev/null 2>&1
+
+for dir in "$SCRIPT_DIR"/*/; do
+  [ -f "$dir/deploy.sh" ] && bash "$dir/deploy.sh"
 done
 
-echo "✔ Removing unused docker images"
-docker image prune -a -f > /dev/null 2>&1
+bash "$SCRIPT_DIR/post-scripts.sh"

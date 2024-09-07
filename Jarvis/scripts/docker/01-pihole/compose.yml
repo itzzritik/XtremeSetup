@@ -8,6 +8,7 @@ services:
       - NET_ADMIN
     environment:
       TZ: ${JARVIS_TZ}
+      WEBTHEME: default-darker
       WEBPASSWORD: ${JARVIS_PASSWORD}
       FTLCONF_dns_upstreams: 8.8.8.8;8.8.4.4
       PIHOLE_DOMAIN: pi.hole
@@ -15,6 +16,8 @@ services:
       DHCP_ROUTER: 192.168.68.1
       DHCP_START: 192.168.68.50
       DHCP_END: 192.168.68.250
+      DHCP_IPv6: true
+      DHCP_rapid_commit: true
     volumes:
       - ${JARVIS_CONFIG_ROOT}/pihole:/etc/pihole
       - ${JARVIS_CONFIG_ROOT}/pihole/dnsmasq.d:/etc/dnsmasq.d

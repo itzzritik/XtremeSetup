@@ -20,6 +20,7 @@ CREATE_DIRS=("$JARVIS_CONFIG_ROOT/$NAME_LOWER")
 for DIR in ${CREATE_DIRS[*]}; do mkdir -p "$DIR"; done
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+export JARVIS_PIHOLE_DIR="$SCRIPT_DIR"
 
 echo "→ Removing existing containers"
 echo

@@ -28,6 +28,5 @@ echo
 echo "→ Deploying new containers"
 echo
 docker compose -f $SCRIPT_DIR/compose.yml up -d
-docker exec -it alist ./alist password set "$JARVIS_PASSWORD"
 echo
 echo "✔ $NAME deployed successfully"

@@ -1,11 +1,11 @@
 #!/bin/bash
 
-printf '⚪ Setting jarvis environment\n'
-echo
+echo -e '⚪ Setting jarvis environment\n'
 
-ENV_FILE="/etc/.jarvis"
+ENV_FILE="/etc/jarvis/.env"
 REQUIRED_VARS=("JARVIS_USERNAME" "JARVIS_PASSWORD" "JARVIS_CLOUDFLARED_TOKEN")
 
+export JARVIS_DOMAIN="myjarvis.in"
 export JARVIS_HOSTNAME="jarvis"
 export JARVIS_TZ="Asia/Kolkata"
 export JARVIS_PUID=$(id -u $USER)
