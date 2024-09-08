@@ -18,7 +18,7 @@ then
 fi
 
 # Install samba packages
-sudo apt install samba samba-common-bin
+sudo apt install samba samba-common-bin -y
 
 cat << EOF >> /etc/samba/smb.conf
 

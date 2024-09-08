@@ -9,7 +9,7 @@ echo
 [ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
 
 if ! [[ $(docker --version) ]]; then
-  sudo apt install ca-certificates gnupg
+  sudo apt install ca-certificates gnupg -y
   sudo install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --yes --dearmor -o /etc/apt/keyrings/docker.gpg
   sudo chmod a+r /etc/apt/keyrings/docker.gpg
@@ -23,10 +23,7 @@ if ! [[ $(docker --version) ]]; then
   newgrp docker
   sudo usermod -aG docker $USER
 
-  echo
-  echo "✔ Docker installed successfully"
-else
-  echo "✔ Docker is already installed"
+  echo -e "\n✔ Docker installed successfully"
 fi
 
 REQUIRED_VARS=(
