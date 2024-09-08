@@ -10,9 +10,15 @@ services:
       - ${JARVIS_CONFIG_ROOT}/homarr/configs:/app/data/configs
       - ${JARVIS_CONFIG_ROOT}/homarr/icons:/app/public/icons
       - ${JARVIS_CONFIG_ROOT}/homarr/data:/data
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.pihole.rule=Host(`myjarvis.in`)
+      - traefik.http.routers.pihole.entrypoints=websecure
+      - traefik.http.routers.pihole.tls=true
+      - traefik.http.routers.pihole.tls.certresolver=letsencrypt
     networks:
-      - caddy
+      - proxy
 
 networks:
-  caddy:
+  proxy:
     external: true

@@ -16,9 +16,9 @@ services:
       - ${JARVIS_CONFIG_ROOT}/caddy/data:/data
       - ${JARVIS_CONFIG_ROOT}/caddy/config:/config
     networks:
-      - caddy
+      - proxy
 
 networks:
-  caddy:
+  proxy:
     driver: bridge
-    name: caddy
+    name: proxy

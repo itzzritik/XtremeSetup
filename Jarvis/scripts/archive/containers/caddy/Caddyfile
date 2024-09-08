@@ -1,0 +1,44 @@
+{
+  email hi123123ritik12@gmail.com
+}
+
+# Home Assistant
+# home.myjarvis.in {
+#   reverse_proxy host.docker.internal:8123
+#   tls ritik.jarvis@gmail.com
+# }
+
+# PiHole
+pihole.myjarvis.in {
+  reverse_proxy 192.168.68.255:8080
+  encode gzip
+}
+
+# # Code Server
+# code.myjarvis.in {
+#   reverse_proxy 192.168.68.255:8888
+#   tls ritik.jarvis@gmail.com
+# }
+
+# # Alist
+# file.myjarvis.in {
+#   reverse_proxy 192.168.68.255:5244
+#   tls ritik.jarvis@gmail.com
+# }
+
+# # Portainer
+# portainer.myjarvis.in {
+#   reverse_proxy 192.168.68.255:9000
+#   tls ritik.jarvis@gmail.com
+# }
+
+# # Duplicati
+# backup.myjarvis.in {
+#   reverse_proxy 192.168.68.255:8200
+#   tls ritik.jarvis@gmail.com
+# }
+
+# # Redirect HTTP to HTTPS
+# http:// {
+#   redir https://{host}{uri}
+# }

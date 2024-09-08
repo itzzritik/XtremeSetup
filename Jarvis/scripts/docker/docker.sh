@@ -39,7 +39,8 @@ REQUIRED_VARS=(
   "JARVIS_PASSWORD"
   "JARVIS_HOSTNAME"
   "JARVIS_USER_EMAIL"
-  "JARVIS_CLOUDFLARED_TOKEN"
+  "JARVIS_CF_DNS_API_TOKEN"
+  "JARVIS_CF_TUNNEL_TOKEN"
 )
 
 for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable \"$VAR\" not set!" && exit 1; done
@@ -50,8 +51,11 @@ echo "✔ Disabling systemd-resolved service to avoid port conflicts"
 sudo systemctl disable systemd-resolved.service
 sudo systemctl stop systemd-resolved
 
+echo "✔ Ensured nameservers are set in /etc/resolv.conf"
+grep -q "nameserver 8.8.8.8" /etc/resolv.conf || echo -e "nameserver 8.8.8.8\nnameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
+
 echo "✔ Removing unused docker containers"
-docker rm $(docker ps -a -q) >/dev/null 2>&1
+docker rm $(docker ps -aq) >/dev/null 2>&1
 
 echo "✔ Removing unused docker networks"
 docker network prune -f >/dev/null 2>&1

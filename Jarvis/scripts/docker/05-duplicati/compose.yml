@@ -13,9 +13,15 @@ services:
       - ${JARVIS_CONFIG_ROOT}:/source
       - ${JARVIS_DRIVE_ROOT}/.duplicati/configs:/config
       - ${JARVIS_DRIVE_ROOT}/.duplicati/backups:/backups
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.pihole.rule=Host(`duplicati.myjarvis.in`)
+      - traefik.http.routers.pihole.entrypoints=websecure
+      - traefik.http.routers.pihole.tls=true
+      - traefik.http.routers.pihole.tls.certresolver=letsencrypt
     networks:
-      - caddy
+      - proxy
 
 networks:
-  caddy:
+  proxy:
     external: true

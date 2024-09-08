@@ -5,10 +5,7 @@ echo -e "⚪ Setting static ip for Jarvis\n"
 
 [ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
 
-export JARVIS_STATIC_IP="192.168.68.255"
-NAMESERVERS="8.8.8.8;8.8.4.4"
 GATEWAY="192.168.68.1"
-
 CONFIG_FILE="/etc/netplan/static.yaml"
 CURRENT_IP=$(sudo grep -A 1 "addresses:" "$CONFIG_FILE" 2>/dev/null | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -n 1 || echo "")
 
@@ -26,7 +23,7 @@ network:
           via: $GATEWAY
       nameservers:
         addresses:
-          - $(echo "$NAMESERVERS" | sed 's/;/\n          - /')
+          - $(echo "$JARVIS_GOOGLE_DNS" | sed 's/;/\n          - /')
       dhcp4: no
 EOL
 

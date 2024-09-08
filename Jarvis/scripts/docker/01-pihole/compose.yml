@@ -3,21 +3,29 @@ services:
     container_name: pihole
     image: pihole/pihole
     restart: unless-stopped
-    network_mode: host
-    cap_add:
-      - NET_ADMIN
     environment:
       TZ: ${JARVIS_TZ}
       WEBTHEME: default-darker
       WEBPASSWORD: ${JARVIS_PASSWORD}
-      FTLCONF_dns_upstreams: 8.8.8.8;8.8.4.4
-      PIHOLE_DOMAIN: pi.hole
-      DHCP_ACTIVE: true
-      DHCP_ROUTER: 192.168.68.1
-      DHCP_START: 192.168.68.50
-      DHCP_END: 192.168.68.250
-      DHCP_IPv6: true
-      DHCP_rapid_commit: true
+      PIHOLE_DNS_: ${JARVIS_GOOGLE_DNS}
+      FTLCONF_LOCAL_IPV4: ${JARVIS_STATIC_IP}
+      VIRTUAL_HOST: pi.hole
+    ports:
+      - 53:53/tcp
+      - 53:53/udp
+      - 8080:80/tcp
     volumes:
       - ${JARVIS_CONFIG_ROOT}/pihole:/etc/pihole
       - ${JARVIS_CONFIG_ROOT}/pihole/dnsmasq.d:/etc/dnsmasq.d
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.pihole.rule=Host(`pihole.myjarvis.in`)
+      - traefik.http.routers.pihole.entrypoints=websecure
+      - traefik.http.routers.pihole.tls=true
+      - traefik.http.routers.pihole.tls.certresolver=letsencrypt
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true

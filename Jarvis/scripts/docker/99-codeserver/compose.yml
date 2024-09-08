@@ -21,9 +21,15 @@ services:
       - ${HOME}/.ssh:/home/coder/.ssh
       - ${JARVIS_CONFIG_ROOT}/codeserver:/home/coder/.config/code-server
       - ${JARVIS_CONFIG_ROOT}:/home/coder/AppConfigs
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.pihole.rule=Host(`code.myjarvis.in`)
+      - traefik.http.routers.pihole.entrypoints=websecure
+      - traefik.http.routers.pihole.tls=true
+      - traefik.http.routers.pihole.tls.certresolver=letsencrypt
     networks:
-      - caddy
+      - proxy
 
 networks:
-  caddy:
+  proxy:
     external: true

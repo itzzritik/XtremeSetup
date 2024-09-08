@@ -1,8 +1,8 @@
 #!/bin/bash -e
 
-NAME=PiHole
+NAME=Traefik
 NAME_LOWER="${NAME,,}"
-URL=https://pi-hole.net
+URL=https://traefik.io/traefik/
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
 printf '⚪ Deploying \e]8;;%s\a%s\e]8;;\a in Docker\n' "$URL" "$NAME"

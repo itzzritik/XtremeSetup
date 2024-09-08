@@ -3,9 +3,14 @@ services:
     container_name: cloudflared
     image: cloudflare/cloudflared
     restart: unless-stopped
-    network_mode: host
     command: tunnel --no-autoupdate run
     environment:
-      TUNNEL_TOKEN: ${JARVIS_CLOUDFLARED_TOKEN}
+      TUNNEL_TOKEN: ${JARVIS_CF_TUNNEL_TOKEN}
     volumes:
       - ${JARVIS_CONFIG_ROOT}/cloudflared:/etc/cloudflared
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true

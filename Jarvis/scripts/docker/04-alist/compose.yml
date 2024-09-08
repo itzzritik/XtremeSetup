@@ -14,9 +14,15 @@ services:
       - ${JARVIS_CONFIG_ROOT}/alist:/opt/alist/data
       - ${JARVIS_DRIVE_ROOT}:/mnt
       - ${HOME}:/home
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.pihole.rule=Host(`alist.myjarvis.in`)
+      - traefik.http.routers.pihole.entrypoints=websecure
+      - traefik.http.routers.pihole.tls=true
+      - traefik.http.routers.pihole.tls.certresolver=letsencrypt
     networks:
-      - caddy
+      - proxy
 
 networks:
-  caddy:
+  proxy:
     external: true

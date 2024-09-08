@@ -9,9 +9,15 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${JARVIS_CONFIG_ROOT}/portainer:/data
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.pihole.rule=Host(`portainer.myjarvis.in`)
+      - traefik.http.routers.pihole.entrypoints=websecure
+      - traefik.http.routers.pihole.tls=true
+      - traefik.http.routers.pihole.tls.certresolver=letsencrypt
     networks:
-      - caddy
+      - proxy
 
 networks:
-  caddy:
+  proxy:
     external: true
