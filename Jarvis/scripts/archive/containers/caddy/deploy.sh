@@ -1,7 +1,7 @@
 #!/bin/bash -e
 
 NAME=Caddy
-NAME_LOWER="${NAME,,}"
+CONTAINER_NAME="${NAME,,}"
 URL=https://caddyserver.com
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
@@ -12,17 +12,17 @@ echo
 
 [ -z "$(command -v docker)" ] && echo "⛔ Docker not found, Install it first!" && exit 1
 
-if docker ps --filter "name=$NAME_LOWER" --filter "status=running" --format "{{.Names}}" | grep -q "^$NAME_LOWER$"; then
+if docker ps --filter "name=$CONTAINER_NAME" --filter "status=running" --format "{{.Names}}" | grep -q "^$CONTAINER_NAME$"; then
     echo "✔ Container already up and running" && exit 0
 fi
 
-CREATE_DIRS=("$JARVIS_CONFIG_ROOT/$NAME_LOWER")
+CREATE_DIRS=("$JARVIS_CONFIG_ROOT/$CONTAINER_NAME")
 for DIR in ${CREATE_DIRS[*]}; do mkdir -p "$DIR"; done
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
-echo "→ Setting config file to $JARVIS_CONFIG_ROOT/$NAME_LOWER"
-cp -f "$SCRIPT_DIR/Caddyfile" "$JARVIS_CONFIG_ROOT/$NAME_LOWER/Caddyfile"
+echo "→ Setting config file to $JARVIS_CONFIG_ROOT/$CONTAINER_NAME"
+cp -f "$SCRIPT_DIR/Caddyfile" "$JARVIS_CONFIG_ROOT/$CONTAINER_NAME/Caddyfile"
 
 echo "→ Removing existing containers"
 echo

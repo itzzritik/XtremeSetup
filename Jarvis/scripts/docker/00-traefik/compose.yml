@@ -4,7 +4,7 @@ services:
     image: traefik
     restart: unless-stopped
     command:
-      - --api.insecure=true
+      - --api.insecure=false
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
@@ -17,6 +17,8 @@ services:
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.storage=/${JARVIS_CERT_RESOLVER}/acme.json
       - --log.level=DEBUG
     environment:
+      PUID: ${JARVIS_PUID}
+      PGID: ${JARVIS_PGID}
       CF_DNS_API_TOKEN: ${JARVIS_CF_DNS_API_TOKEN}
     ports:
       - 80:80
@@ -24,14 +26,14 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/etc/traefik
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/${JARVIS_CERT_RESOLVER}:/${JARVIS_CERT_RESOLVER}
+      - ${JARVIS_CERT_RESOLVER}:/${JARVIS_CERT_RESOLVER}
     labels:
       - traefik.enable=true
-      - traefik.http.routers.api.rule=Host(`${JARVIS_CONTAINER_NAME}.myjarvis.in`)
-      - traefik.http.routers.api.entrypoints=websecure
-      - traefik.http.routers.api.service=api@internal
-      - traefik.http.routers.api.tls=true
-      - traefik.http.routers.api.tls.certresolver=${JARVIS_CERT_RESOLVER}
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.service=api@internal
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
     networks:
       - proxy
 
@@ -39,3 +41,7 @@ networks:
   proxy:
     driver: bridge
     name: proxy
+
+volumes:
+  letsencrypt:
+    name: ${JARVIS_CERT_RESOLVER}

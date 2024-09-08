@@ -1,9 +1,9 @@
 #!/bin/bash -e
 
 NAME=Duplicati
-NAME_LOWER="${NAME,,}"
+CONTAINER_NAME="${NAME,,}"
 URL=https://duplicati.com
-export JARVIS_CONTAINER_NAME=$NAME_LOWER
+export JARVIS_CONTAINER_NAME=$CONTAINER_NAME
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
 printf '⚪ Deploying \e]8;;%s\a%s\e]8;;\a in Docker\n' "$URL" "$NAME"
@@ -13,11 +13,11 @@ echo
 
 [ -z "$(command -v docker)" ] && echo "⛔ Docker not found, Install it first!" && exit 1
 
-if docker ps --filter "name=$NAME_LOWER" --filter "status=running" --format "{{.Names}}" | grep -q "^$NAME_LOWER$"; then
+if docker ps --filter "name=$CONTAINER_NAME" --filter "status=running" --format "{{.Names}}" | grep -q "^$CONTAINER_NAME$"; then
     echo "✔ Container already up and running" && exit 0
 fi
 
-CREATE_DIRS=("$JARVIS_DRIVE_ROOT/.$NAME_LOWER/configs" "$JARVIS_DRIVE_ROOT/.$NAME_LOWER/backups")
+CREATE_DIRS=("$JARVIS_DRIVE_ROOT/.$CONTAINER_NAME/configs" "$JARVIS_DRIVE_ROOT/.$CONTAINER_NAME/backups")
 for DIR in ${CREATE_DIRS[*]}; do mkdir -p "$DIR"; done
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
