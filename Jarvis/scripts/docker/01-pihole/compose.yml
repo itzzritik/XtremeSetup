@@ -1,6 +1,6 @@
 services:
   pihole:
-    container_name: pihole
+    container_name: ${JARVIS_CONTAINER_NAME}
     image: pihole/pihole
     restart: unless-stopped
     environment:
@@ -15,14 +15,14 @@ services:
       - 53:53/udp
       - 8080:80/tcp
     volumes:
-      - ${JARVIS_CONFIG_ROOT}/pihole:/etc/pihole
-      - ${JARVIS_CONFIG_ROOT}/pihole/dnsmasq.d:/etc/dnsmasq.d
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/etc/pihole
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/dnsmasq.d:/etc/dnsmasq.d
     labels:
       - traefik.enable=true
-      - traefik.http.routers.pihole.rule=Host(`pihole.myjarvis.in`)
-      - traefik.http.routers.pihole.entrypoints=websecure
-      - traefik.http.routers.pihole.tls=true
-      - traefik.http.routers.pihole.tls.certresolver=letsencrypt
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.myjarvis.in`)
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
     networks:
       - proxy
 

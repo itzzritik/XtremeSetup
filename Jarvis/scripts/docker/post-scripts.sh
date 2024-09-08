@@ -22,15 +22,11 @@ declare -A CUSTOM_DNS=(
 )
 for HOST in "${!CUSTOM_DNS[@]}"; do
     IP=${CUSTOM_DNS[$HOST]}
-    docker exec -it pihole bash -c "echo \"${IP} ${HOST}\" >> /etc/custom.list"
+    docker exec pihole bash -c "grep -Fq '${IP} ${HOST}' /etc/pihole/custom.list || echo '${IP} ${HOST}' >> /etc/pihole/custom.list"
 done
 docker restart pihole >/dev/null 2>&1
 echo -e "\r\033[K✔ Custom DNS entries added to Pi-hole\n"
 
 # CLEANUP
 echo "→ Clearing docker cache (this may take a while)"
-docker container prune -f >/dev/null 2>&1
-docker volume prune -f >/dev/null 2>&1
-docker network prune -f >/dev/null 2>&1
-docker image prune -a -f >/dev/null 2>&1
-docker builder prune -f >/dev/null 2>&1
+docker system prune -af --volumes >/dev/null 2>&1

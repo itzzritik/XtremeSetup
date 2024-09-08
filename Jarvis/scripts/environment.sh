@@ -8,6 +8,7 @@ REQUIRED_VARS=("JARVIS_USERNAME" "JARVIS_PASSWORD" "JARVIS_CF_DNS_API_TOKEN" "JA
 export JARVIS_GOOGLE_DNS="8.8.8.8;8.8.4.4"
 export JARVIS_STATIC_IP="192.168.68.255"
 export JARVIS_DOMAIN="myjarvis.in"
+export JARVIS_CERT_RESOLVER="letsencrypt"
 export JARVIS_HOSTNAME="jarvis"
 export JARVIS_TZ="Asia/Kolkata"
 export JARVIS_PUID=$(id -u $USER)

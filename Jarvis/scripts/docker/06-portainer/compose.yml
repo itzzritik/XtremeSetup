@@ -1,6 +1,6 @@
 services:
   portainer:
-    container_name: portainer
+    container_name: ${JARVIS_CONTAINER_NAME}
     image: portainer/portainer-ce
     restart: unless-stopped
     ports:
@@ -8,13 +8,13 @@ services:
       - 9000:9000
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${JARVIS_CONFIG_ROOT}/portainer:/data
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/data
     labels:
       - traefik.enable=true
-      - traefik.http.routers.pihole.rule=Host(`portainer.myjarvis.in`)
-      - traefik.http.routers.pihole.entrypoints=websecure
-      - traefik.http.routers.pihole.tls=true
-      - traefik.http.routers.pihole.tls.certresolver=letsencrypt
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.myjarvis.in`)
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
     networks:
       - proxy
 

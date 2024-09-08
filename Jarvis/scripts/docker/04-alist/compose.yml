@@ -1,7 +1,7 @@
 services:
   alist:
+    container_name: ${JARVIS_CONTAINER_NAME}
     image: xhofe/alist:latest-ffmpeg
-    container_name: alist
     restart: unless-stopped
     ports:
       - "5244:5244"
@@ -11,15 +11,15 @@ services:
       PGID: ${JARVIS_PGID}
       UMASK: 022
     volumes:
-      - ${JARVIS_CONFIG_ROOT}/alist:/opt/alist/data
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/opt/alist/data
       - ${JARVIS_DRIVE_ROOT}:/mnt
       - ${HOME}:/home
     labels:
       - traefik.enable=true
-      - traefik.http.routers.pihole.rule=Host(`alist.myjarvis.in`)
-      - traefik.http.routers.pihole.entrypoints=websecure
-      - traefik.http.routers.pihole.tls=true
-      - traefik.http.routers.pihole.tls.certresolver=letsencrypt
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.myjarvis.in`)
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
     networks:
       - proxy
 

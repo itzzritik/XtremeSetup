@@ -1,6 +1,6 @@
 services:
   homeassistant:
-    container_name: homeassistant
+    container_name: ${JARVIS_CONTAINER_NAME}
     image: "ghcr.io/home-assistant/home-assistant"
     restart: unless-stopped
     network_mode: host
@@ -10,12 +10,12 @@ services:
       PUID: ${JARVIS_PUID}
       PGID: ${JARVIS_PGID}
     volumes:
-      - ${JARVIS_CONFIG_ROOT}/homeassistant:/config
       - /etc/localtime:/etc/localtime:ro
       - /run/dbus:/run/dbus:ro
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.pihole.rule=Host(`home.myjarvis.in`)
-      - traefik.http.routers.pihole.entrypoints=websecure
-      - traefik.http.routers.pihole.tls=true
-      - traefik.http.routers.pihole.tls.certresolver=letsencrypt
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/config
+    # labels:
+    #   - traefik.enable=true
+    #   - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.myjarvis.in`)
+    #   - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
+    #   - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
+    #   - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}

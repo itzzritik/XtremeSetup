@@ -1,6 +1,6 @@
 services:
   traefik:
-    container_name: traefik
+    container_name: ${JARVIS_CONTAINER_NAME}
     image: traefik
     restart: unless-stopped
     command:
@@ -11,10 +11,10 @@ services:
       - --entrypoints.websecure.address=:443
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
-      - --certificatesresolvers.letsencrypt.acme.dnschallenge=true
-      - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=cloudflare
-      - --certificatesresolvers.letsencrypt.acme.email=${JARVIS_USER_EMAIL}
-      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.dnschallenge=true
+      - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.dnschallenge.provider=cloudflare
+      - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.email=${JARVIS_USER_EMAIL}
+      - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.storage=/${JARVIS_CERT_RESOLVER}/acme.json
       - --log.level=DEBUG
     environment:
       CF_DNS_API_TOKEN: ${JARVIS_CF_DNS_API_TOKEN}
@@ -23,15 +23,15 @@ services:
       - 443:443
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${JARVIS_CONFIG_ROOT}/traefik:/etc/traefik
-      - ${JARVIS_CONFIG_ROOT}/traefik/letsencrypt:/letsencrypt
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/etc/traefik
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/${JARVIS_CERT_RESOLVER}:/${JARVIS_CERT_RESOLVER}
     labels:
       - traefik.enable=true
-      - traefik.http.routers.api.rule=Host(`traefik.myjarvis.in`)
+      - traefik.http.routers.api.rule=Host(`${JARVIS_CONTAINER_NAME}.myjarvis.in`)
       - traefik.http.routers.api.entrypoints=websecure
       - traefik.http.routers.api.service=api@internal
       - traefik.http.routers.api.tls=true
-      - traefik.http.routers.api.tls.certresolver=letsencrypt
+      - traefik.http.routers.api.tls.certresolver=${JARVIS_CERT_RESOLVER}
     networks:
       - proxy
 

@@ -1,8 +1,9 @@
 #!/bin/bash -e
 
-NAME=CodeServer
+NAME=Cloudflared
 NAME_LOWER="${NAME,,}"
-URL="https://github.com/coder/code-server"
+URL="https://one.dash.cloudflare.com/?to=/:account/access/tunnels"
+export JARVIS_CONTAINER_NAME=$NAME_LOWER
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
 printf '⚪ Deploying \e]8;;%s\a%s\e]8;;\a in Docker\n' "$URL" "$NAME"
@@ -27,6 +28,6 @@ docker compose -f $SCRIPT_DIR/compose.yml rm -s -f
 echo
 echo "→ Deploying new containers"
 echo
-docker compose -f $SCRIPT_DIR/compose.yml up --build -d
+docker compose -f $SCRIPT_DIR/compose.yml up -d
 echo
 echo "✔ $NAME deployed successfully"

@@ -1,7 +1,7 @@
 services:
   codeserver:
+    container_name: ${JARVIS_CONTAINER_NAME}
     image: codercom/code-server
-    container_name: codeserver
     restart: unless-stopped
     tty: true
     stdin_open: true
@@ -19,14 +19,14 @@ services:
       - ${HOME}/.gitconfig:/home/coder/.gitconfig
       - ${HOME}/.gitignore_global:/home/coder/.gitignore_global
       - ${HOME}/.ssh:/home/coder/.ssh
-      - ${JARVIS_CONFIG_ROOT}/codeserver:/home/coder/.config/code-server
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/home/coder/.config/code-server
       - ${JARVIS_CONFIG_ROOT}:/home/coder/AppConfigs
     labels:
       - traefik.enable=true
-      - traefik.http.routers.pihole.rule=Host(`code.myjarvis.in`)
-      - traefik.http.routers.pihole.entrypoints=websecure
-      - traefik.http.routers.pihole.tls=true
-      - traefik.http.routers.pihole.tls.certresolver=letsencrypt
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.myjarvis.in`)
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
     networks:
       - proxy
 

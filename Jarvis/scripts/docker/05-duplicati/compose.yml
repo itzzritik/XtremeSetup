@@ -1,6 +1,6 @@
 services:
   duplicati:
-    container_name: duplicati
+    container_name: ${JARVIS_CONTAINER_NAME}
     image: linuxserver/duplicati
     restart: unless-stopped
     ports:
@@ -11,14 +11,14 @@ services:
       PGID: ${JARVIS_PGID}
     volumes:
       - ${JARVIS_CONFIG_ROOT}:/source
-      - ${JARVIS_DRIVE_ROOT}/.duplicati/configs:/config
-      - ${JARVIS_DRIVE_ROOT}/.duplicati/backups:/backups
+      - ${JARVIS_DRIVE_ROOT}/.${JARVIS_CONTAINER_NAME}/configs:/config
+      - ${JARVIS_DRIVE_ROOT}/.${JARVIS_CONTAINER_NAME}/backups:/backups
     labels:
       - traefik.enable=true
-      - traefik.http.routers.pihole.rule=Host(`duplicati.myjarvis.in`)
-      - traefik.http.routers.pihole.entrypoints=websecure
-      - traefik.http.routers.pihole.tls=true
-      - traefik.http.routers.pihole.tls.certresolver=letsencrypt
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.myjarvis.in`)
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
     networks:
       - proxy
 
