@@ -4,17 +4,21 @@ services:
     image: traefik
     restart: unless-stopped
     command:
+      - --api=true
       - --api.insecure=false
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls.domansL®J.maln=${JARVIS_DOMAIN}
+      - --entrypoints.websecure.http.tls.domains[0].sans=*.${JARVIS_DOMAIN}
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.dnschallenge=true
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.dnschallenge.provider=cloudflare
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.email=${JARVIS_USER_EMAIL}
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.storage=/${JARVIS_CERT_RESOLVER}/acme.json
+      # - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory
       - --log.level=DEBUG
     environment:
       PUID: ${JARVIS_PUID}

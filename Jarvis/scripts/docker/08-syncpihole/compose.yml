@@ -1,0 +1,16 @@
+services:
+  orbital-sync:
+    container_name: ${JARVIS_CONTAINER_NAME}
+    image: mattwebbio/orbital-sync
+    environment:
+      PRIMARY_HOST_BASE_URL: http://pihole
+      PRIMARY_HOST_PASSWORD: ${JARVIS_PASSWORD}
+      # SECONDARY_HOSTS_1_BASE_URL: 'https://pihole2.example.com'
+      # SECONDARY_HOSTS_1_PASSWORD: 'your_password2'
+      INTERVAL_MINUTES: 60
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
