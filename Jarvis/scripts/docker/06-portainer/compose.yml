@@ -4,7 +4,6 @@ services:
     image: portainer/portainer-ce
     restart: unless-stopped
     ports:
-      - 8000:8000
       - 9000:9000
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -15,6 +14,7 @@ services:
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
+      - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=9000
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}
 

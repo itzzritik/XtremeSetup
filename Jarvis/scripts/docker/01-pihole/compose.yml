@@ -24,6 +24,7 @@ services:
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
+      - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=80
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}
 

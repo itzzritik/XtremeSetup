@@ -58,6 +58,9 @@ docker network prune -f >/dev/null 2>&1
 echo "✔ Creating \"$JARVIS_PROXY_DOCKER_NETWORK\" docker network"
 docker network create --driver bridge "$JARVIS_PROXY_DOCKER_NETWORK" >/dev/null 2>&1
 
+export JARVIS_DOCKER_IP=$(ip route | awk '/docker0/ {print $9}')
+echo "✔ Exporting docker host network ip: $JARVIS_DOCKER_IP"
+
 for dir in "$SCRIPT_DIR"/*/; do
   [ -f "${dir}deploy.sh" ] && bash "${dir}deploy.sh"
 done
