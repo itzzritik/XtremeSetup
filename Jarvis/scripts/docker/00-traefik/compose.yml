@@ -39,13 +39,12 @@ services:
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
     networks:
-      - proxy
-
-networks:
-  proxy:
-    driver: bridge
-    name: proxy
+      - ${JARVIS_PROXY_DOCKER_NETWORK}
 
 volumes:
   letsencrypt:
     name: ${JARVIS_CERT_RESOLVER}
+
+networks:
+  proxy:
+    external: true

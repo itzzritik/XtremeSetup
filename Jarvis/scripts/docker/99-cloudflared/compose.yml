@@ -9,7 +9,7 @@ services:
     volumes:
       - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/etc/cloudflared
     networks:
-      - proxy
+      - ${JARVIS_PROXY_DOCKER_NETWORK}
 
 networks:
   proxy:

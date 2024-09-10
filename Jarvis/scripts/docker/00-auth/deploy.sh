@@ -27,14 +27,20 @@ for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable 
 CREATE_DIRS=("$JARVIS_CONFIG_ROOT/$CONTAINER_NAME")
 for DIR in ${CREATE_DIRS[*]}; do mkdir -p "$DIR"; done
 
-sudo tee "$JARVIS_CONFIG_ROOT/$CONTAINER_NAME/oauth2-proxy.cfg" >/dev/null <<EOL
+cat > "$JARVIS_CONFIG_ROOT/$CONTAINER_NAME/oauth2-proxy.cfg" <<EOL
+reverse_proxy = true
+redirect_url = "$JARVIS_AUTH_REDIRECT_URL"
+email_domains = ["ritik.space@gmail.com", "hi@ritik.me"]
+
+cookie_name = "_${JARVIS_HOSTNAME}"
+cookie_secret = "$(openssl rand -base64 32 | tr -- '+/' '-_')"
+cookie_expire = "168h"
+cookie_httponly = true
+
 provider = "github"
 client_id = "$JARVIS_GITHUB_CLIENT_ID"
 client_secret = "$JARVIS_GITHUB_CLIENT_SECRET"
-redirect_url = "$JARVIS_AUTH_REDIRECT_URL"
-email_domains = ["ritik.space@gmail.com", "hi@ritik.me"]
 EOL
-export JARVIS_COOKIE_SECRET=$(openssl rand -base64 32 | tr -- '+/' '-_')
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 

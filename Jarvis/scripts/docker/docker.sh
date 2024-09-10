@@ -44,7 +44,7 @@ for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
 echo "✔ Disabling systemd-resolved service to avoid port conflicts"
-systemctl is-active --quiet systemd-resolved.service && sudo systemctl stop systemd-resolved && sudo systemctl disable systemd-resolved.service;
+systemctl is-active --quiet systemd-resolved.service && sudo systemctl stop systemd-resolved && sudo systemctl disable systemd-resolved.service
 
 echo "✔ Ensured nameservers are set in /etc/resolv.conf"
 grep -q "nameserver 8.8.8.8" /etc/resolv.conf || echo -e "nameserver 8.8.8.8\nnameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
@@ -55,10 +55,13 @@ docker rm $(docker ps -aq) >/dev/null 2>&1
 echo "✔ Removing unused docker networks"
 docker network prune -f >/dev/null 2>&1
 
+echo "✔ Creating \"$JARVIS_PROXY_DOCKER_NETWORK\" docker network"
+docker network create --driver bridge "$JARVIS_PROXY_DOCKER_NETWORK" >/dev/null 2>&1
+
 for dir in "$SCRIPT_DIR"/*/; do
   [ -f "${dir}deploy.sh" ] && bash "${dir}deploy.sh"
 done
 
 printf '\n+%131s+\n' | tr ' ' '-'
 echo -e "\n✔ Clearing docker cache"
-docker system prune -af --volumes > /dev/null 2>&1 &
+docker system prune -af --volumes >/dev/null 2>&1 &

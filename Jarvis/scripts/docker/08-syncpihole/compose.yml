@@ -9,7 +9,7 @@ services:
       # SECONDARY_HOSTS_1_PASSWORD: 'your_password2'
       INTERVAL_MINUTES: 60
     networks:
-      - proxy
+      - ${JARVIS_PROXY_DOCKER_NETWORK}
 
 networks:
   proxy:

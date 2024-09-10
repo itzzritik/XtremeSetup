@@ -13,9 +13,9 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /run/dbus:/run/dbus:ro
       - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/config
-    # labels:
-    #   - traefik.enable=true
-    #   - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
-    #   - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
-    #   - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
-    #   - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}

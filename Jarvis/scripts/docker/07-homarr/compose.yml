@@ -17,7 +17,7 @@ services:
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
     networks:
-      - proxy
+      - ${JARVIS_PROXY_DOCKER_NETWORK}
 
 networks:
   proxy:
