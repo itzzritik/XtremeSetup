@@ -3,22 +3,26 @@ services:
     container_name: ${JARVIS_CONTAINER_NAME}
     image: traefik
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     command:
       - --api=true
       - --api.insecure=false
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       - --entrypoints.websecure.http.tls.domains[0].main=${JARVIS_DOMAIN}
       - --entrypoints.websecure.http.tls.domains[0].sans=*.${JARVIS_DOMAIN}
-      - --entrypoints.web.http.redirections.entrypoint.to=websecure
-      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.http.tls.domains[1].main=${JARVIS_HOSTNAME}.local
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.dnschallenge=true
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.dnschallenge.provider=cloudflare
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.email=${JARVIS_USER_EMAIL}
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.storage=/${JARVIS_CERT_RESOLVER}/acme.json
-      # - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory
+      - --serversTransport.insecureSkipVerify=true
       - --log.level=DEBUG
     environment:
       PUID: ${JARVIS_PUID}
@@ -28,7 +32,7 @@ services:
       - 80:80
       - 443:443
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/etc/traefik
       - ${JARVIS_CERT_RESOLVER}:/${JARVIS_CERT_RESOLVER}
     labels:

@@ -14,7 +14,7 @@ services:
     ports:
       - 53:53/tcp
       - 53:53/udp
-      - 8080:80/tcp
+      - 7777:80/tcp
     volumes:
       - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/etc/pihole
       - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/dnsmasq.d:/etc/dnsmasq.d
