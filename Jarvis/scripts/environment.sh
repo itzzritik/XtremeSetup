@@ -1,46 +1,44 @@
-#!/bin/bash
+NAME=Doppler
+NAME_LOWER="${NAME,,}"
+URL="https://www.doppler.com"
 
-echo -e '⚪ Setting jarvis environment\n'
+printf '\n+%131s+\n\n' | tr ' ' '-'
+printf '⚪ Setup jarvis environment with \e]8;;%s\a%s\e]8;;\a\n\n' "$URL" "$NAME_LOWER"
 
-ENV_FILE="/etc/jarvis/.env"
-REQUIRED_VARS=("JARVIS_USERNAME" "JARVIS_PASSWORD" "JARVIS_CF_DNS_API_TOKEN" "JARVIS_CF_TUNNEL_TOKEN")
+if ! command -v "$NAME_LOWER" &> /dev/null; then
+    echo -e "→ Installing $NAME_LOWER cli\n"
 
-export JARVIS_GOOGLE_DNS="8.8.8.8;8.8.4.4"
-export JARVIS_STATIC_IP="192.168.68.255"
-export JARVIS_DOMAIN="myjarvis.in"
-export JARVIS_CERT_RESOLVER="letsencrypt"
-export JARVIS_HOSTNAME="jarvis"
-export JARVIS_TZ="Asia/Kolkata"
-export JARVIS_PUID=$(id -u $USER)
-export JARVIS_PGID=$(id -g $USER)
-export JARVIS_USER_NAME="Jarvis"
-export JARVIS_USER_EMAIL="ritik.jarvis@gmail.com"
+    sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
+    curl -sLf --retry 3 --tlsv1.2 --proto "=https" 'https://packages.doppler.com/public/cli/gpg.DE2A7741A397C129.key' | sudo apt-key add -
+    echo "deb https://packages.doppler.com/public/cli/deb/debian any-version main" | sudo tee /etc/apt/sources.list.d/doppler-cli.list
+    sudo apt-get update && sudo apt-get install -y $NAME_LOWER
 
-export JARVIS_DRIVE_ROOT="/mnt/drive1"
-export JARVIS_CONFIG_ROOT="$JARVIS_DRIVE_ROOT/.configs"
+    [ ! command -v "$NAME_LOWER" &> /dev/null ] && echo -e "\n⛔ $NAME cli installation failed\n" && exit 1;
+    echo -e "\n✔ $NAME cli installed successfully\n"
+fi
 
-prompt_and_update_file() {
-    local var_name=$1 value
+if ! doppler me &> /dev/null; then
+    echo "→ Authenticate $NAME_LOWER cli"
+    doppler login
+fi
 
-    while true; do
-        read -p "→ Enter value for $var_name: " value
-        if [ -n "$value" ]; then
-            echo "$var_name=\"$value\"" | sudo tee -a "$ENV_FILE" > /dev/null
-            export "$var_name=${value//\"/}"
-            break
-        fi
-        echo -e "✕ Error: $var_name cannot be empty. Please enter a value.\n"
-    done
-}
+set -a
 
-[ -f "$ENV_FILE" ] || sudo touch "$ENV_FILE"
+JARVIS_HOSTNAME="jarvis"
+JARVIS_DOMAIN="myjarvis.in"
+JARVIS_GOOGLE_DNS="8.8.8.8;8.8.4.4"
+JARVIS_STATIC_IP="192.168.68.255"
+JARVIS_CERT_RESOLVER="letsencrypt"
+JARVIS_TZ="Asia/Kolkata"
+JARVIS_PUID=$(id -u $USER)
+JARVIS_PGID=$(id -g $USER)
+JARVIS_USER_NAME="Jarvis"
+JARVIS_USER_EMAIL="ritik.jarvis@gmail.com"
+JARVIS_DRIVE_ROOT="/mnt/drive1"
+JARVIS_CONFIG_ROOT="$JARVIS_DRIVE_ROOT/.configs"
 
-while IFS='=' read -r key value; do
-    [ "$key" ] && export "$key=${value//\"/}"
-done < "$ENV_FILE"
+echo "✔ Environment variables injected into the shell"
+source <(doppler secrets download -p "$JARVIS_HOSTNAME" -c prd --silent --enable-dns-resolver --no-file --format env)
+echo "✔ $NAME secrets injected into the shell"
 
-for var in "${REQUIRED_VARS[@]}"; do
-    [ -z "${!var}" ] && prompt_and_update_file "$var"
-done
-
-echo "✔ Environment set successfully"
+set +a

@@ -24,9 +24,12 @@ if [ "$DAYS" -le "$THRESHOLD" ]; then
 fi
 
 echo -e "→ Performing system update\n"
+
 sudo apt update -y
 sudo apt upgrade -y
 sudo apt autoremove -y
+sudo apt clean -y
+
 sudo mkdir -p "$(dirname "$UPDATED_AT_FILE")"
 date +%s | sudo tee "$UPDATED_AT_FILE" > /dev/null
 echo -e "\n✔ System update completed\n"

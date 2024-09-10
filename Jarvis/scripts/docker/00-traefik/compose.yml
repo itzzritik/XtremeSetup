@@ -10,7 +10,7 @@ services:
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
-      - --entrypoints.websecure.http.tls.domansL®J.maln=${JARVIS_DOMAIN}
+      - --entrypoints.websecure.http.tls.domains[0].main=${JARVIS_DOMAIN}
       - --entrypoints.websecure.http.tls.domains[0].sans=*.${JARVIS_DOMAIN}
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https

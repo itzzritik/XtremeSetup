@@ -39,7 +39,6 @@ REQUIRED_VARS=(
   "JARVIS_CF_DNS_API_TOKEN"
   "JARVIS_CF_TUNNEL_TOKEN"
 )
-
 for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable \"$VAR\" not set!" && exit 1; done
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"

@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-NAME=OAuth
+NAME=Auth
 CONTAINER_NAME="${NAME,,}"
 URL="https://oauth2-proxy.github.io/oauth2-proxy"
 export JARVIS_CONTAINER_NAME=$CONTAINER_NAME
@@ -17,8 +17,24 @@ if docker ps --filter "name=$CONTAINER_NAME" --filter "status=running" --format 
     echo "✔ Container already up and running" && exit 0
 fi
 
+REQUIRED_VARS=(
+    "JARVIS_GITHUB_CLIENT_ID"
+    "JARVIS_GITHUB_CLIENT_SECRET"
+    "JARVIS_AUTH_REDIRECT_URL"
+)
+for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable \"$VAR\" not set!" && exit 1; done
+
 CREATE_DIRS=("$JARVIS_CONFIG_ROOT/$CONTAINER_NAME")
 for DIR in ${CREATE_DIRS[*]}; do mkdir -p "$DIR"; done
+
+sudo tee "$JARVIS_CONFIG_ROOT/$CONTAINER_NAME/oauth2-proxy.cfg" >/dev/null <<EOL
+provider = "github"
+client_id = "$JARVIS_GITHUB_CLIENT_ID"
+client_secret = "$JARVIS_GITHUB_CLIENT_SECRET"
+redirect_url = "$JARVIS_AUTH_REDIRECT_URL"
+email_domains = ["ritik.space@gmail.com", "hi@ritik.me"]
+EOL
+export JARVIS_COOKIE_SECRET=$(openssl rand -base64 32 | tr -- '+/' '-_')
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 

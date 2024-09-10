@@ -8,9 +8,7 @@ REQUIRED_VARS=(
 )
 for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable \"$VAR\" not set!" && exit 1; done
 
-if grep -q "$JARVIS_HOSTNAME" /etc/hosts; then
-  echo "✔ Hostname already set as $JARVIS_HOSTNAME" && exit 0
-fi
+grep -q "$JARVIS_HOSTNAME" /etc/hosts && echo "✔ Hostname already set as $JARVIS_HOSTNAME" && exit 0
 
 sudo hostnamectl set-hostname $JARVIS_HOSTNAME
 
