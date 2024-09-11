@@ -49,6 +49,9 @@ for SUBDOMAIN in "${SUBDOMAINS[@]}"; do
     docker exec $CONTAINER_NAME bash -c "grep -Fq '${ENTRY}' $DNS_PATH || echo '${ENTRY}' >> $DNS_PATH"
 done
 
+FTL_CONF_PATH="/etc/$CONTAINER_NAME/pihole-FTL.conf"
+docker exec $CONTAINER_NAME bash -c "grep -q '^MAXCONN=' $FTL_CONF_PATH && sed -i 's/^MAXCONN=.*/MAXCONN=5096/' $FTL_CONF_PATH || echo 'MAXCONN=5096' >> $FTL_CONF_PATH"
+
 docker restart $CONTAINER_NAME > /dev/null 2>&1 &
 echo "✔ $NAME deployed successfully"
 

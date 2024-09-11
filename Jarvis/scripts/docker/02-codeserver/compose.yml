@@ -9,7 +9,7 @@ services:
       dockerfile: Dockerfile
     environment:
       DOCKER_USER: ${USER}
-      PASSWORD: ${JARVIS_PASSWORD}
+      PASSWORD: ${JARVIS_ADMIN_PASSWORD}
     ports:
       - 8888:8080
     user: ${JARVIS_PUID}:${JARVIS_PGID}
@@ -24,6 +24,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=auth@docker
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}

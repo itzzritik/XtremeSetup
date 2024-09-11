@@ -1,31 +1,27 @@
 services:
-  oauth2-proxy:
+  authelia:
     container_name: ${JARVIS_CONTAINER_NAME}
-    image: quay.io/oauth2-proxy/oauth2-proxy
+    image: authelia/authelia
     restart: unless-stopped
     ports:
-      - 4180:4180
-    command: --config /oauth2-proxy.cfg
+      - 9091:9091
+    environment:
+      TZ: ${JARVIS_TZ}
+      PUID: ${JARVIS_PUID}
+      PGID: ${JARVIS_PGID}
     volumes:
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/oauth2-proxy.cfg:/oauth2-proxy.cfg
-    healthcheck:
-      test: [CMD, wget, --tries=1, --spider, http://oauth:4180/ping]
-      interval: 60s 
-      timeout: 10s
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/config:/config
     labels:
-      - traefik.http.middlewares.oauth-verify.forwardAuth.address=http://oauth:4180/oauth2/auth
-      - traefik.http.middlewares.oauth-verify.forwardAuth.trustForwardHeader=true
-      - traefik.http.middlewares.oauth-verify.forwardAuth.authResponseHeaders=X-Auth-Request-User,X-Auth-Request-Email,Set-Cookie,X-Auth-User,X-Secret
-      - traefik.http.middlewares.oauth-signin.errors.service=auth@docker
-      - traefik.http.middlewares.oauth-signin.errors.status=401
-      - traefik.http.middlewares.oauth-signin.errors.query=/oauth2/sign_in
-
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
-      - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=4180
+      - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=9091
+      - traefik.http.middlewares.${JARVIS_CONTAINER_NAME}.forwardAuth.address=http://${JARVIS_CONTAINER_NAME}:9091/api/authz/forward-auth
+      - traefik.http.middlewares.${JARVIS_CONTAINER_NAME}.forwardAuth.trustForwardHeader=true
+      - traefik.http.middlewares.${JARVIS_CONTAINER_NAME}.forwardAuth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Email,Remote-Name
+      - traefik.http.middlewares.${JARVIS_CONTAINER_NAME}.forwardauth.tls.insecureSkipVerify=true
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}
 

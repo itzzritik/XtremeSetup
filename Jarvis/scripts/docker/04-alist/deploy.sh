@@ -31,6 +31,6 @@ echo
 docker compose -f $SCRIPT_DIR/compose.yml up -d
 echo
 echo "✔ Seting password"
-docker exec -it alist ./alist password set "$JARVIS_PASSWORD" >/dev/null 2>&1
+docker exec -it alist ./alist password set "$JARVIS_ADMIN_PASSWORD" >/dev/null 2>&1
 docker restart alist > /dev/null 2>&1 &
 echo "✔ $NAME deployed successfully"

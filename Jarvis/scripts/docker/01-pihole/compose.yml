@@ -6,7 +6,7 @@ services:
     environment:
       TZ: ${JARVIS_TZ}
       WEBTHEME: default-darker
-      WEBPASSWORD: ${JARVIS_PASSWORD}
+      WEBPASSWORD: ${JARVIS_ADMIN_PASSWORD}
       PIHOLE_DNS_: ${JARVIS_GOOGLE_DNS}
       FTLCONF_LOCAL_IPV4: ${JARVIS_STATIC_IP}
       PIHOLE_DOMAIN: pi.hole
@@ -21,6 +21,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=auth@docker
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}

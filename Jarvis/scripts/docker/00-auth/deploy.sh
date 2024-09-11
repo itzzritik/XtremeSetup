@@ -2,7 +2,7 @@
 
 NAME=Auth
 CONTAINER_NAME="${NAME,,}"
-URL="https://oauth2-proxy.github.io/oauth2-proxy"
+URL="https://www.authelia.com"
 export JARVIS_CONTAINER_NAME=$CONTAINER_NAME
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
@@ -18,28 +18,88 @@ if docker ps --filter "name=$CONTAINER_NAME" --filter "status=running" --format 
 fi
 
 REQUIRED_VARS=(
+    "JARVIS_AUTH_JWT_SECRET"
+    "JARVIS_AUTH_SESSION_KEY"
+    "JARVIS_AUTH_STORAGE_KEY"
+    "JARVIS_AUTH_GOOGLE_APP_PASSWORD"
+    "JARVIS_AUTH_REDIRECT_URL"
     "JARVIS_GITHUB_CLIENT_ID"
     "JARVIS_GITHUB_CLIENT_SECRET"
-    "JARVIS_AUTH_REDIRECT_URL"
 )
 for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable \"$VAR\" not set!" && exit 1; done
 
-CREATE_DIRS=("$JARVIS_CONFIG_ROOT/$CONTAINER_NAME")
-for DIR in ${CREATE_DIRS[*]}; do mkdir -p "$DIR"; done
+CONFIG_PATH="$JARVIS_CONFIG_ROOT/$CONTAINER_NAME/config"
+mkdir -p "$CONFIG_PATH"
 
-cat > "$JARVIS_CONFIG_ROOT/$CONTAINER_NAME/oauth2-proxy.cfg" <<EOL
-reverse_proxy = true
-redirect_url = "$JARVIS_AUTH_REDIRECT_URL"
-email_domains = ["ritik.space@gmail.com", "hi@ritik.me"]
+cat >"$CONFIG_PATH/configuration.yml" <<EOL
+server:
+  address: tcp://:9091
 
-cookie_name = "_${JARVIS_HOSTNAME}"
-cookie_secret = "$(openssl rand -base64 32 | tr -- '+/' '-_')"
-cookie_expire = "168h"
-cookie_httponly = true
+log:
+  level: debug
 
-provider = "github"
-client_id = "$JARVIS_GITHUB_CLIENT_ID"
-client_secret = "$JARVIS_GITHUB_CLIENT_SECRET"
+totp:
+  issuer: $JARVIS_DOMAIN
+
+identity_validation:
+  reset_password:
+    jwt_secret: $JARVIS_AUTH_JWT_SECRET
+
+authentication_backend:
+  file:
+    path: /config/users_database.yml
+
+access_control:
+  default_policy: two_factor
+  rules:
+    - domain: homarr.$JARVIS_DOMAIN
+      policy: bypass
+    - domain: dashdot.$JARVIS_DOMAIN
+      policy: bypass
+    - domain: alist.$JARVIS_DOMAIN
+      policy: bypass
+    - domain: traefik.$JARVIS_DOMAIN
+      policy: one_factor
+
+session:
+  secret: $JARVIS_AUTH_SESSION_KEY
+  cookies:
+    - name: $JARVIS_HOSTNAME
+      domain: $JARVIS_DOMAIN
+      authelia_url: https://$CONTAINER_NAME.$JARVIS_DOMAIN
+      expiration: 6 hour
+      inactivity: 5 minutes
+
+regulation:
+  max_retries: 5
+  find_time: 2 minutes
+  ban_time: 5 minutes
+
+storage:
+  encryption_key: $JARVIS_AUTH_STORAGE_KEY
+  local:
+    path: /config/db.sqlite3
+
+notifier:
+  smtp:
+    username: $JARVIS_EMAIL
+    password: $JARVIS_AUTH_GOOGLE_APP_PASSWORD
+    address: smtp://smtp.gmail.com:587
+    sender: hi@$JARVIS_DOMAIN
+EOL
+
+HASHED_PASSWORD=$(echo -n "$JARVIS_ADMIN_PASSWORD" | argon2 "$(openssl rand -hex 16)" -id -t 3 -m 12 -p 1 | awk '/Encoded:/ {print $2}')
+DB_PATH="$CONFIG_PATH/users_database.yml"
+{ [ -s "$DB_PATH" ] || cat >"$DB_PATH"; } <<EOL
+users:
+  $(echo "$JARVIS_ADMIN_NAME" | awk '{print tolower($1)}'):
+    disabled: false
+    displayname: $JARVIS_ADMIN_NAME
+    password: $HASHED_PASSWORD
+    email: $JARVIS_ADMIN_EMAIL
+    groups:
+      - admins
+      - dev
 EOL
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"

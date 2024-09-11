@@ -20,17 +20,17 @@ services:
       - --entrypoints.websecure.http.tls.domains[1].main=${JARVIS_HOSTNAME}.local
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.dnschallenge=true
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.dnschallenge.provider=cloudflare
-      - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.email=${JARVIS_USER_EMAIL}
+      - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.email=${JARVIS_EMAIL}
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.storage=/${JARVIS_CERT_RESOLVER}/acme.json
       - --serversTransport.insecureSkipVerify=true
       - --log.level=DEBUG
+    ports:
+      - 80:80
+      - 443:443
     environment:
       PUID: ${JARVIS_PUID}
       PGID: ${JARVIS_PGID}
       CF_DNS_API_TOKEN: ${JARVIS_CF_DNS_API_TOKEN}
-    ports:
-      - 80:80
-      - 443:443
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/etc/traefik
@@ -38,6 +38,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=auth@docker
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.service=api@internal
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true

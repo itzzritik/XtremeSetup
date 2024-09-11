@@ -9,6 +9,7 @@ echo
 [ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
 
 if ! [[ $(docker --version) ]]; then
+  echo -e "→ Installing Docker\n"
   sudo apt install ca-certificates gnupg -y
   sudo install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --yes --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -22,8 +23,13 @@ if ! [[ $(docker --version) ]]; then
 
   newgrp docker
   sudo usermod -aG docker $USER
-
   echo -e "\n✔ Docker installed successfully"
+fi
+
+if ! command -v argon2 >/dev/null 2>&1; then
+  echo -e "→ Installing Argon2 for password hashing\n"
+  sudo apt install -y argon2
+  echo -e "\n✔ Argon2 installed successfully"
 fi
 
 REQUIRED_VARS=(
@@ -32,10 +38,11 @@ REQUIRED_VARS=(
   "JARVIS_TZ"
   "JARVIS_PUID"
   "JARVIS_PGID"
-  "JARVIS_USERNAME"
-  "JARVIS_PASSWORD"
+  "JARVIS_ADMIN_NAME"
+  "JARVIS_ADMIN_EMAIL"
+  "JARVIS_ADMIN_PASSWORD"
   "JARVIS_HOSTNAME"
-  "JARVIS_USER_EMAIL"
+  "JARVIS_EMAIL"
   "JARVIS_CF_DNS_API_TOKEN"
   "JARVIS_CF_TUNNEL_TOKEN"
 )
