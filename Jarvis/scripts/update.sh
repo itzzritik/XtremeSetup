@@ -5,9 +5,9 @@ echo "|                                                                         
 echo "|                                                          UPDATING SYSTEM                                                          |"
 echo "|                                                                                                                                   |"
 printf '+%131s+\n\n' | tr ' ' '-'
-echo -e "⚪ Updating $(tr -d '\0' </sys/firmware/devicetree/base/model || echo "System")\n"
+echo -e "● Updating $(tr -d '\0' </sys/firmware/devicetree/base/model || echo "System")\n"
 
-[ $(id -u) -ne 0 ] && echo ⛔ This script needs to run WITH superuser permission! && exit 1
+[ $(id -u) -ne 0 ] && echo ✕ This script needs to run WITH superuser permission! && exit 1
 
 THRESHOLD=1
 UPDATED_AT_FILE="/etc/jarvis/.updated_at"

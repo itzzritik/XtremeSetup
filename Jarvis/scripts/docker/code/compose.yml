@@ -8,8 +8,12 @@ services:
     build:
       dockerfile: Dockerfile
     environment:
+      TZ: ${JARVIS_TZ}
+      PUID: ${JARVIS_PUID}
+      PGID: ${JARVIS_PGID}
       DOCKER_USER: ${USER}
       PASSWORD: ${JARVIS_ADMIN_PASSWORD}
+      PROXY_DOMAIN: ${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}
     ports:
       - 8888:8080
     user: ${JARVIS_PUID}:${JARVIS_PGID}

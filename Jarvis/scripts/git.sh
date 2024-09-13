@@ -1,13 +1,13 @@
 #!/bin/bash -e
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
-echo -e "⚪ Setting up git environment\n"
+echo -e "● Setting up git environment\n"
 
 REQUIRED_VARS=(
   "JARVIS_HOSTNAME"
   "JARVIS_EMAIL"
 )
-for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable \"$VAR\" not set!" && exit 1; done
+for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "✕ Env variable \"$VAR\" not set!" && exit 1; done
 
 KEY_PATH="$HOME/.ssh/id_ed25519"
 

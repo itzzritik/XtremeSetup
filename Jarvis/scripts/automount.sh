@@ -1,16 +1,16 @@
 #!/bin/bash -e
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
-echo -e "⚪ Creating auto mount entry for drive in Fstab\n"
+echo -e "● Creating auto mount entry for drive in Fstab\n"
 
-[ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
+[ $(id -u) -eq 0 ] && echo "✕ This script needs to run WITHOUT superuser permission" && exit 1
 
 if ! dpkg -l | grep -q "ntfs-3g"; then
     echo "→ NTFS support not found. Installing...\n"
     sudo apt install ntfs-3g -y
 fi
 
-[ -z "$JARVIS_DRIVE_ROOT" ] && echo "⛔ Env variable \"JARVIS_DRIVE_ROOT\" not set!" && exit 1
+[ -z "$JARVIS_DRIVE_ROOT" ] && echo "✕ Env variable \"JARVIS_DRIVE_ROOT\" not set!" && exit 1
 
 declare -A DRIVES=(
     ["083AAA5A3AAA4492"]="$JARVIS_DRIVE_ROOT"
@@ -51,5 +51,5 @@ sudo chown -R $USER:$USER /mnt
 sudo chmod -R u+rwx /mnt
 echo "✔ Mount point permissions set for user: $USER"
 
-[[ ! $(sudo findmnt --fstab --target "$JARVIS_DRIVE_ROOT" -A) ]] && echo "⛔ Mounting failed. Check configuration." && exit 1
+[[ ! $(sudo findmnt --fstab --target "$JARVIS_DRIVE_ROOT" -A) ]] && echo "✕ Mounting failed. Check configuration." && exit 1
 echo "✔ All drives mounted successfully."

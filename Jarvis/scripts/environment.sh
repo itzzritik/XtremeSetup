@@ -3,7 +3,7 @@ NAME_LOWER="${NAME,,}"
 URL="https://www.doppler.com"
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
-printf '⚪ Setup jarvis environment with \e]8;;%s\a%s\e]8;;\a\n\n' "$URL" "$NAME_LOWER"
+printf '● Setup jarvis environment with \e]8;;%s\a%s\e]8;;\a\n\n' "$URL" "$NAME_LOWER"
 
 if ! command -v "$NAME_LOWER" &> /dev/null; then
     echo -e "→ Installing $NAME_LOWER cli\n"
@@ -13,7 +13,7 @@ if ! command -v "$NAME_LOWER" &> /dev/null; then
     echo "deb https://packages.doppler.com/public/cli/deb/debian any-version main" | sudo tee /etc/apt/sources.list.d/doppler-cli.list
     sudo apt-get update && sudo apt-get install -y $NAME_LOWER
 
-    [ ! command -v "$NAME_LOWER" &> /dev/null ] && echo -e "\n⛔ $NAME cli installation failed\n" && exit 1;
+    [ ! command -v "$NAME_LOWER" &> /dev/null ] && echo -e "\n✕ $NAME cli installation failed\n" && exit 1;
     echo -e "\n✔ $NAME cli installed successfully\n"
 fi
 

@@ -1,77 +1,66 @@
 #!/bin/bash -e
 
-echo
-printf '+%131s+\n' | tr ' ' '-'
-echo
-printf '⚪ Setting up \e]8;;https://www.docker.com\e\\Docker\e]8;;\e\\\n'
-echo
+printf '\n+%131s+\n\n' | tr ' ' '-'
+printf '● Setting up \e]8;;https://www.docker.com\e\\Docker\e]8;;\e\\\n\n'
 
-[ $(id -u) -eq 0 ] && echo "⛔ This script needs to run WITHOUT superuser permission" && exit 1
-
-if ! [[ $(docker --version) ]]; then
-  echo -e "→ Installing Docker\n"
-  sudo apt install ca-certificates gnupg -y
-  sudo install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --yes --dearmor -o /etc/apt/keyrings/docker.gpg
-  sudo chmod a+r /etc/apt/keyrings/docker.gpg
-  echo \
-    "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-    "$(lsb_release -cs)" stable" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
-
-  sudo apt update
-  sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
-
-  newgrp docker
-  sudo usermod -aG docker $USER
-  echo -e "\n✔ Docker installed successfully"
-fi
-
-if ! command -v argon2 >/dev/null 2>&1; then
-  echo -e "→ Installing Argon2 for password hashing\n"
-  sudo apt install -y argon2
-  echo -e "\n✔ Argon2 installed successfully"
-fi
-
-REQUIRED_VARS=(
-  "JARVIS_DRIVE_ROOT"
-  "JARVIS_CONFIG_ROOT"
-  "JARVIS_TZ"
-  "JARVIS_PUID"
-  "JARVIS_PGID"
-  "JARVIS_ADMIN_NAME"
-  "JARVIS_ADMIN_EMAIL"
-  "JARVIS_ADMIN_PASSWORD"
-  "JARVIS_HOSTNAME"
-  "JARVIS_EMAIL"
-  "JARVIS_CF_DNS_API_TOKEN"
-  "JARVIS_CF_TUNNEL_TOKEN"
-)
-for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "⛔ Env variable \"$VAR\" not set!" && exit 1; done
+[ $(id -u) -eq 0 ] && echo "✕ This script needs to run WITHOUT superuser permission" && exit 1
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+bash "$SCRIPT_DIR/prerequisites.sh"
 
-echo "✔ Disabling systemd-resolved service to avoid port conflicts"
-systemctl is-active --quiet systemd-resolved.service && sudo systemctl stop systemd-resolved && sudo systemctl disable systemd-resolved.service
+printf '\n+%131s+\n\n' | tr ' ' '-'
 
-echo "✔ Ensured nameservers are set in /etc/resolv.conf"
-grep -q "nameserver 8.8.8.8" /etc/resolv.conf || echo -e "nameserver 8.8.8.8\nnameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
+APP_LIST=(
+	"auth=https://www.authelia.com"
+	"traefik=https://traefik.io/traefik"
+	# "pihole=https://pi-hole.net"
+	# "code=https://github.com/coder/code-server"
+	"home=https://www.home-assistant.io"
+	"alist=https://github.com/alist-org/alist"
+	"duplicati=https://duplicati.com"
+	"portainer=https://portainer.io"
+	"homarr=https://homarr.dev"
+	# "syncpihole=https://orbitalsync.com"
+	"dashdot=https://getdashdot.com"
+	"cloudflared=https://one.dash.cloudflare.com"
+)
 
-echo "✔ Removing unused docker containers"
-docker rm $(docker ps -aq) >/dev/null 2>&1
+DEPLOY() {
+	local NAME=$(echo "$1" | cut -d'=' -f1)
+	local URL=$(echo "$1" | cut -d'=' -f2)
+	local TITLE_NAME="${NAME^}"
+	export JARVIS_CONTAINER_NAME=$NAME
 
-echo "✔ Removing unused docker networks"
-docker network prune -f >/dev/null 2>&1
+	local COMPOSE_FILE="$SCRIPT_DIR/$NAME/compose.yml"
+	local LOG_FILE="$SCRIPT_DIR/$NAME/deploy.log"
 
-echo "✔ Creating \"$JARVIS_PROXY_DOCKER_NETWORK\" docker network"
-docker network create --driver bridge "$JARVIS_PROXY_DOCKER_NETWORK" >/dev/null 2>&1
+	docker stop "$NAME" >/dev/null 2>&1 && docker rm "$NAME" >/dev/null 2>&1
+	docker compose -f "$COMPOSE_FILE" up -d --build >"$LOG_FILE" 2>&1
 
-export JARVIS_DOCKER_IP=$(ip route | awk '/docker0/ {print $9}')
-echo "✔ Exporting docker host network ip: $JARVIS_DOCKER_IP"
+	if ! grep -iqE "error|warning" "$LOG_FILE"; then
+		rm "$LOG_FILE"
+		printf '✔ \e]8;;%s\a%s\e]8;;\a deployed successfully\n' "$URL" "$TITLE_NAME"
+	else
+		printf '✕ \e]8;;%s\a%s\e]8;;\a failed to deploy\n' "$URL" "$TITLE_NAME"
+		return 1
+	fi
+}
 
-for dir in "$SCRIPT_DIR"/*/; do
-  [ -f "${dir}deploy.sh" ] && bash "${dir}deploy.sh"
+
+for APP in "${APP_LIST[@]}"; do
+	DEPLOY "$APP" &
 done
 
-printf '\n+%131s+\n' | tr ' ' '-'
-echo -e "\n✔ Clearing docker cache"
+echo -e "● Deploying docker apps in parallel\n"
+wait
+
+FAIL_COUNT=$(find "$SCRIPT_DIR" -type f -name 'deploy.log' | wc -l)
+echo -e "\n✔ $((${#APP_LIST[@]} - FAIL_COUNT)) apps deployed successfully"
+
+if [ $FAIL_COUNT -ne 0 ]; then
+	echo -e "\n✕ $FAIL_COUNT apps failed to deploy"
+	bash "$SCRIPT_DIR/logs.sh"
+fi
+
+echo -e "✔ Clearing docker cache"
 docker system prune -af --volumes >/dev/null 2>&1 &

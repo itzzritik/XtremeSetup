@@ -51,7 +51,7 @@ services:
 
 volumes:
   letsencrypt:
-    name: ${JARVIS_CERT_RESOLVER}
+    external: true
 
 networks:
   proxy:

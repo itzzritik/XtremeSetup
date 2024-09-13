@@ -1,12 +1,12 @@
 #!/bin/bash -e
 
 printf '\n+%131s+\n\n' | tr ' ' '-'
-echo "⚪ Setting up samba server"
+echo "● Setting up samba server"
 echo
 
 # Check super user permission
 if [ $(id -u) -ne 0 ]; then
-  echo "⛔ This script needs to run WITH superuser permission!"
+  echo "✕ This script needs to run WITH superuser permission!"
   exit 1
 fi
 

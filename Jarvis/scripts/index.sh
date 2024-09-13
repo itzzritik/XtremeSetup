@@ -18,7 +18,7 @@ EOF
 
 if [ $(id -u) -eq 0 ];
 then
-   echo "⛔ Please run this script WITHOUT superuser permission!"
+   echo "✕ Please run this script WITHOUT superuser permission!"
    printf '\n+%131s+\n\n' | tr ' ' '-'
    exit 1
 fi
