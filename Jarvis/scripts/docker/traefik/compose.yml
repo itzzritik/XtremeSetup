@@ -22,6 +22,7 @@ services:
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.dnschallenge.provider=cloudflare
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.email=${JARVIS_EMAIL}
       - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.storage=/${JARVIS_CERT_RESOLVER}/acme.json
+      - --certificatesResolvers.dns-cloudflare.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory
       - --serversTransport.insecureSkipVerify=true
       - --log.level=DEBUG
     ports:

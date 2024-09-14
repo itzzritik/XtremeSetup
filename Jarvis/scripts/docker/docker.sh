@@ -17,7 +17,7 @@ JARVIS_DOCKER_APPS=(
 	"homarr=https://homarr.dev"
 	"syncpihole=https://orbitalsync.com"
 	"dashdot=https://getdashdot.com"
-	"tools=https://it-tools.tech"
+	"dozzle=https://dozzle.dev"
 	"cloudflared=https://one.dash.cloudflare.com"
 )
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"

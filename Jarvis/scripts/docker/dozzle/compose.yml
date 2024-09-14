@@ -1,21 +1,14 @@
 services:
-  duplicati:
+  dozzle:
     container_name: ${JARVIS_CONTAINER_NAME}
-    image: duplicati/duplicati
+    image: amir20/dozzle
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
     ports:
-      - 8200:8200
-    command: /usr/bin/duplicati-server --webservice-port=8200 --webservice-interface=any --webservice-allowed-hostnames=*
-    environment:
-      TZ: ${JARVIS_TZ}
-      PUID: ${JARVIS_PUID}
-      PGID: ${JARVIS_PGID}
+      - 8800:8080
     volumes:
-      - ${JARVIS_CONFIG_ROOT}:/source
-      - ${JARVIS_DRIVE_ROOT}/.${JARVIS_CONTAINER_NAME}/configs:/config
-      - ${JARVIS_DRIVE_ROOT}/.${JARVIS_CONTAINER_NAME}/backups:/backups
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     labels:
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
@@ -23,7 +16,7 @@ services:
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
-      - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=8200
+      - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=8800
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}
 
