@@ -8,6 +8,7 @@ printf '● Setting up \e]8;;https://www.docker.com\e\\Docker\e]8;;\e\\\n\n'
 JARVIS_DOCKER_APPS=(
 	"auth=https://www.authelia.com"
 	"traefik=https://traefik.io/traefik"
+	# "adguard=https://adguard.com/adguard-home.html"
 	"pihole=https://pi-hole.net"
 	"code=https://github.com/coder/code-server"
 	"home=https://home-assistant.io"
@@ -15,7 +16,7 @@ JARVIS_DOCKER_APPS=(
 	"duplicati=https://duplicati.com"
 	"portainer=https://portainer.io"
 	"homarr=https://homarr.dev"
-	"syncpihole=https://orbitalsync.com"
+	# "syncpihole=https://orbitalsync.com"
 	"dashdot=https://getdashdot.com"
 	"dozzle=https://dozzle.dev"
 	"cloudflared=https://one.dash.cloudflare.com"
@@ -38,12 +39,12 @@ DEPLOY() {
 	fi
 
 	mkdir -p "$JARVIS_CONFIG_ROOT/$NAME"
-	[ -f "$PRE" ] && bash "$PRE" >"$LOG_FILE" 2>&1
+	[ -f "$PRE" ] && bash "$PRE" >>"$LOG_FILE" 2>&1
 	docker stop "$NAME" >/dev/null 2>&1 && docker rm "$NAME" >/dev/null 2>&1
-	docker compose -f "$SCRIPT_DIR/$NAME/compose.yml" up -d --build >"$LOG_FILE" 2>&1
-	[ -f "$POST" ] && bash "$POST" >"$LOG_FILE" 2>&1
+	docker compose -f "$SCRIPT_DIR/$NAME/compose.yml" up -d --build >>"$LOG_FILE" 2>&1
+	[ -f "$POST" ] && bash "$POST" >>"$LOG_FILE" 2>&1
 
-	if ! grep -iqE "✕|error|warning|cannot" "$LOG_FILE"; then
+	if ! grep -qiE "✕|error|warning|cannot|failed|exception|fatal|critical" "$LOG_FILE"; then
 		rm -f "$LOG_FILE"
 		printf '✔ \e]8;;%s\a%s\e]8;;\a deployed\n' "$URL" "$TITLE_NAME"
 	else

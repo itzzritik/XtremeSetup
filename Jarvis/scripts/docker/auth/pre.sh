@@ -1,4 +1,11 @@
+printf '\n+%131s+\n\n' | tr ' ' '-'
+echo -e "● Pre script for $JARVIS_CONTAINER_NAME\n"
+echo "✔ Setting credentials file"
+
 REQUIRED_VARS=(
+    "JARVIS_CONTAINER_NAME"
+    "JARVIS_CONFIG_ROOT"
+    "JARVIS_ADMIN_PASSWORD"
     "JARVIS_AUTH_JWT_SECRET"
     "JARVIS_AUTH_SESSION_KEY"
     "JARVIS_AUTH_STORAGE_KEY"
@@ -7,10 +14,9 @@ REQUIRED_VARS=(
     "JARVIS_GITHUB_CLIENT_ID"
     "JARVIS_GITHUB_CLIENT_SECRET"
 )
-
 for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "✕ Env variable \"$VAR\" not set!" && exit 1; done
 
-CONFIG_PATH="$JARVIS_CONFIG_ROOT/$CONTAINER_NAME/config"
+CONFIG_PATH="$JARVIS_CONFIG_ROOT/$JARVIS_CONTAINER_NAME/config"
 mkdir -p "$CONFIG_PATH"
 
 cat >"$CONFIG_PATH/configuration.yml" <<EOL
@@ -34,7 +40,7 @@ authentication_backend:
 access_control:
   default_policy: two_factor
   rules:
-    - domain: homarr.$JARVIS_DOMAIN
+    - domain: $JARVIS_DOMAIN
       policy: bypass
     - domain: dashdot.$JARVIS_DOMAIN
       policy: bypass
@@ -48,7 +54,7 @@ session:
   cookies:
     - name: $JARVIS_HOSTNAME
       domain: $JARVIS_DOMAIN
-      authelia_url: https://$CONTAINER_NAME.$JARVIS_DOMAIN
+      authelia_url: https://$JARVIS_CONTAINER_NAME.$JARVIS_DOMAIN
       expiration: 6 hour
       inactivity: 5 minutes
 
@@ -69,6 +75,8 @@ notifier:
     address: smtp://smtp.gmail.com:587
     sender: hi@$JARVIS_DOMAIN
 EOL
+
+echo "✔ Setting database file"
 
 HASHED_PASSWORD=$(echo -n "$JARVIS_ADMIN_PASSWORD" | argon2 "$(openssl rand -hex 16)" -id -t 3 -m 12 -p 1 | awk '/Encoded:/ {print $2}')
 DB_PATH="$CONFIG_PATH/users_database.yml"

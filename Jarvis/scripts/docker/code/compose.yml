@@ -5,10 +5,6 @@ services:
     restart: unless-stopped
     tty: true
     stdin_open: true
-    security_opt:
-      - no-new-privileges:true
-    build:
-      dockerfile: Dockerfile
     environment:
       TZ: ${JARVIS_TZ}
       PUID: ${JARVIS_PUID}

@@ -1,3 +1,5 @@
+printf '\n+%131s+\n\n' | tr ' ' '-'
+echo -e "● Pre script for $JARVIS_CONTAINER_NAME\n"
 echo "✔ Seting local dns entries"
 
 JARVIS_DOCKER_APPS=(
@@ -23,6 +25,7 @@ for APP in "${JARVIS_DOCKER_APPS[@]}"; do
 	docker exec $JARVIS_CONTAINER_NAME bash -c "grep -Fq '${ENTRY}' $DNS_PATH || echo '${ENTRY}' >> $DNS_PATH"
 done
 
+echo "✔ Seting MAXCONN as 5096 to increase maximum allowed connections"
 FTL_CONF_PATH="/etc/$JARVIS_CONTAINER_NAME/pihole-FTL.conf"
 docker exec $JARVIS_CONTAINER_NAME bash -c "grep -q '^MAXCONN=' $FTL_CONF_PATH && sed -i 's/^MAXCONN=.*/MAXCONN=5096/' $FTL_CONF_PATH || echo 'MAXCONN=5096' >> $FTL_CONF_PATH"
 

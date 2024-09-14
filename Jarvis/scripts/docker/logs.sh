@@ -9,7 +9,7 @@ printf '+%131s+\n\n' | tr ' ' '-'
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 FAIL_COUNT=$(find "$SCRIPT_DIR" -type f -name 'deploy.log' | wc -l)
 
-echo -e "\n● $FAIL_COUNT apps failed with error/warning, Please check logs"
+echo -e "\n● $FAIL_COUNT apps failed with errors/warnings, Please check the logs below"
 
 for LOG_FILE in $(find "$SCRIPT_DIR" -type f -name 'deploy.log'); do
 	NAME=$(basename "$(dirname "$LOG_FILE")")
