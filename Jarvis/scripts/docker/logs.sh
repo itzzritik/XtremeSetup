@@ -19,3 +19,5 @@ for LOG_FILE in $(find "$SCRIPT_DIR" -type f -name 'deploy.log'); do
 	rm -f "$LOG_FILE"
 	printf '\n+%131s+\n' | tr ' ' '-'
 done
+
+echo

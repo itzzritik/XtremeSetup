@@ -26,6 +26,7 @@ if ! command -v argon2 >/dev/null 2>&1; then
   echo -e "\n✔ Argon2 installed successfully"
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 REQUIRED_VARS=(
   "JARVIS_DRIVE_ROOT"
   "JARVIS_CONFIG_ROOT"
@@ -41,6 +42,9 @@ REQUIRED_VARS=(
   "JARVIS_CF_TUNNEL_TOKEN"
 )
 for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "✕ Env variable \"$VAR\" not set!" && exit 1; done
+
+echo "✔ Delete docker apps log files"
+find "$SCRIPT_DIR" -type f -name 'debug.log' -delete
 
 echo "✔ Disabling systemd-resolved service to avoid port conflicts"
 systemctl is-active --quiet systemd-resolved.service && sudo systemctl stop systemd-resolved && sudo systemctl disable systemd-resolved.service
@@ -59,3 +63,5 @@ docker network create --driver bridge "$JARVIS_PROXY_DOCKER_NETWORK" >/dev/null 
 
 echo "✔ Creating docker network → ${JARVIS_CERT_RESOLVER}"
 docker volume create "${JARVIS_CERT_RESOLVER}" >/dev/null 2>&1
+
+printf '\n+%131s+\n\n' | tr ' ' '-'

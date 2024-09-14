@@ -2,7 +2,6 @@ NAME=Doppler
 NAME_LOWER="${NAME,,}"
 URL="https://www.doppler.com"
 
-printf '\n+%131s+\n\n' | tr ' ' '-'
 printf '● Setup jarvis environment with \e]8;;%s\a%s\e]8;;\a\n\n' "$URL" "$NAME_LOWER"
 
 if ! command -v "$NAME_LOWER" &> /dev/null; then
