@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     network_mode: host
     privileged: true
+    security_opt:
+      - no-new-privileges:true
     environment:
       TZ: ${JARVIS_TZ}
       PUID: ${JARVIS_PUID}

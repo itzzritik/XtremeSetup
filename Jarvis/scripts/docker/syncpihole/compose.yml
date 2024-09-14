@@ -2,6 +2,8 @@ services:
   orbital-sync:
     container_name: ${JARVIS_CONTAINER_NAME}
     image: mattwebbio/orbital-sync
+    security_opt:
+      - no-new-privileges:true
     environment:
       PRIMARY_HOST_BASE_URL: http://pihole
       PRIMARY_HOST_PASSWORD: ${JARVIS_ADMIN_PASSWORD}

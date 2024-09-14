@@ -3,6 +3,12 @@ services:
     container_name: ${JARVIS_CONTAINER_NAME}
     image: pihole/pihole
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - 53:53/tcp
+      - 53:53/udp
+      - 7777:80/tcp
     environment:
       TZ: ${JARVIS_TZ}
       WEBTHEME: default-darker
@@ -11,10 +17,6 @@ services:
       FTLCONF_LOCAL_IPV4: ${JARVIS_STATIC_IP}
       PIHOLE_DOMAIN: pi.hole
       VIRTUAL_HOST: pi.hole
-    ports:
-      - 53:53/tcp
-      - 53:53/udp
-      - 7777:80/tcp
     volumes:
       - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/etc/pihole
       - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/dnsmasq.d:/etc/dnsmasq.d

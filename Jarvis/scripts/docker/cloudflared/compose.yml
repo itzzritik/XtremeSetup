@@ -4,6 +4,8 @@ services:
     image: cloudflare/cloudflared
     restart: unless-stopped
     command: tunnel --no-autoupdate run
+    security_opt:
+      - no-new-privileges:true
     environment:
       TUNNEL_TOKEN: ${JARVIS_CF_TUNNEL_TOKEN}
     volumes:

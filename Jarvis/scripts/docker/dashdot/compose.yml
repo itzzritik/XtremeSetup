@@ -4,6 +4,8 @@ services:
     image: mauricenino/dashdot
     restart: unless-stopped
     privileged: true
+    security_opt:
+      - no-new-privileges:true
     ports:
       - 3001:3001
     volumes:

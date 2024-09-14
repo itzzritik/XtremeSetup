@@ -3,6 +3,8 @@ services:
     container_name: ${JARVIS_CONTAINER_NAME}
     image: ghcr.io/ajnart/homarr
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     ports:
       - 7575:7575
     environment:

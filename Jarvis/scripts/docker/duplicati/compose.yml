@@ -3,6 +3,8 @@ services:
     container_name: ${JARVIS_CONTAINER_NAME}
     image: linuxserver/duplicati
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     ports:
       - 8200:8200
     environment:

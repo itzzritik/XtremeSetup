@@ -3,6 +3,8 @@ services:
     container_name: ${JARVIS_CONTAINER_NAME}
     image: xhofe/alist:latest-ffmpeg
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     ports:
       - 5244:5244
     environment:
