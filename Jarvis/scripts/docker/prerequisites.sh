@@ -27,21 +27,6 @@ if ! command -v argon2 >/dev/null 2>&1; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-REQUIRED_VARS=(
-  "JARVIS_DRIVE_ROOT"
-  "JARVIS_CONFIG_ROOT"
-  "JARVIS_TZ"
-  "JARVIS_PUID"
-  "JARVIS_PGID"
-  "JARVIS_ADMIN_NAME"
-  "JARVIS_ADMIN_EMAIL"
-  "JARVIS_ADMIN_PASSWORD"
-  "JARVIS_HOSTNAME"
-  "JARVIS_EMAIL"
-  "JARVIS_CF_DNS_API_TOKEN"
-  "JARVIS_CF_TUNNEL_TOKEN"
-)
-for VAR in "${REQUIRED_VARS[@]}"; do [ -z "${!VAR}" ] && echo "✕ Env variable \"$VAR\" not set!" && exit 1; done
 
 echo "✔ Delete docker apps log files"
 find "$SCRIPT_DIR" -type f -name 'debug.log' -delete

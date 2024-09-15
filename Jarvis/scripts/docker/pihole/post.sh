@@ -1,32 +1,15 @@
 printf '\n+%131s+\n\n' | tr ' ' '-'
-echo -e "● Pre script for $JARVIS_CONTAINER_NAME\n"
+echo -e "● Post script for ${JARVIS_CONTAINER_NAME}\n"
+
 echo "✔ Seting local dns entries"
+DNS_PATH="/etc/${JARVIS_CONTAINER_NAME}/dnsmasq.d/02-wildcard.conf"
 
-JARVIS_DOCKER_APPS=(
-	"auth=https://www.authelia.com"
-	"traefik=https://traefik.io/traefik"
-	"pihole=https://pi-hole.net"
-	"code=https://github.com/coder/code-server"
-	"home=https://home-assistant.io"
-	"alist=https://github.com/alist-org/alist"
-	"duplicati=https://duplicati.com"
-	"portainer=https://portainer.io"
-	"homarr=https://homarr.dev"
-	"syncpihole=https://orbitalsync.com"
-	"dashdot=https://getdashdot.com"
-	"dozzle=https://dozzle.dev"
-	"cloudflared=https://one.dash.cloudflare.com"
-)
-DNS_PATH="/etc/$JARVIS_CONTAINER_NAME/custom.list"
-
-for APP in "${JARVIS_DOCKER_APPS[@]}"; do
-	SUBDOMAIN=$(echo "$1" | cut -d'=' -f1)
-	ENTRY="$JARVIS_STATIC_IP ${SUBDOMAIN:+$SUBDOMAIN.}$JARVIS_DOMAIN"
-	docker exec $JARVIS_CONTAINER_NAME bash -c "grep -Fq '${ENTRY}' $DNS_PATH || echo '${ENTRY}' >> $DNS_PATH"
-done
+docker exec ${JARVIS_CONTAINER_NAME} bash -c "echo 'address=/${JARVIS_DOMAIN}/${JARVIS_STATIC_IP}
+address=/.${JARVIS_DOMAIN}/${JARVIS_STATIC_IP}' > $DNS_PATH"
 
 echo "✔ Seting MAXCONN as 5096 to increase maximum allowed connections"
-FTL_CONF_PATH="/etc/$JARVIS_CONTAINER_NAME/pihole-FTL.conf"
-docker exec $JARVIS_CONTAINER_NAME bash -c "grep -q '^MAXCONN=' $FTL_CONF_PATH && sed -i 's/^MAXCONN=.*/MAXCONN=5096/' $FTL_CONF_PATH || echo 'MAXCONN=5096' >> $FTL_CONF_PATH"
+FTL_CONF_PATH="/etc/${JARVIS_CONTAINER_NAME}/pihole-FTL.conf"
+docker exec ${JARVIS_CONTAINER_NAME} bash -c "grep -q '^MAXCONN=' $FTL_CONF_PATH && sed -i 's/^MAXCONN=.*/MAXCONN=5096/' $FTL_CONF_PATH || echo 'MAXCONN=5096' >> $FTL_CONF_PATH"
 
-docker restart $JARVIS_CONTAINER_NAME >/dev/null 2>&1 &
+echo "✔ Restarting container"
+docker restart ${JARVIS_CONTAINER_NAME} >/dev/null 2>&1 &

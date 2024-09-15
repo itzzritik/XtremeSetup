@@ -1,32 +1,66 @@
 services:
-  authelia:
+  server:
     container_name: ${JARVIS_CONTAINER_NAME}
-    image: authelia/authelia
+    image: ghcr.io/goauthentik/server
     restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    ports:
-      - 9091:9091
+    command: server
+    user: ${JARVIS_PUID}:${JARVIS_PGID}
     environment:
       TZ: ${JARVIS_TZ}
-      PUID: ${JARVIS_PUID}
-      PGID: ${JARVIS_PGID}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: true
+      AUTHENTIK_SECRET_KEY: ${JARVIS_AUTH_SESSION_KEY}
+      AUTHENTIK_COOKIE_DOMAIN: ${JARVIS_DOMAIN}
+      AUTHENTIK_REDIS__HOST: ${JARVIS_AUTH_REDIS_HOST}
+      AUTHENTIK_POSTGRESQL__HOST: ${JARVIS_AUTH_POSTGRESQL_HOST}
+      AUTHENTIK_POSTGRESQL__USER: ${JARVIS_AUTH_POSTGRESQL_USER}
+      AUTHENTIK_POSTGRESQL__NAME: ${JARVIS_AUTH_POSTGRESQL_DB}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${JARVIS_AUTH_POSTGRESQL_PASSWORD}
     volumes:
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/config:/config
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/media:/media
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/custom-templates:/templates
+    ports:
+      - 9080:9000
+      - 9443:9443
     labels:
       - traefik.enable=true
-      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_DOMAIN}`)
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=auth@docker
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
-      - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=9091
-      - traefik.http.middlewares.${JARVIS_CONTAINER_NAME}.forwardAuth.address=http://${JARVIS_CONTAINER_NAME}:9091/api/authz/forward-auth
+      - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=9080
+      - traefik.http.middlewares.${JARVIS_CONTAINER_NAME}.forwardAuth.address=http://${JARVIS_CONTAINER_NAME}:9091/outpost.goauthentik.io/auth/traefik
       - traefik.http.middlewares.${JARVIS_CONTAINER_NAME}.forwardAuth.trustForwardHeader=true
-      - traefik.http.middlewares.${JARVIS_CONTAINER_NAME}.forwardAuth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Email,Remote-Name
-      - traefik.http.middlewares.${JARVIS_CONTAINER_NAME}.forwardauth.tls.insecureSkipVerify=true
-    networks:
-      - ${JARVIS_PROXY_DOCKER_NETWORK}
+      - "traefik.http.middlewares.${JARVIS_CONTAINER_NAME}.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid,X-authentik-jwt,X-authentik-meta-jwks,X-authentik-meta-outpost,X-authentik-meta-provider,X-authentik-meta-app,X-authentik-meta-version"
 
-networks:
-  proxy:
-    external: true
+  worker:
+    container_name: ${JARVIS_CONTAINER_NAME}-worker
+    image: ghcr.io/goauthentik/server
+    restart: unless-stopped
+    command: worker
+    user: ${JARVIS_PUID}:${JARVIS_PGID}
+    environment:
+      TZ: ${JARVIS_TZ}
+      DOCKER_HOST: tcp://socket-proxy:2375
+      AUTHENTIK_ERROR_REPORTING__ENABLED: true
+      AUTHENTIK_SECRET_KEY: ${JARVIS_AUTH_SESSION_KEY}
+      AUTHENTIK_COOKIE_DOMAIN: ${JARVIS_DOMAIN}
+      AUTHENTIK_REDIS__HOST: ${JARVIS_AUTH_REDIS_HOST}
+      AUTHENTIK_POSTGRESQL__HOST: ${JARVIS_AUTH_POSTGRESQL_HOST}
+      AUTHENTIK_POSTGRESQL__USER: ${JARVIS_AUTH_POSTGRESQL_USER}
+      AUTHENTIK_POSTGRESQL__NAME: ${JARVIS_AUTH_POSTGRESQL_DB}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${JARVIS_AUTH_POSTGRESQL_PASSWORD}
+      AUTHENTIK_EMAIL__HOST: smtp.gmail.com
+      AUTHENTIK_EMAIL__PORT: 587
+      AUTHENTIK_EMAIL__USERNAME: ${JARVIS_EMAIL}
+      AUTHENTIK_EMAIL__PASSWORD: ${JARVIS_AUTH_GOOGLE_APP_PASSWORD}
+      AUTHENTIK_EMAIL__USE_TLS: false
+      AUTHENTIK_EMAIL__USE_SSL: false
+      AUTHENTIK_EMAIL__TIMEOUT: 10
+      AUTHENTIK_EMAIL__FROM: hi@${JARVIS_DOMAIN}
+    ports:
+      - 1000:1000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/media:/media
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/custom-templates:/templates
