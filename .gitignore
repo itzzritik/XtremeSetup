@@ -1,3 +1,4 @@
 Windows/config/windows_terminal/settings/settings.json*.backup
 Windows/config/windows_terminal/settings/state.json.tmp
 **/.env
+**/*.log

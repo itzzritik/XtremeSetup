@@ -4,6 +4,12 @@ URL="https://www.doppler.com"
 
 printf '● Setup jarvis environment with \e]8;;%s\a%s\e]8;;\a\n\n' "$URL" "$NAME_LOWER"
 
+if ! command -v htpasswd >/dev/null 2>&1; then
+  echo -e "→ Installing apache2-utils to use htpasswd for password hashing\n"
+  sudo apt install -y apache2-utils
+  echo -e "\n✔ apache2-utils installed successfully"
+fi
+
 if ! command -v "$NAME_LOWER" &> /dev/null; then
     echo -e "→ Installing $NAME_LOWER cli\n"
 
@@ -24,6 +30,12 @@ fi
 set -a
 
 JARVIS_HOSTNAME="jarvis"
+
+source <(doppler secrets download -p "$JARVIS_HOSTNAME" -c prd --silent --enable-dns-resolver --no-file --format env)
+echo "✔ $NAME secrets injected into the shell"
+
+JARVIS_ADMIN_USERNAME=$(echo "${JARVIS_ADMIN_NAME}" | awk '{print tolower($1)}')
+JARVIS_ADMIN_PASSWORD_HASHED=$(htpasswd -nbB admin "$JARVIS_ADMIN_PASSWORD" | awk -F: '{print $2}')
 JARVIS_DOMAIN="myjarvis.in"
 JARVIS_GOOGLE_DNS="8.8.8.8;8.8.4.4"
 JARVIS_STATIC_IP="192.168.68.255"
@@ -37,7 +49,4 @@ JARVIS_DRIVE_ROOT="/mnt/drive1"
 JARVIS_CONFIG_ROOT="$JARVIS_DRIVE_ROOT/.configs"
 
 echo "✔ Environment variables injected into the shell"
-source <(doppler secrets download -p "$JARVIS_HOSTNAME" -c prd --silent --enable-dns-resolver --no-file --format env)
-echo "✔ $NAME secrets injected into the shell"
-
 set +a

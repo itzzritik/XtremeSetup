@@ -6,10 +6,10 @@ printf '● Setting up \e]8;;https://www.docker.com\e\\Docker\e]8;;\e\\\n\n'
 [ $(id -u) -eq 0 ] && echo "✕ This script needs to run WITHOUT superuser permission" && exit 1
 
 JARVIS_DOCKER_APPS=(
-	"auth=https://www.authelia.com"
+	"code=https://github.com/coder/code-server"
+	# "auth=https://www.authelia.com"
 	"traefik=https://traefik.io/traefik"
 	"pihole=https://pi-hole.net"
-	"code=https://github.com/coder/code-server"
 	"home=https://home-assistant.io"
 	"alist=https://github.com/alist-org/alist"
 	"duplicati=https://duplicati.com"

@@ -6,53 +6,37 @@ services:
     security_opt:
       - no-new-privileges:true
     command:
-      - --api=true
-      - --api.insecure=false
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --entrypoints.web.http.redirections.entrypoint.to=websecure
-      - --entrypoints.web.http.redirections.entrypoint.scheme=https
-      - --entrypoints.web.http.redirections.entrypoint.permanent=true
-      - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
-      - --entrypoints.websecure.http.tls.domains[0].main=${JARVIS_DOMAIN}
-      - --entrypoints.websecure.http.tls.domains[0].sans=*.${JARVIS_DOMAIN}
-      - --entrypoints.websecure.http.tls.domains[1].main=${JARVIS_HOSTNAME}.local
-      - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.dnschallenge=true
-      - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.dnschallenge.provider=cloudflare
-      - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.email=${JARVIS_EMAIL}
-      - --certificatesresolvers.${JARVIS_CERT_RESOLVER}.acme.storage=/${JARVIS_CERT_RESOLVER}/acme.json
-      - --certificatesResolvers.dns-cloudflare.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory
-      - --serversTransport.insecureSkipVerify=true
-      - --log.level=DEBUG
+      - --configFile=/config/traefik.yml
     ports:
       - 80:80
       - 443:443
     environment:
-      PUID: ${JARVIS_PUID}
-      PGID: ${JARVIS_PGID}
+      TZ: ${JARVIS_TZ}
+      DOMAINNAME: ${JARVIS_DOMAIN}
       CF_DNS_API_TOKEN: ${JARVIS_CF_DNS_API_TOKEN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/etc/traefik
-      - ${JARVIS_CERT_RESOLVER}:/${JARVIS_CERT_RESOLVER}
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/config
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/data:/data
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/rules:/rules
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/logs:/logs
     labels:
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
-      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=auth@docker
-      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.service=api@internal
-      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
-      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
-      - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=80
+
+      - "traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=chain-basic-auth@file" # For Basic HTTP Authentication
+      # - "traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=chain-no-auth@file" # For No Authentication
+      # - "traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=chain-oauth@file" # For Google OAuth
+
+      # - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
+      # - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
+      # - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
+      # - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=80
     extra_hosts: 
       host.docker.internal: host-gateway
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}
-
-volumes:
-  letsencrypt:
-    external: true
 
 networks:
   proxy:

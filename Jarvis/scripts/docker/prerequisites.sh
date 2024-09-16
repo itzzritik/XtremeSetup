@@ -28,13 +28,16 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
-echo "✔ Delete docker apps log files"
+echo "✔ Removing empty config directories"
+find "$JARVIS_CONFIG_ROOT" -mindepth 1 -maxdepth 1 -type d -empty -exec rmdir {} +
+
+echo "✔ Removing docker apps log files"
 find "$SCRIPT_DIR" -type f -name 'debug.log' -delete
 
 echo "✔ Disabling systemd-resolved service to avoid port conflicts"
 systemctl is-active --quiet systemd-resolved.service && sudo systemctl stop systemd-resolved && sudo systemctl disable systemd-resolved.service
 
-echo "✔ Ensured nameservers are set in /etc/resolv.conf"
+echo "✔ Ensuring nameservers are set in /etc/resolv.conf"
 grep -q "nameserver 8.8.8.8" /etc/resolv.conf || echo -e "nameserver 8.8.8.8\nnameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
 
 echo "✔ Removing unused docker containers"
@@ -45,8 +48,5 @@ docker network prune -f >/dev/null 2>&1
 
 echo "✔ Creating docker network → $JARVIS_PROXY_DOCKER_NETWORK"
 docker network create --driver bridge "$JARVIS_PROXY_DOCKER_NETWORK" >/dev/null 2>&1
-
-echo "✔ Creating docker network → ${JARVIS_CERT_RESOLVER}"
-docker volume create "${JARVIS_CERT_RESOLVER}" >/dev/null 2>&1
 
 printf '\n+%131s+\n\n' | tr ' ' '-'

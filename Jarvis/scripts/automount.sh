@@ -41,7 +41,7 @@ for UUID in "${!DRIVES[@]}"; do
         sudo sed -i "\|UUID=$UUID|d" /etc/fstab
     fi
 
-    echo "UUID=$UUID $MOUNT_POINT $FORMAT defaults,noatime,nodiratime 0 0" | sudo tee -a /etc/fstab >/dev/null
+    echo "UUID=$UUID $MOUNT_POINT $FORMAT defaults,noatime,nodiratime,users,permissions 0 0" | sudo tee -a /etc/fstab >/dev/null
     echo -e "✔ Successfully created fstab entry\n"
 done
 

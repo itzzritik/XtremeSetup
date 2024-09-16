@@ -1,6 +1,7 @@
 printf '\n+%131s+\n\n' | tr ' ' '-'
 echo -e "● Post script for ${JARVIS_CONTAINER_NAME}\n"
 
+echo -e "→ Installing extensions\n"
 EXTENSION_LIST=(
 	"redhat.vscode-yaml"
 	"foxundermoon.shell-format"
@@ -10,11 +11,13 @@ EXTENSION_LIST=(
 )
 
 for EXTENSION in "${EXTENSION_LIST[@]}"; do
-	echo "✔ Installing $EXTENSION extension"
 	docker exec "${JARVIS_CONTAINER_NAME}" code-server --install-extension "$EXTENSION" --force &
 done
 
-echo "✔ Applying settings"
+wait
+
+echo -e "\n✔ Applying settings"
+CONFIG_DIR=~/.local/share/code-server/User
 SETTINGS=$(
 	cat <<EOF
 {
@@ -23,6 +26,4 @@ SETTINGS=$(
 }
 EOF
 )
-docker exec "${JARVIS_CONTAINER_NAME}" bash -c "mkdir -p ~/.local/share/code-server/User && echo '$SETTINGS' > ~/.local/share/code-server/User/settings.json" &
-
-wait
+docker exec "${JARVIS_CONTAINER_NAME}" bash -c "mkdir -p '$CONFIG_DIR' && echo '$SETTINGS' > $CONFIG_DIR/settings.json" &

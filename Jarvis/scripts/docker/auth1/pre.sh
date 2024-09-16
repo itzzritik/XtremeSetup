@@ -68,7 +68,7 @@ HASHED_PASSWORD=$(echo -n "${JARVIS_ADMIN_PASSWORD}" | argon2 "$(openssl rand -h
 DB_PATH="$CONFIG_PATH/users_database.yml"
 { [ -s "$DB_PATH" ] || cat >"$DB_PATH"; } <<EOL
 users:
-  $(echo "${JARVIS_ADMIN_NAME}" | awk '{print tolower($1)}'):
+  ${JARVIS_ADMIN_USERNAME}:
     disabled: false
     displayname: ${JARVIS_ADMIN_NAME}
     password: ${HASHED_PASSWORD}

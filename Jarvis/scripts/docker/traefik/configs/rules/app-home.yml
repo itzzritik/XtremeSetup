@@ -1,0 +1,16 @@
+http:
+  routers:
+    home:
+      rule: "Host(`home.${JARVIS_DOMAIN}`)"
+      service: home
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: ${JARVIS_CERT_RESOLVER}
+        options: tls-opts@file
+
+  services:
+    home:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8123"
