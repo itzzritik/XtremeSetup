@@ -1,5 +1,4 @@
-printf '\n+%131s+\n\n' | tr ' ' '-'
-echo -e "● Pre script for ${JARVIS_CONTAINER_NAME}\n"
+echo -e "\n\n● Pre script for ${JARVIS_CONTAINER_NAME}\n"
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 CONFIG_PATH="${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}"

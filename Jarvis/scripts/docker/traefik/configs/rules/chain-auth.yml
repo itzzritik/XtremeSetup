@@ -1,8 +1,9 @@
 http:
   middlewares:
-    chain-basic-auth:
+    chain-auth:
       chain:
-        middlewares:      
+        middlewares:
           - middlewares-rate-limit
           - middlewares-secure-headers
-          - middlewares-basic-auth
+          - middlewares-compress
+          - middlewares-auth

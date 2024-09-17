@@ -1,3 +1,4 @@
+name: ${JARVIS_CONTAINER_NAME}
 services:
   traefik:
     container_name: ${JARVIS_CONTAINER_NAME}
@@ -23,16 +24,10 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
-      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.service=api@internal
-
-      - "traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=chain-basic-auth@file" # For Basic HTTP Authentication
-      # - "traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=chain-no-auth@file" # For No Authentication
-      # - "traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=chain-oauth@file" # For Google OAuth
-
-      # - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
-      # - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
-      # - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
-      # - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=80
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.service=${JARVIS_CONTAINER_NAME}
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
+      - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=80
     extra_hosts: 
       host.docker.internal: host-gateway
     networks:

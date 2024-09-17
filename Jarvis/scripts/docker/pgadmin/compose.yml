@@ -1,26 +1,22 @@
 name: ${JARVIS_CONTAINER_NAME}
 services:
-  pihole:
+  pgadmin:
     container_name: ${JARVIS_CONTAINER_NAME}
-    image: pihole/pihole
+    image: dpage/pgadmin4
     restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "pgrep", "gunicorn"]
+      start_period: 10s
+      interval: 30s
+      retries: 5
+      timeout: 10s
     ports:
-      - 53:53/tcp
-      - 53:53/udp
-      - 7777:80/tcp
+      - 5050:80
     environment:
-      TZ: ${JARVIS_TZ}
-      WEBTHEME: default-darker
-      WEBPASSWORD: ${JARVIS_ADMIN_PASSWORD}
-      PIHOLE_DNS_: ${JARVIS_GOOGLE_DNS}
-      FTLCONF_LOCAL_IPV4: ${JARVIS_STATIC_IP}
-      PIHOLE_DOMAIN: pi.hole
-      VIRTUAL_HOST: pi.hole
+      PGADMIN_DEFAULT_EMAIL: ${JARVIS_ADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${JARVIS_ADMIN_PASSWORD}
     volumes:
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/etc/pihole
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/dnsmasq.d:/etc/dnsmasq.d
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/var/lib/pgadmin
     labels:
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)

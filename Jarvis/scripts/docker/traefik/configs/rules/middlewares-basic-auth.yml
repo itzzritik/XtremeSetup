@@ -1,7 +1,0 @@
-http:
-  middlewares:
-    middlewares-basic-auth:
-      basicAuth:
-        users:
-          - "${JARVIS_ADMIN_USERNAME}:${JARVIS_ADMIN_PASSWORD_HASHED}"
-        realm: "Traefik 3 Basic Auth"

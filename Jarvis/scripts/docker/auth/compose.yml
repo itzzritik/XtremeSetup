@@ -1,29 +1,79 @@
+name: ${JARVIS_CONTAINER_NAME}
 services:
   auth:
+    image: ghcr.io/goauthentik/server
     container_name: ${JARVIS_CONTAINER_NAME}
-    image: quay.io/keycloak/keycloak
     restart: unless-stopped
-    command: start
-    ports:
-      - 9090:8080
+    command: server
+    user: ${JARVIS_PUID}:${JARVIS_PGID}
     environment:
-      KC_HOSTNAME: ${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}
-      KC_PROXY: edge
-      KEYCLOAK_ADMIN: ${JARVIS_ADMIN_USERNAME}
-      KEYCLOAK_ADMIN_PASSWORD: ${JARVIS_ADMIN_NAME}
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_POSTGRESQL__HOST: postgres
+      AUTHENTIK_POSTGRESQL__NAME: ${JARVIS_CONTAINER_NAME}
+      AUTHENTIK_POSTGRESQL__USER: ${JARVIS_ADMIN_USERNAME}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${JARVIS_POSTGRES_PASSWORD}
+      AUTHENTIK_DISABLE_STARTUP_ANALYTICS: true
+      AUTHENTIK_DISABLE_UPDATE_CHECK: false
+      AUTHENTIK_ERROR_REPORTING__ENABLED: false
+      AUTHENTIK_LOG_LEVEL: info
+      AUTHENTIK_SECRET_KEY: ${JARVIS_AUTH_SESSION_KEY}
+      AUTHENTIK_COOKIE_DOMAIN: ${JARVIS_DOMAIN}
+      AUTHENTIK_SESSION_STORAGE: db
+      AUTHENTIK_EMAIL__HOST: smtp.gmail.com
+      AUTHENTIK_EMAIL__PORT: 587
+      AUTHENTIK_EMAIL__USERNAME: ${JARVIS_EMAIL}
+      AUTHENTIK_EMAIL__PASSWORD: ${JARVIS_AUTH_GOOGLE_APP_PASSWORD}
+      AUTHENTIK_EMAIL__USE_TLS: false
+      AUTHENTIK_EMAIL__USE_SSL: false
+      AUTHENTIK_EMAIL__TIMEOUT: 10
+      AUTHENTIK_EMAIL__FROM: ${JARVIS_CONTAINER_NAME}@${JARVIS_DOMAIN}
+    ports:
+      - 9090:9000
     volumes:
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/opt/keycloak/data
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/media:/media
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/templates:/templates
     labels:
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
-      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
-      - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=8080
-      - traefik.http.middlewares.${JARVIS_CONTAINER_NAME}.forwardAuth.address=http://${JARVIS_CONTAINER_NAME}:8080
-      - traefik.http.middlewares.${JARVIS_CONTAINER_NAME}.forwardAuth.trustForwardHeader=true
-      - traefik.http.middlewares.${JARVIS_CONTAINER_NAME}.forwardAuth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Email,Remote-Name
-      - traefik.http.middlewares.${JARVIS_CONTAINER_NAME}.forwardauth.tls.insecureSkipVerify=true
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.service=${JARVIS_CONTAINER_NAME}
+      - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=9000
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}-outpost.rule=HostRegexp(`{subdomain:[a-z0-9-]+}.${JARVIS_DOMAIN}`) && PathPrefix(`/outpost.goauthentik.io/`)
+    networks:
+      - ${JARVIS_PROXY_DOCKER_NETWORK}
+
+  auth_worker:
+    image: ghcr.io/goauthentik/server
+    container_name: ${JARVIS_CONTAINER_NAME}_worker
+    restart: unless-stopped
+    user: root
+    command: worker
+    environment:
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_POSTGRESQL__HOST: postgres
+      AUTHENTIK_POSTGRESQL__NAME: ${JARVIS_CONTAINER_NAME}
+      AUTHENTIK_POSTGRESQL__USER: ${JARVIS_ADMIN_USERNAME}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${JARVIS_POSTGRES_PASSWORD}
+      AUTHENTIK_DISABLE_STARTUP_ANALYTICS: true
+      AUTHENTIK_DISABLE_UPDATE_CHECK: false
+      AUTHENTIK_ERROR_REPORTING__ENABLED: false
+      AUTHENTIK_LOG_LEVEL: info
+      AUTHENTIK_SECRET_KEY: ${JARVIS_AUTH_SESSION_KEY}
+      AUTHENTIK_COOKIE_DOMAIN: ${JARVIS_DOMAIN}
+      AUTHENTIK_SESSION_STORAGE: db
+      AUTHENTIK_EMAIL__HOST: smtp.gmail.com
+      AUTHENTIK_EMAIL__PORT: 587
+      AUTHENTIK_EMAIL__USERNAME: ${JARVIS_EMAIL}
+      AUTHENTIK_EMAIL__PASSWORD: ${JARVIS_AUTH_GOOGLE_APP_PASSWORD}
+      AUTHENTIK_EMAIL__USE_TLS: false
+      AUTHENTIK_EMAIL__USE_SSL: false
+      AUTHENTIK_EMAIL__TIMEOUT: 10
+      AUTHENTIK_EMAIL__FROM: ${JARVIS_CONTAINER_NAME}@${JARVIS_DOMAIN}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/media:/media
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/templates:/templates
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}
 

@@ -1,3 +1,4 @@
+name: ${JARVIS_CONTAINER_NAME}
 services:
   homeassistant:
     container_name: ${JARVIS_CONTAINER_NAME}

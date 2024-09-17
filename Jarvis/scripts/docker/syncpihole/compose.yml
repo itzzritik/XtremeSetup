@@ -1,3 +1,4 @@
+name: ${JARVIS_CONTAINER_NAME}
 services:
   orbital-sync:
     container_name: ${JARVIS_CONTAINER_NAME}

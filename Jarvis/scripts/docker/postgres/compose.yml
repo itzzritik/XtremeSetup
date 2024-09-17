@@ -1,0 +1,26 @@
+name: ${JARVIS_CONTAINER_NAME}
+services:
+  postgres:
+    container_name: ${JARVIS_CONTAINER_NAME}
+    image: postgres
+    shm_size: 128mb
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${JARVIS_ADMIN_USERNAME}"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_USER: ${JARVIS_ADMIN_USERNAME}
+      POSTGRES_PASSWORD: ${JARVIS_POSTGRES_PASSWORD}
+    volumes:
+      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/data:/var/lib/postgresql/data
+    networks:
+      - ${JARVIS_PROXY_DOCKER_NETWORK}
+
+networks:
+  proxy:
+    external: true

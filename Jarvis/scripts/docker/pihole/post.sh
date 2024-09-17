@@ -1,5 +1,4 @@
-printf '\n+%131s+\n\n' | tr ' ' '-'
-echo -e "● Post script for ${JARVIS_CONTAINER_NAME}\n"
+echo -e "\n\n● Post script for ${JARVIS_CONTAINER_NAME}\n"
 
 echo "✔ Seting local dns entries"
 DNS_PATH="/etc/${JARVIS_CONTAINER_NAME}/dnsmasq.d/02-wildcard.conf"

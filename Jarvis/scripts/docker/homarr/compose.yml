@@ -1,3 +1,4 @@
+name: ${JARVIS_CONTAINER_NAME}
 services:
   homarr:
     container_name: ${JARVIS_CONTAINER_NAME}
@@ -19,9 +20,9 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_DOMAIN}`)
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.service=${JARVIS_CONTAINER_NAME}
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
-      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls.certresolver=${JARVIS_CERT_RESOLVER}
       - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=7575
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}

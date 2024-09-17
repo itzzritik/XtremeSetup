@@ -6,8 +6,10 @@ printf '● Setting up \e]8;;https://www.docker.com\e\\Docker\e]8;;\e\\\n\n'
 [ $(id -u) -eq 0 ] && echo "✕ This script needs to run WITHOUT superuser permission" && exit 1
 
 JARVIS_DOCKER_APPS=(
+	"postgres=https://www.postgresql.org"
+	"redis=https://redis.io"
 	"code=https://github.com/coder/code-server"
-	# "auth=https://www.authelia.com"
+	"auth=https://www.authelia.com"
 	"traefik=https://traefik.io/traefik"
 	"pihole=https://pi-hole.net"
 	"home=https://home-assistant.io"
@@ -15,6 +17,7 @@ JARVIS_DOCKER_APPS=(
 	"duplicati=https://duplicati.com"
 	"portainer=https://portainer.io"
 	"homarr=https://homarr.dev"
+	"pgadmin=https://www.pgadmin.org"
 	# "syncpihole=https://orbitalsync.com"
 	"dashdot=https://getdashdot.com"
 	"dozzle=https://dozzle.dev"
@@ -51,7 +54,7 @@ DEPLOY() {
 	docker compose -f "$COMPOSE" up -d --build >>"$LOG_FILE" 2>&1
 	[ -f "$POST" ] && bash "$POST" >>"$LOG_FILE" 2>&1
 
-	if ! grep -qiE "✕|error|warning|cannot|failed|exception|fatal|critical" "$LOG_FILE"; then
+	if ! grep -qiE "✕|error|warning|invalid|cannot|failed|exception|fatal|critical" "$LOG_FILE"; then
 		printf '✔ %-*s  →  Deployed\n' "$MAX_APP_CHAR" "$TITLE_NAME" && rm -f "$LOG_FILE" && return 0
 	else
 		printf '✔ %-*s  →  Failed to deploy\n' "$MAX_APP_CHAR" "$TITLE_NAME" && return 1

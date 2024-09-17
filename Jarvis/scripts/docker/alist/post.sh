@@ -1,5 +1,4 @@
-printf '\n+%131s+\n\n' | tr ' ' '-'
-echo -e "● Post script for ${JARVIS_CONTAINER_NAME}\n"
+echo -e "\n\n● Post script for ${JARVIS_CONTAINER_NAME}\n"
 
 echo "✔ Setting password"
 docker exec -it ${JARVIS_CONTAINER_NAME} ./${JARVIS_CONTAINER_NAME} password set "${JARVIS_ADMIN_PASSWORD}" >/dev/null 2>&1
