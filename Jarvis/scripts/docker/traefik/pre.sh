@@ -18,6 +18,9 @@ for RULE_FILE in "$SCRIPT_DIR/configs/rules/"*.yml; do
 done
 
 echo "✔ Set right rules to acme.json"
+
 ACME="$CONFIG_PATH/data/acme.json"
-[ -e "$ACME" ] || touch "$ACME" && sudo chmod 600 "$ACME"
+[ -e "$ACME" ] || touch "$ACME"
+sudo chmod 600 "$ACME"
+
 [ "$(stat -c "%a" "$ACME")" -ne 600 ] && echo "✕ Failed to set permissions 600 for acme.json"

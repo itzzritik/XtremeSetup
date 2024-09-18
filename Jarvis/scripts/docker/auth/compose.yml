@@ -39,7 +39,6 @@ services:
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.service=${JARVIS_CONTAINER_NAME}
       - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=9000
-      - traefik.http.routers.${JARVIS_CONTAINER_NAME}-outpost.rule=HostRegexp(`{subdomain:[a-z0-9-]+}.${JARVIS_DOMAIN}`) && PathPrefix(`/outpost.goauthentik.io/`)
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}
 

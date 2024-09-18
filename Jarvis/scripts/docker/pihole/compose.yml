@@ -12,6 +12,8 @@ services:
       - 7777:80/tcp
     environment:
       TZ: ${JARVIS_TZ}
+      PUID: ${JARVIS_PUID}
+      PGID: ${JARVIS_PGID}
       WEBTHEME: default-darker
       WEBPASSWORD: ${JARVIS_ADMIN_PASSWORD}
       PIHOLE_DNS_: ${JARVIS_GOOGLE_DNS}

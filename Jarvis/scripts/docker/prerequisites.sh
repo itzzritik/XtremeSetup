@@ -28,6 +28,9 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
+echo "✔ Creating config directory"
+mkdir -p "$JARVIS_CONFIG_ROOT"
+
 echo "✔ Removing empty config directories"
 find "$JARVIS_CONFIG_ROOT" -mindepth 1 -maxdepth 1 -type d -empty -exec rmdir {} +
 

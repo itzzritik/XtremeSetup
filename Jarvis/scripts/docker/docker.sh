@@ -8,7 +8,7 @@ printf '● Setting up \e]8;;https://www.docker.com\e\\Docker\e]8;;\e\\\n\n'
 JARVIS_DOCKER_APPS=(
 	"postgres=https://www.postgresql.org"
 	"redis=https://redis.io"
-	"code=https://github.com/coder/code-server"
+	# "code=https://github.com/coder/code-server"
 	"auth=https://www.authelia.com"
 	"traefik=https://traefik.io/traefik"
 	"pihole=https://pi-hole.net"
@@ -44,11 +44,16 @@ DEPLOY() {
 	for VAR in $REQUIRED_VARS; do [ -z "${!VAR}" ] && printf '✕ %-*s  →  %-30s\n' "$MAX_APP_CHAR" "$TITLE_NAME" "Variable $VAR not set" | tee -a "$LOG_FILE" && return 1; done
 	
 	if docker ps --filter "name=$NAME" --filter "status=running" --format "{{.Names}}" | grep -q "^$NAME$"; then
-		TIME=$(docker ps --filter "name=$NAME" --format "{{.Status}}" | awk '{print $2 substr($3,1,1)}')
+		DIFF=$(docker inspect -f '{{.State.StartedAt}}' "$NAME" | xargs -I{} date +%s -d {} | awk -v now=$(date +%s) '{print now-$1}')
+		TIME=$(awk -v diff="$DIFF" 'BEGIN {s=diff; m=int(s/60); h=int(m/60); d=int(h/24); mo=int(d/30); y=int(mo/12); print s < 100 ? s " sec" : m < 100 ? m " min" : h < 100 ? h " hour" : d < 100 ? d " day" : mo < 12 ? mo " mon" : y " yr"}')
 		printf '✔ %-*s  →  Running (%s)\n' "$MAX_APP_CHAR" "$TITLE_NAME" "$TIME" && rm -f "$LOG_FILE" && return 0
 	fi
 
 	mkdir -p "$JARVIS_CONFIG_ROOT/$NAME"
+	sudo chown -R $USER:$USER "$JARVIS_CONFIG_ROOT/$NAME"
+	sudo chmod -R 777 "$JARVIS_CONFIG_ROOT/$NAME"
+	echo $USER
+
 	[ -f "$PRE" ] && bash "$PRE" >>"$LOG_FILE" 2>&1
 	docker stop "$NAME" >/dev/null 2>&1 && docker rm "$NAME" >/dev/null 2>&1
 	docker compose -f "$COMPOSE" up -d --build >>"$LOG_FILE" 2>&1

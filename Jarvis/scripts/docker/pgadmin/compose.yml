@@ -4,6 +4,8 @@ services:
     container_name: ${JARVIS_CONTAINER_NAME}
     image: dpage/pgadmin4
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "pgrep", "gunicorn"]
       start_period: 10s

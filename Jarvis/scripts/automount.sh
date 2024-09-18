@@ -21,6 +21,10 @@ SLEEP_TEXT="prevent sleep"
 DISABLE_SLEEP_CRON="*/5 * * * * /bin/bash -c 'for mount_point in ${DRIVES[@]}; do counter_file=\"\$mount_point/.keepawake\"; if [ -f \"\$counter_file\" ]; then counter=\$(grep -o \"[0-9]*\" \"\$counter_file\" || echo 0); else counter=0; fi; counter=\$((counter + 1)); echo \"$SLEEP_TEXT \$counter\" > \"\$counter_file\"; done'"
 (crontab -l 2>/dev/null | grep -vF "$SLEEP_TEXT"; echo "$DISABLE_SLEEP_CRON") | crontab -
 
+echo "✔ Set open permissions for /mnt"
+sudo chown -R $USER:$USER /mnt
+sudo chmod -R 777 /mnt
+
 ALL_MOUNTED=true
 for UUID in "${!DRIVES[@]}"; do [[ -z $(findmnt --fstab --target ${DRIVES[$UUID]} -A) ]] && ALL_MOUNTED=false && break; done
 [[ $ALL_MOUNTED == true ]] && echo "✔ All drives are already mounted" && exit 0
@@ -47,9 +51,10 @@ done
 
 sudo systemctl daemon-reload
 sudo mount -a
+echo "✔ Mount all drives in /etc/fstab"
+
 sudo chown -R $USER:$USER /mnt
-sudo chmod -R u+rwx /mnt
-echo "✔ Mount point permissions set for user: $USER"
+sudo chmod -R 777 /mnt
 
 [[ ! $(sudo findmnt --fstab --target "$JARVIS_DRIVE_ROOT" -A) ]] && echo "✕ Mounting failed. Check configuration." && exit 1
 echo "✔ All drives mounted successfully."
