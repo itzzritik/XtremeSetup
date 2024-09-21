@@ -4,6 +4,7 @@ services:
     container_name: ${JARVIS_CONTAINER_NAME}
     image: portainer/portainer-ce
     restart: unless-stopped
+    user: ${JARVIS_PUID}:${JARVIS_PGID}
     security_opt:
       - no-new-privileges:true
     ports:

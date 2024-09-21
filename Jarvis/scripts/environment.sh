@@ -2,7 +2,7 @@ NAME=Doppler
 NAME_LOWER="${NAME,,}"
 URL="https://www.doppler.com"
 
-printf '● Setup jarvis environment with \e]8;;%s\a%s\e]8;;\a\n\n' "$URL" "$NAME_LOWER"
+printf '● Setup environment with \e]8;;%s\a%s\e]8;;\a\n\n' "$URL" "$NAME_LOWER"
 
 if ! command -v htpasswd >/dev/null 2>&1; then
   echo -e "→ Installing apache2-utils to use htpasswd for password hashing\n"
@@ -46,8 +46,8 @@ JARVIS_PGID=$(id -g $USER)
 JARVIS_EMAIL="ritik.jarvis@gmail.com"
 JARVIS_PROXY_DOCKER_NETWORK="proxy"
 JARVIS_DRIVE_ROOT="/mnt/drive1"
-JARVIS_CONFIG="$HOME/.jarvis/configs"
-JARVIS_LOGS="$HOME/.jarvis/configs"
+JARVIS_CONFIGS="$HOME/.$JARVIS_HOSTNAME/configs"
+JARVIS_LOGS="$HOME/.$JARVIS_HOSTNAME/logs"
 
 echo "✔ Environment variables injected into the shell"
 set +a

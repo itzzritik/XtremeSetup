@@ -34,9 +34,10 @@ echo "|                                                                         
 printf '+%131s+\n\n' | tr ' ' '-'
 
 source $SCRIPT_DIR/environment.sh
-bash $SCRIPT_DIR/bluetooth.sh
 bash $SCRIPT_DIR/timezone.sh
 bash $SCRIPT_DIR/git.sh
+bash $SCRIPT_DIR/configs.sh
+bash $SCRIPT_DIR/bluetooth.sh
 bash $SCRIPT_DIR/hostname.sh
 bash $SCRIPT_DIR/static_ip.sh
 bash $SCRIPT_DIR/ssh.sh

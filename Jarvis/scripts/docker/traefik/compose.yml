@@ -20,7 +20,7 @@ services:
       - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}:/config
       - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/data:/data
       - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/rules:/rules
-      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/logs:/logs
+      - ${JARVIS_LOGS}/${JARVIS_CONTAINER_NAME}:/logs
     labels:
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)

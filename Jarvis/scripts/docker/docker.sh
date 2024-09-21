@@ -14,7 +14,7 @@ JARVIS_DOCKER_APPS=(
 	"pihole=https://pi-hole.net"
 	"home=https://home-assistant.io"
 	"alist=https://github.com/alist-org/alist"
-	"duplicati=https://duplicati.com"
+	# "duplicati=https://duplicati.com"
 	"portainer=https://portainer.io"
 	"homarr=https://homarr.dev"
 	"dashdot=https://getdashdot.com"
@@ -74,7 +74,7 @@ echo -e "\n✔ $((${#JARVIS_DOCKER_APPS[@]} - FAIL_COUNT)) apps are up and runni
 
 if [ $FAIL_COUNT -ne 0 ]; then
 	echo -e "✕ $FAIL_COUNT apps failed to deploy"
-	bash "$SCRIPT_DIR/logs.sh"
+	bash "$SCRIPT_DIR/logger.sh"
 fi
 
 echo -e "✔ Clearing docker cache"

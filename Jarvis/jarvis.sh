@@ -2,17 +2,17 @@
 
 clear
 
-JarvisLocation="$HOME/.jarvis/scripts"
-RepoUrl="https://github.com/itzzritik/XtremeSetup.git"
+JARVIS_SCRIPTS="$HOME/.jarvis/scripts"
+SCRIPT_REPO="https://github.com/itzzritik/XtremeSetup.git"
 
-rm -rf "$JarvisLocation"
-mkdir -p "$JarvisLocation"
+rm -rf "$JARVIS_SCRIPTS"
+mkdir -p "$JARVIS_SCRIPTS"
 
-git clone "$RepoUrl" "$JarvisLocation/XtremeSetup" || { echo "✕ Unable to clone the repository"; exit 1; }
-bash "$JarvisLocation/XtremeSetup/Jarvis/scripts/index.sh" || { echo "✕ Script execution failed"; exit 1; }
+git clone "$SCRIPT_REPO" "$JARVIS_SCRIPTS/XtremeSetup" || { echo "✕ Unable to clone the SCRIPT_sitory"; exit 1; }
+bash "$JARVIS_SCRIPTS/XtremeSetup/Jarvis/scripts/index.sh" || { echo "✕ Script execution failed"; exit 1; }
 
 echo "● Cleaning up downloaded scripts"
-rm -rf "$JarvisLocation"
+rm -rf "$JARVIS_SCRIPTS"
 echo
 echo "✔ Jarvis is ready"
 printf '\n+%131s+\n\n' | tr ' ' '-'

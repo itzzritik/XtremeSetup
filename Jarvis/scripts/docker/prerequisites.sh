@@ -28,12 +28,6 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
-echo "✔ Creating config directory"
-mkdir -p "$JARVIS_CONFIGS"
-
-echo "✔ Removing empty config directories"
-find "$JARVIS_CONFIGS" -mindepth 1 -maxdepth 1 -type d -empty -exec rmdir {} +
-
 echo "✔ Removing docker apps log files"
 find "$SCRIPT_DIR" -type f -name 'debug.log' -delete
 

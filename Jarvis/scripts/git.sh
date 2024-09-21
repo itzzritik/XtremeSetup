@@ -28,6 +28,8 @@ else
     ssh-add "$KEY_PATH"
     echo -e "\n→ Please add the following SSH key to your GitHub account:"
     cat "$KEY_PATH.pub"
+	echo
+	read -p "→ Press enter once SSH keys are set"
 fi
 
 echo "✔ Git environment setup successfully"

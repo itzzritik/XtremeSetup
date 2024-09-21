@@ -1,8 +1,0 @@
-http:
-  middlewares:
-    chain-auth:
-      chain:
-        middlewares:
-          - middlewares-rate-limit
-          - middlewares-compress
-          - middlewares-auth

@@ -5,6 +5,7 @@ services:
     image: cloudflare/cloudflared
     restart: unless-stopped
     command: tunnel --no-autoupdate run
+    user: ${JARVIS_PUID}:${JARVIS_PGID}
     security_opt:
       - no-new-privileges:true
     environment:

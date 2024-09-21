@@ -5,6 +5,7 @@ services:
     image: mauricenino/dashdot
     restart: unless-stopped
     privileged: true
+    user: ${JARVIS_PUID}:${JARVIS_PGID}
     security_opt:
       - no-new-privileges:true
     ports:
