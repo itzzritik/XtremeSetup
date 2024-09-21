@@ -8,7 +8,7 @@ printf '● Setting up \e]8;;https://www.docker.com\e\\Docker\e]8;;\e\\\n\n'
 JARVIS_DOCKER_APPS=(
 	"postgres=https://www.postgresql.org"
 	"redis=https://redis.io"
-	# "code=https://github.com/coder/code-server"
+	"code=https://github.com/coder/code-server"
 	"auth=https://www.authelia.com"
 	"traefik=https://traefik.io/traefik"
 	"pihole=https://pi-hole.net"
@@ -17,8 +17,6 @@ JARVIS_DOCKER_APPS=(
 	"duplicati=https://duplicati.com"
 	"portainer=https://portainer.io"
 	"homarr=https://homarr.dev"
-	"pgadmin=https://www.pgadmin.org"
-	# "syncpihole=https://orbitalsync.com"
 	"dashdot=https://getdashdot.com"
 	"dozzle=https://dozzle.dev"
 	"cloudflared=https://one.dash.cloudflare.com"
@@ -49,10 +47,9 @@ DEPLOY() {
 		printf '✔ %-*s  →  Running (%s)\n' "$MAX_APP_CHAR" "$TITLE_NAME" "$TIME" && rm -f "$LOG_FILE" && return 0
 	fi
 
-	mkdir -p "$JARVIS_CONFIG_ROOT/$NAME"
-	sudo chown -R $USER:$USER "$JARVIS_CONFIG_ROOT/$NAME"
-	sudo chmod -R 777 "$JARVIS_CONFIG_ROOT/$NAME"
-	echo $USER
+	mkdir -p "$JARVIS_CONFIGS/$NAME"
+	sudo chown -R $USER:$USER "$JARVIS_CONFIGS/$NAME"
+	sudo chmod -R 777 "$JARVIS_CONFIGS/$NAME"
 
 	[ -f "$PRE" ] && bash "$PRE" >>"$LOG_FILE" 2>&1
 	docker stop "$NAME" >/dev/null 2>&1 && docker rm "$NAME" >/dev/null 2>&1

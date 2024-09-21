@@ -8,6 +8,8 @@ http:
       tls:
         certResolver: ${JARVIS_CERT_RESOLVER}
         options: tls-opts@file
+      middlewares:
+        - chain-auth@file
 
   services:
     home:

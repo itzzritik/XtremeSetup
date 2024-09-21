@@ -15,20 +15,21 @@ services:
       PUID: ${JARVIS_PUID}
       PGID: ${JARVIS_PGID}
       WEBTHEME: default-darker
-      WEBPASSWORD: ${JARVIS_ADMIN_PASSWORD}
+      WEBPASSWORD: ''
       PIHOLE_DNS_: ${JARVIS_GOOGLE_DNS}
       FTLCONF_LOCAL_IPV4: ${JARVIS_STATIC_IP}
       PIHOLE_DOMAIN: pi.hole
       VIRTUAL_HOST: pi.hole
     volumes:
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/etc/pihole
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/dnsmasq.d:/etc/dnsmasq.d
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}:/etc/pihole
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/dnsmasq.d:/etc/dnsmasq.d
     labels:
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.service=${JARVIS_CONTAINER_NAME}
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=chain-auth@file
       - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=80
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}

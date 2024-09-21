@@ -14,10 +14,11 @@ services:
     ports:
       - 5432:5432
     environment:
+      TZ: ${JARVIS_TZ}
       POSTGRES_USER: ${JARVIS_ADMIN_USERNAME}
       POSTGRES_PASSWORD: ${JARVIS_POSTGRES_PASSWORD}
     volumes:
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/data:/var/lib/postgresql/data
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/data:/var/lib/postgresql/data
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}
 

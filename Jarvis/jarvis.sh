@@ -2,7 +2,7 @@
 
 clear
 
-JarvisLocation="$HOME/.jarvis"
+JarvisLocation="$HOME/.jarvis/scripts"
 RepoUrl="https://github.com/itzzritik/XtremeSetup.git"
 
 rm -rf "$JarvisLocation"

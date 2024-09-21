@@ -17,14 +17,15 @@ services:
       CF_DNS_API_TOKEN: ${JARVIS_CF_DNS_API_TOKEN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/config
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/data:/data
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/rules:/rules
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/logs:/logs
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}:/config
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/data:/data
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/rules:/rules
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/logs:/logs
     labels:
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.service=api@internal
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=chain-auth@file
     extra_hosts: 
       host.docker.internal: host-gateway
     networks:

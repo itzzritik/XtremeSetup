@@ -17,6 +17,8 @@ git config --global user.email "$JARVIS_EMAIL"
 echo "✔ Git user name: $(git config --global user.name)"
 echo "✔ Git user email: $(git config --global user.email)"
 
+git config --global init.defaultBranch main
+
 if [ -f "$KEY_PATH" ] && [ -f "$KEY_PATH.pub" ]; then
     echo "✔ SSH keys already exist at \"$KEY_PATH.pub\""
 else

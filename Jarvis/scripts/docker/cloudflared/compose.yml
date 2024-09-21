@@ -10,7 +10,7 @@ services:
     environment:
       TUNNEL_TOKEN: ${JARVIS_CF_TUNNEL_TOKEN}
     volumes:
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/etc/cloudflared
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}:/etc/cloudflared
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}
 

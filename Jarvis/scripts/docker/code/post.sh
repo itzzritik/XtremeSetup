@@ -7,6 +7,7 @@ EXTENSION_LIST=(
 	"foxundermoon.shell-format"
 	"eamodio.gitlens"
 	"seatonjiang.gitmoji-vscode"
+	"equinusocio.vsc-material-theme"
 	"pkief.material-icon-theme"
 )
 
@@ -17,7 +18,7 @@ done
 wait
 
 echo -e "\n✔ Applying settings"
-CONFIG_DIR=~/.local/share/code-server/User
+CONFIG_DIR="/home/coder/.local/share/code-server/User"
 SETTINGS=$(
 	cat <<EOF
 {
@@ -26,4 +27,7 @@ SETTINGS=$(
 }
 EOF
 )
-docker exec "${JARVIS_CONTAINER_NAME}" bash -c "mkdir -p '$CONFIG_DIR' && echo '$SETTINGS' > $CONFIG_DIR/settings.json" &
+docker exec "${JARVIS_CONTAINER_NAME}" bash -c "mkdir -p '$CONFIG_DIR'; echo '$SETTINGS' > $CONFIG_DIR/settings.json"
+
+echo "✔ Restarting container"
+docker restart "${JARVIS_CONTAINER_NAME}" >/dev/null 2>&1 &

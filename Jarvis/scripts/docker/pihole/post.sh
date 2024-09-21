@@ -1,7 +1,7 @@
 echo -e "\n\n● Post script for ${JARVIS_CONTAINER_NAME}\n"
 
 echo "✔ Seting local dns entries"
-CONFIG_PATH="${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}"
+CONFIG_PATH="${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}"
 sudo chown -R $USER:$USER $CONFIG_PATH
 sudo chmod -R 777 $CONFIG_PATH
 
@@ -20,7 +20,8 @@ CONFIGS=("MAXCONN=5096" "RATE_LIMIT=5000/60")
 touch "$FTL_CONF_PATH"
 for CONFIG in "${CONFIGS[@]}"; do
     KEY=$(echo "$CONFIG" | cut -d '=' -f 1)
-    grep -q "^$KEY=" "$FTL_CONF_PATH" && sed -i "s/^$KEY=.*/$CONFIG/" "$FTL_CONF_PATH" || echo "$CONFIG" >> "$FTL_CONF_PATH"
+	grep -q "^$KEY=" "$FTL_CONF_PATH" && sed -i "s/^$KEY=.*/$CONFIG/" "$FTL_CONF_PATH" || grep -q "^$CONFIG$" "$FTL_CONF_PATH" || echo "$CONFIG" >> "$FTL_CONF_PATH"
+
 done
 
 echo "✔ Restarting container"

@@ -14,7 +14,7 @@ services:
       PUID: ${JARVIS_PUID}
       PGID: ${JARVIS_PGID}
     volumes:
-      - ${JARVIS_CONFIG_ROOT}:/source
+      - ${JARVIS_CONFIGS}:/source
       - ${JARVIS_DRIVE_ROOT}/.${JARVIS_CONTAINER_NAME}/configs:/config
       - ${JARVIS_DRIVE_ROOT}/.${JARVIS_CONTAINER_NAME}/backups:/backups
     labels:

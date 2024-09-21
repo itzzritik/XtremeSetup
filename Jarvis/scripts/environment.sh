@@ -46,7 +46,8 @@ JARVIS_PGID=$(id -g $USER)
 JARVIS_EMAIL="ritik.jarvis@gmail.com"
 JARVIS_PROXY_DOCKER_NETWORK="proxy"
 JARVIS_DRIVE_ROOT="/mnt/drive1"
-JARVIS_CONFIG_ROOT="$JARVIS_DRIVE_ROOT/.configs"
+JARVIS_CONFIG="$HOME/.jarvis/configs"
+JARVIS_LOGS="$HOME/.jarvis/configs"
 
 echo "✔ Environment variables injected into the shell"
 set +a

@@ -17,6 +17,8 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: ${JARVIS_ADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${JARVIS_ADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
     volumes:
       - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/var/lib/pgadmin
     labels:
@@ -25,6 +27,7 @@ services:
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.service=${JARVIS_CONTAINER_NAME}
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
+      - traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=chain-auth@file
       - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=80
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}

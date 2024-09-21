@@ -14,7 +14,7 @@ services:
       PGID: ${JARVIS_PGID}
       UMASK: 022
     volumes:
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/opt/alist/data
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}:/opt/alist/data
       - ${JARVIS_DRIVE_ROOT}:/mnt
       - ${HOME}:/home
     labels:
@@ -23,8 +23,8 @@ services:
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.service=${JARVIS_CONTAINER_NAME}
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.entrypoints=websecure
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.tls=true
-      - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=5244
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.middlewares=chain-auth@file
+      - traefik.http.services.${JARVIS_CONTAINER_NAME}.loadbalancer.server.port=5244
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}
 

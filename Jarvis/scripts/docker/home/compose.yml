@@ -13,4 +13,4 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /run/dbus:/run/dbus:ro
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}:/config
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}:/config

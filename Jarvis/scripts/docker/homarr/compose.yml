@@ -14,9 +14,9 @@ services:
       NODE_TLS_REJECT_UNAUTHORIZED: 0
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/configs:/app/data/configs
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/icons:/app/public/icons
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/data:/data
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/configs:/app/data/configs
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/icons:/app/public/icons
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/data:/data
     labels:
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_DOMAIN}`)

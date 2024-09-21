@@ -30,8 +30,8 @@ services:
     ports:
       - 9090:9000
     volumes:
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/media:/media
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/templates:/templates
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/media:/media
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/templates:/templates
     labels:
       - traefik.enable=true
       - traefik.http.routers.${JARVIS_CONTAINER_NAME}.rule=Host(`${JARVIS_CONTAINER_NAME}.${JARVIS_DOMAIN}`)
@@ -71,8 +71,8 @@ services:
       AUTHENTIK_EMAIL__FROM: ${JARVIS_CONTAINER_NAME}@${JARVIS_DOMAIN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/media:/media
-      - ${JARVIS_CONFIG_ROOT}/${JARVIS_CONTAINER_NAME}/templates:/templates
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/media:/media
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/templates:/templates
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}
 
