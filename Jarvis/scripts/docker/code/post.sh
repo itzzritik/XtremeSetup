@@ -1,6 +1,12 @@
 printf '\n+%131s+\n\n' | tr ' ' '-'
 echo -e "● Post script for ${JARVIS_CONTAINER_NAME}\n"
 
+# echo "→ Waiting for ${JARVIS_CONTAINER_NAME}"
+# TIMEOUT=10; ELAPSED=0
+# until docker exec "${JARVIS_CONTAINER_NAME}" pg_isready -U "${JARVIS_ADMIN_USERNAME}" >/dev/null 2>&1 || [ "$ELAPSED" -ge "$TIMEOUT" ]; do
+#     sleep 1; ((ELAPSED++))
+# done || { echo "✕ Container did not come up within $TIMEOUT seconds"; exit 1; }
+
 echo -e "→ Installing extensions\n"
 EXTENSION_LIST=(
 	"redhat.vscode-yaml"
