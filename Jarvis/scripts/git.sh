@@ -28,7 +28,11 @@ else
 	eval "$(ssh-agent -s)"
 	ssh-add "$KEY_PATH"
 
-	echo -e "\n→ Uploading SSH key to your GitHub account"
+	echo -e "\n→ Deleating existing key on your GitHub"
+	EXISTING_KEY_ID=$(curl -s -H "Authorization: token $JARVIS_GITHUB_TOKEN_SSH" https://api.github.com/user/keys | jq -r ".[] | select(.title==\"$JARVIS_HOSTNAME\") | .id")
+	[ -n "$EXISTING_KEY_ID" ] && curl -s -X DELETE -H "Authorization: token $JARVIS_GITHUB_TOKEN_SSH" https://api.github.com/user/keys/$EXISTING_KEY_ID
+
+	echo -e "\n→ Uploading new SSH key to your GitHub"
 	RESPONSE=$(curl -s -X POST https://api.github.com/user/keys \
 		-H "Authorization: token $JARVIS_GITHUB_TOKEN_SSH" -H "Content-Type: application/json" \
 		-d "{\"title\":\"$JARVIS_HOSTNAME\",\"key\":\"$(< "$KEY_PATH.pub")\"}")

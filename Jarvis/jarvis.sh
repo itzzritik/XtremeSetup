@@ -2,7 +2,7 @@
 
 clear
 
-JARVIS_SCRIPTS="$HOME/.jarvis/scripts"
+JARVIS_SCRIPTS="$HOME/.jarvis/setup"
 SCRIPT_REPO="https://github.com/itzzritik/XtremeSetup.git"
 
 rm -rf "$JARVIS_SCRIPTS"
