@@ -1,3 +1,5 @@
+#!/bin/bash -e
+
 echo -e "\n\n● Pre script for ${JARVIS_CONTAINER_NAME}\n"
 
 echo "→ Creating required directories"

@@ -6,8 +6,8 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    command:
-      - --configFile=/config/traefik.yml
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["touch /data/acme.json && chmod 600 /data/acme.json && exec traefik --configFile=/config/traefik.yml"]
     ports:
       - 80:80
       - 443:443

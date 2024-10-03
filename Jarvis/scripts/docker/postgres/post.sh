@@ -1,3 +1,5 @@
+#!/bin/bash -e
+
 echo -e "\n\n● Post script for ${JARVIS_CONTAINER_NAME}\n"
 
 echo "→ Waiting for ${JARVIS_CONTAINER_NAME}"

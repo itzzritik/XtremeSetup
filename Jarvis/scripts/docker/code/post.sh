@@ -1,3 +1,5 @@
+#!/bin/bash -e
+
 printf '\n+%131s+\n\n' | tr ' ' '-'
 echo -e "● Post script for ${JARVIS_CONTAINER_NAME}\n"
 
