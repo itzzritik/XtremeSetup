@@ -2,10 +2,12 @@ name: ${JARVIS_CONTAINER_NAME}
 services:
   postgres:
     container_name: ${JARVIS_CONTAINER_NAME}
-    image: postgres
+    image: postgres:17.0
     shm_size: 128mb
     restart: unless-stopped
     user: ${JARVIS_PUID}:${JARVIS_PGID}
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${JARVIS_ADMIN_USERNAME}"]
       start_period: 20s
@@ -20,6 +22,7 @@ services:
       POSTGRES_PASSWORD: ${JARVIS_POSTGRES_PASSWORD}
     volumes:
       - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}/data:/var/lib/postgresql/data
+      - ${JARVIS_CONFIGS}/${JARVIS_CONTAINER_NAME}:/dump
     networks:
       - ${JARVIS_PROXY_DOCKER_NETWORK}
 

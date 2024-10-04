@@ -1,8 +1,8 @@
 name: ${JARVIS_CONTAINER_NAME}
 services:
   auth:
-    image: ghcr.io/goauthentik/server
     container_name: ${JARVIS_CONTAINER_NAME}
+    image: ghcr.io/goauthentik/server:2024.8.3
     restart: unless-stopped
     command: server
     user: ${JARVIS_PUID}:${JARVIS_PGID}
@@ -43,8 +43,8 @@ services:
       - ${JARVIS_PROXY_DOCKER_NETWORK}
 
   auth_worker:
-    image: ghcr.io/goauthentik/server
     container_name: ${JARVIS_CONTAINER_NAME}_worker
+    image: ghcr.io/goauthentik/server:2024.8.3
     restart: unless-stopped
     user: root
     command: worker

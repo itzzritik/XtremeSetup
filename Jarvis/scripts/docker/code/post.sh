@@ -1,7 +1,6 @@
 #!/bin/bash -e
 
-printf '\n+%131s+\n\n' | tr ' ' '-'
-echo -e "● Post script for ${JARVIS_CONTAINER_NAME}\n"
+echo -e "\n\n● Post script for ${JARVIS_CONTAINER_NAME}\n"
 
 # echo "→ Waiting for ${JARVIS_CONTAINER_NAME}"
 # TIMEOUT=10; ELAPSED=0

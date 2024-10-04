@@ -36,6 +36,9 @@ mkdir -p "\$(dirname "\$LOG_FILE")"
 exec > >(tee -a "\$LOG_FILE") 2>&1
 echo -e "→ Backup started at \$(date '+%d %b %Y - %I:%M%p')"
 
+echo -e "→ Taking postgres backup"
+docker exec -t postgres pg_dumpall -U $JARVIS_ADMIN_USERNAME > $JARVIS_CONFIGS/postgres/dump.sql
+
 echo -e "→ Stopping docker containers"
 docker stop \$(docker ps -q) > /dev/null 2>&1
 
