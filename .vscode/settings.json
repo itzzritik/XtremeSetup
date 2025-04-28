@@ -5,5 +5,10 @@
 	"editor.detectIndentation": false,
     "search.exclude": {
         "**/archive": true,
-    }
+	},
+	"cSpell.words": [
+		"Automount",
+		"ntfs",
+		"wdhdd"
+	]
 }

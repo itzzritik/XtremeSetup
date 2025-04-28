@@ -1,44 +1,44 @@
-- name: Update system if last update was more than 1 day ago
-  hosts: your_hosts_group
+- name: System Update
+  hosts: jarvis
+  gather_facts: yes
   become: true
+
+  vars:
+      update_stamp_path: /var/lib/apt/periodic/update-success-stamp
+
   tasks:
-      - name: Ensure .jarvis directory exists
-        ansible.builtin.file:
-            path: "{{ ansible_env.HOME }}/.jarvis"
-            state: directory
-            mode: "0755"
+      - name: Check last update timestamp
+        stat:
+            path: "{{ update_stamp_path }}"
+        register: update_stamp
 
-      - name: Read last updated timestamp (if exists)
-        ansible.builtin.slurp:
-            src: "{{ ansible_env.HOME }}/.jarvis/updated_at"
-        register: updated_at_file
-        ignore_errors: yes
+      - name: Calculate hours since last update
+        set_fact:
+            hours_since_update: >-
+                {{ 25 if not update_stamp.stat.exists else ((ansible_date_time.epoch|int - update_stamp.stat.mtime|int) // 3600) }}
 
-      - name: Set last updated fact
-        ansible.builtin.set_fact:
-            last_updated: "{{ (updated_at_file.content | b64decode | trim) | int }}"
-        when: updated_at_file is defined and updated_at_file.content is defined
+      - name: Show last update status
+        debug:
+            msg: >-
+                {{ 'First run - no previous update detected' if not update_stamp.stat.exists else 'Last system update was ' + hours_since_update|string + ' hours ago' }}
 
-      - name: Set last updated to 0 if file missing
-        ansible.builtin.set_fact:
-            last_updated: 0
-        when: last_updated is not defined
+      - name: Exit if updated within last 24 hours
+        meta: end_play
+        when: hours_since_update|int < 24
 
-      - name: Calculate time since last update
-        ansible.builtin.set_fact:
-            diff_seconds: "{{ (ansible_date_time.epoch | int) - last_updated }}"
-
-      - name: Update and upgrade system
-        ansible.builtin.apt:
+      - name: Perform system update
+        apt:
             update_cache: yes
-            upgrade: dist
+            upgrade: yes
             autoremove: yes
             autoclean: yes
-        when: diff_seconds > 86400 # 86400 seconds = 1 day
 
-      - name: Save current timestamp after update
-        ansible.builtin.copy:
-            dest: "{{ ansible_env.HOME }}/.jarvis/updated_at"
-            content: "{{ ansible_date_time.epoch }}"
+      - name: Ensure update timestamp file
+        file:
+            path: "{{ update_stamp_path }}"
+            state: touch
             mode: "0644"
-        when: diff_seconds > 86400
+
+      - name: Show update summary
+        debug:
+            msg: "System update completed."

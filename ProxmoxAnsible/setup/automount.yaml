@@ -1,0 +1,50 @@
+- name: Automount Drives Dynamically
+  hosts: jarvis
+  become: true
+  gather_facts: yes
+
+  vars:
+      drives:
+          "06BDD2E367CF2A57": "/mnt/ssd"
+          "083AAA5A3AAA4492": "/mnt/wdhdd"
+
+  tasks:
+      - name: Ensure ntfs-3g is installed
+        ansible.builtin.package:
+            name: ntfs-3g
+            state: present
+
+      - name: Gather device info
+        ansible.builtin.command: blkid -t UUID={{ item.key }} -o device
+        register: devices
+        changed_when: false
+        loop: "{{ drives | dict2items }}"
+
+      - name: Gather filesystem types
+        ansible.builtin.command: blkid -s TYPE -o value {{ item.stdout }}
+        register: fstypes
+        changed_when: false
+        loop: "{{ devices.results }}"
+
+      - name: Build final drives list
+        ansible.builtin.set_fact:
+            final_drives: "{{ final_drives | default([]) + [{'uuid': item.item.key, 'device': item.stdout, 'mount_point': drives[item.item.key], 'fstype': fstypes.results[devices.results.index(item)].stdout }] }}"
+        loop: "{{ devices.results }}"
+
+      - name: Ensure mount points exist
+        ansible.builtin.file:
+            path: "{{ item.mount_point }}"
+            state: directory
+            mode: "0755"
+        loop: "{{ final_drives }}"
+
+      - name: Mount drives and add to fstab
+        ansible.posix.mount:
+            path: "{{ item.mount_point }}"
+            src: "UUID={{ item.uuid }}"
+            fstype: "{{ item.fstype }}"
+            opts: defaults,noatime,nodiratime,users,permissions
+            dump: 0
+            passno: 2
+            state: mounted
+        loop: "{{ final_drives }}"
