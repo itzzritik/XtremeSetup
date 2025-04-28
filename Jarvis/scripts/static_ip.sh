@@ -31,3 +31,38 @@ echo "✔ Netplan configuration updated. applying changes..."
 sudo chmod 600 "$CONFIG_FILE"
 sudo netplan apply
 echo "✔ Netplan changes applied successfully"
+
+
+# arch: amd64
+# cores: 4
+# dev0: /dev/dri/card1,gid=44
+# dev1: /dev/dri/renderD128,gid=104
+# features: keyctl=1,nesting=1
+# hostname: jellyfin
+# memory: 2048
+# net0: name=eth0,bridge=vmbr0,hwaddr=BC:24:11:4A:8E:43,ip=192.168.68.254/24,gw=192.168.68.1,type=veth
+# onboot: 1
+# ostype: ubuntu
+# rootfs: local-lvm:vm-101-disk-0,size=8G
+# swap: 512
+# tags: community-script;media
+# unprivileged: 1
+# mp0: /mnt/wdhdd,mp=/media/wdhdd
+# mp1: /mnt/ssd,mp=/media/ssd
+# lxc.cgroup2.devices.allow: c 226:* rwm
+# lxc.mount.entry: /dev/dri dev/dri none bind,optional
+
+# arch: amd64
+# cores: 2
+# features: keyctl=1,nesting=1
+# hostname: torrent
+# memory: 2048
+# mp0: /mnt/wdhdd,mp=/media/wdhdd
+# mp1: /mnt/ssd,mp=/media/ssd
+# net0: name=eth0,bridge=vmbr0,hwaddr=BC:24:11:10:B2:A7,ip=192.168.68.253/24,gw=192.168.68.1,type=veth
+# onboot: 1
+# ostype: debian
+# rootfs: local-lvm:vm-102-disk-0,size=8G
+# swap: 512
+# tags: community-script;torrent
+# unprivileged: 1

@@ -1,0 +1,44 @@
+- name: Update system if last update was more than 1 day ago
+  hosts: your_hosts_group
+  become: true
+  tasks:
+      - name: Ensure .jarvis directory exists
+        ansible.builtin.file:
+            path: "{{ ansible_env.HOME }}/.jarvis"
+            state: directory
+            mode: "0755"
+
+      - name: Read last updated timestamp (if exists)
+        ansible.builtin.slurp:
+            src: "{{ ansible_env.HOME }}/.jarvis/updated_at"
+        register: updated_at_file
+        ignore_errors: yes
+
+      - name: Set last updated fact
+        ansible.builtin.set_fact:
+            last_updated: "{{ (updated_at_file.content | b64decode | trim) | int }}"
+        when: updated_at_file is defined and updated_at_file.content is defined
+
+      - name: Set last updated to 0 if file missing
+        ansible.builtin.set_fact:
+            last_updated: 0
+        when: last_updated is not defined
+
+      - name: Calculate time since last update
+        ansible.builtin.set_fact:
+            diff_seconds: "{{ (ansible_date_time.epoch | int) - last_updated }}"
+
+      - name: Update and upgrade system
+        ansible.builtin.apt:
+            update_cache: yes
+            upgrade: dist
+            autoremove: yes
+            autoclean: yes
+        when: diff_seconds > 86400 # 86400 seconds = 1 day
+
+      - name: Save current timestamp after update
+        ansible.builtin.copy:
+            dest: "{{ ansible_env.HOME }}/.jarvis/updated_at"
+            content: "{{ ansible_date_time.epoch }}"
+            mode: "0644"
+        when: diff_seconds > 86400
