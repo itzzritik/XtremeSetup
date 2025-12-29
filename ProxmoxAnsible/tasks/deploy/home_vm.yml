@@ -1,0 +1,95 @@
+---
+- name: Task Banner
+  debug:
+      msg: |
+
+          +-----------------------------------------------------------------------------------------------------------------------------------+
+
+          ● Deploying Home Assistant VM
+
+- vars:
+      vm:
+          id: 252
+          name: home
+          memory: 4096
+          cores: 2
+          storage: local-lvm
+          bridge: vmbr0
+  block:
+      - name: Collect all VMs
+        community.general.proxmox_kvm_info:
+            node: '{{ inventory_hostname }}'
+        register: all_vms_info
+
+      - name: Check if Home VM exists by name
+        set_fact:
+            home_vm_exists: "{{ all_vms_info.proxmox_vms | selectattr('name', 'equalto', vm.name) | list | length > 0 }}"
+
+      - name: Deploy Home Assistant
+        block:
+            - name: Fetch latest Home Assistant OS version
+              uri:
+                  url: https://api.github.com/repos/home-assistant/operating-system/releases/latest
+                  return_content: true
+              register: haos_release_info
+
+            - name: Determine HAOS URL and Version
+              set_fact:
+                  haos_version: '{{ haos_release_info.json.tag_name }}'
+                  haos_download_url: "{{ haos_release_info.json.assets | selectattr('name', 'search', 'qcow2.xz') | map(attribute='browser_download_url') | first }}"
+
+            - name: Download HAOS Image
+              get_url:
+                  url: '{{ haos_download_url }}'
+                  dest: '/var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2.xz'
+                  mode: '0644'
+
+            - name: Extract HAOS Image
+              command:
+                  cmd: 'unxz -k -f /var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2.xz'
+                  creates: '/var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2'
+
+            - name: Create VM
+              community.general.proxmox_kvm:
+                  node: '{{ inventory_hostname }}'
+                  vmid: '{{ vm.id }}'
+                  name: '{{ vm.name }}'
+                  memory: '{{ vm.memory }}'
+                  cores: '{{ vm.cores }}'
+                  bios: ovmf
+                  machine: q35
+                  net:
+                      net0: 'virtio=02:6e:c2:4a:00:29,bridge={{ vm.bridge }}'
+                  onboot: true
+                  ostype: l26
+                  agent: 1
+                  scsihw: virtio-scsi-pci
+                  efidisk0:
+                      storage: '{{ vm.storage }}'
+                      format: raw
+                      efitype: 4m
+                      size: 4M
+                  state: present
+
+            - name: Import Disk
+              command: 'qm importdisk {{ vm.id }} /var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2 {{ vm.storage }}'
+
+            - name: Attach Disk
+              command: 'qm set {{ vm.id }} --scsi0 {{ vm.storage }}:vm-{{ vm.id }}-disk-1,ssd=1,discard=on,size=32G --boot order=scsi0'
+
+            - name: Start VM
+              community.general.proxmox_kvm:
+                  node: '{{ inventory_hostname }}'
+                  vmid: '{{ vm.id }}'
+                  state: started
+
+            - name: Cleanup Downloaded Files
+              file:
+                  path: '{{ item }}'
+                  state: absent
+              loop:
+                  - '/var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2.xz'
+                  - '/var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2'
+
+        when: not home_vm_exists
+  become: true
