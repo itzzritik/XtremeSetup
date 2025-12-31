@@ -1,0 +1,15 @@
+- name: Create Cloudflared Directory
+  file:
+      path: '{{ paths.host_base }}/cloudflared'
+      state: directory
+      mode: '0755'
+
+- name: Deploy Cloudflared Container
+  community.docker.docker_container:
+      name: cloudflared
+      image: cloudflare/cloudflared:latest
+      restart_policy: unless-stopped
+      command: tunnel run
+      env:
+          TUNNEL_TOKEN: "{{ env.CLOUDFLARED_TOKEN | default('') }}"
+      docker_host: 'tcp://{{ lxc.ip }}:2375'

@@ -1,0 +1,129 @@
+---
+- name: Task Banner
+  debug:
+      msg: |
+
+          +-----------------------------------------------------------------------------------------------------------------------------------+
+
+          ● Deploying Docker Apps LXC
+
+- vars:
+      lxc:
+          id: 250
+          hostname: apps
+          memory: 8192
+          swap: 512
+          cores: 4
+          storage: local-lvm
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.250/24'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+      paths:
+          host_base: '{{ env.JARVIS_CONFIGS_DIR }}/apps'
+          lxc_base: '/opt/stacks'
+
+  block:
+      - name: Collect all LXCs
+        community.general.proxmox_lxc_info:
+            node: '{{ inventory_hostname }}'
+        register: all_lxc_info
+
+      - name: Check if Docker LXC exists
+        set_fact:
+            docker_lxc_exists: "{{ all_lxc_info.proxmox_lxc | selectattr('vmid', 'equalto', lxc.id | string) | list | length > 0 }}"
+
+      - name: Create Host Config Base Directory
+        file:
+            path: '{{ paths.host_base }}'
+            state: directory
+            mode: '0755'
+
+      - name: Provision LXC and Docker
+        block:
+            - name: Update LXC Template Database
+              command: pveam update
+              changed_when: false
+
+            - name: Fetch Latest Ubuntu LTS Template
+              shell: pveam available | grep "ubuntu-[0-9.]*-standard" | sort -V | tail -n 1 | awk '{print $2}'
+              register: ubuntu_template_name
+              changed_when: false
+
+            - name: Download Ubuntu Template
+              command: 'pveam download local {{ ubuntu_template_name.stdout }}'
+              args:
+                  creates: '/var/lib/vz/template/cache/{{ ubuntu_template_name.stdout }}'
+
+            - name: Create Docker LXC
+              community.general.proxmox_lxc:
+                  node: '{{ inventory_hostname }}'
+                  vmid: '{{ lxc.id }}'
+                  hostname: '{{ lxc.hostname }}'
+                  memory: '{{ lxc.memory }}'
+                  swap: '{{ lxc.swap }}'
+                  cores: '{{ lxc.cores }}'
+                  ostype: ubuntu
+                  ostemplate: 'local:vztmpl/{{ ubuntu_template_name.stdout }}'
+                  net:
+                      net0: 'name=eth0,bridge=vmbr0,ip={{ lxc.ip }},gw={{ lxc.gateway }},type=veth'
+                  storage: '{{ lxc.storage }}'
+                  disk: 32
+                  unprivileged: true
+                  features:
+                      - keyctl=1
+                      - nesting=1
+                  onboot: true
+                  state: present
+
+            - name: Configure LXC Mounts
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ lxc.id }}.conf'
+                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
+                  block: |
+                      mp0: /mnt/wdhdd,mp=/media/wdhdd
+                      mp1: /mnt/ssd,mp=/media/ssd
+                      mp2: {{ paths.host_base }},mp={{ paths.lxc_base }}
+              register: lxc_config_update
+
+            - name: Restart LXC
+              community.general.proxmox_lxc:
+                  node: '{{ inventory_hostname }}'
+                  vmid: '{{ lxc.id }}'
+                  state: restarted
+              when: lxc_config_update.changed
+
+            - name: Wait for LXC Ready
+              wait_for:
+                  host: '{{ lxc.ip | ipv4 }}'
+                  port: 22
+                  timeout: 60
+              delegate_to: localhost
+              ignore_errors: true
+
+            - name: Install Dependencies
+              command: 'pct exec {{ lxc.id }} -- bash -c "apt-get update && apt-get install -y curl ca-certificates gnupg python3-requests"'
+              changed_when: false
+
+            - name: Install Python Docker Library on Host
+              apt:
+                  name: python3-docker
+                  state: present
+              delegate_to: proxmox
+
+            - name: Install Docker
+              command: 'pct exec {{ lxc.id }} -- bash -c "curl -fsSL https://get.docker.com | sh"'
+              args:
+                  creates: /usr/bin/docker
+
+            - name: Enable Docker Remote API
+              command: 'pct exec {{ lxc.id }} -- bash -c "if ! grep -q \"tcp://0.0.0.0:2375\" /lib/systemd/system/docker.service; then sed -i \"s/-H fd:\/\//-H fd:\/\/ -H tcp:\/\/0.0.0.0:2375/\" /lib/systemd/system/docker.service && systemctl daemon-reload && systemctl restart docker; fi"'
+              changed_when: false
+
+        when: not docker_lxc_exists
+
+      - name: Deploy Apps
+        block:
+            - include_tasks: traefik.yml
+            - include_tasks: pihole.yml
+            - include_tasks: qbittorrent.yml
+            - include_tasks: cloudflared.yml
+  become: true

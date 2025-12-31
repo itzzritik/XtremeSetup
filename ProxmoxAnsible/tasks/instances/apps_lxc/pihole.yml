@@ -1,0 +1,45 @@
+- vars:
+      container_id: pihole
+
+  block:
+      - name: Create Pi-hole Directories
+        file:
+            path: '{{ env.JARVIS_CONFIGS_DIR }}/{{ container_id }}/{{ item }}'
+            state: directory
+            mode: '0755'
+        loop:
+            - etc
+            - dnsmasq
+
+      - name: Deploy Pi-hole Container
+        community.docker.docker_container:
+            name: '{{ container_id }}'
+            image: pihole/pihole:latest
+            restart_policy: unless-stopped
+            capabilities:
+                - NET_ADMIN
+            security_opts:
+                - no-new-privileges:true
+            env:
+                TZ: '{{ env.JARVIS_TZ }}'
+                WEBTHEME: default-darker
+                WEBPASSWORD: '{{ env.JARVIS_ADMIN_PASSWORD }}'
+                PIHOLE_DNS_: '{{ env.JARVIS_DNS_SERVERS | join(";") }}'
+                FTLCONF_LOCAL_IPV4: '{{ lxc.ip }}'
+            ports:
+                - '53:53/tcp'
+                - '53:53/udp'
+                - '7777:80'
+            volumes:
+                - '{{ env.JARVIS_CONFIGS_DIR }}/{{ container_id }}/etc:/etc/pihole'
+                - '{{ env.JARVIS_CONFIGS_DIR }}/{{ container_id }}/dnsmasq:/etc/dnsmasq.d'
+            labels:
+                traefik.enable: 'true'
+                traefik.http.routers.{{ container_id }}.rule: 'Host(`{{ container_id }}.{{ env.JARVIS_DOMAIN }}`)'
+                traefik.http.routers.{{ container_id }}.entrypoints: 'websecure'
+                traefik.http.routers.{{ container_id }}.tls: 'true'
+                traefik.http.routers.{{ container_id }}.tls.certresolver: '{{ env.JARVIS_CERT_RESOLVER }}'
+                traefik.http.routers.{{ container_id }}.service: '{{ container_id }}'
+                traefik.http.services.{{ container_id }}.loadbalancer.server.port: '80'
+                traefik.http.routers.{{ container_id }}.middlewares: 'chain-auth@file'
+            docker_host: 'tcp://{{ lxc.ip }}:2375'

@@ -1,0 +1,94 @@
+- name: Create Traefik Directory
+  file:
+      path: '{{ paths.host_base }}/traefik'
+      state: directory
+      mode: '0755'
+
+- name: Create Traefik Config
+  copy:
+      dest: '{{ paths.host_base }}/traefik/traefik.yml'
+      content: |
+          api:
+            dashboard: true
+            insecure: true
+          entryPoints:
+            web:
+              address: ":80"
+              http:
+                redirections:
+                  entryPoint:
+                    to: websecure
+                    scheme: https
+            websecure:
+              address: ":443"
+          providers:
+            docker:
+              endpoint: "unix:///var/run/docker.sock"
+              exposedByDefault: false
+            file:
+              filename: /etc/traefik/dynamic.yml
+          certificatesResolvers:
+            {{ env.JARVIS_CERT_RESOLVER }}:
+              acme:
+                storage: acme.json
+                httpChallenge:
+                  entryPoint: web
+
+- name: Create Traefik Dynamic Config
+  copy:
+      dest: '{{ paths.host_base }}/traefik/dynamic.yml'
+      content: |
+          http:
+            routers:
+              home-rtr:
+                rule: "Host(`home.{{ env.JARVIS_DOMAIN }}`)"
+                entryPoints:
+                  - websecure
+                service: home-svc
+                tls:
+                  certResolver: {{ env.JARVIS_CERT_RESOLVER }}
+              jellyfin-rtr:
+                rule: "Host(`jellyfin.{{ env.JARVIS_DOMAIN }}`)"
+                entryPoints:
+                  - websecure
+                service: jellyfin-svc
+                tls:
+                  certResolver: {{ env.JARVIS_CERT_RESOLVER }}
+
+            services:
+              home-svc:
+                loadBalancer:
+                  servers:
+                    - url: "http://{{ env.JARVIS_NETWORK_PREFIX }}.252:8123"
+              jellyfin-svc:
+                loadBalancer:
+                  servers:
+                    - url: "http://{{ env.JARVIS_NETWORK_PREFIX }}.254:8096"
+
+      state: touch
+      mode: '0600'
+
+- name: Deploy Traefik Container
+  community.docker.docker_container:
+      name: traefik
+      image: traefik:v3.0
+      restart_policy: unless-stopped
+      security_opts:
+          - no-new-privileges:true
+      ports:
+          - '80:80'
+          - '443:443'
+          - '8080:8080'
+      volumes:
+          - /etc/localtime:/etc/localtime:ro
+          - /var/run/docker.sock:/var/run/docker.sock:ro
+          - '{{ paths.lxc_base }}/traefik/traefik.yml:/etc/traefik/traefik.yml:ro'
+          - '{{ paths.lxc_base }}/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro'
+          - '{{ paths.lxc_base }}/traefik/acme.json:/acme.json'
+      labels:
+          traefik.enable: 'true'
+          traefik.http.routers.traefik.rule: 'Host(`traefik.{{ env.JARVIS_DOMAIN }}`)'
+          traefik.http.routers.traefik.entrypoints: 'websecure'
+          traefik.http.routers.traefik.tls.certresolver: '{{ env.JARVIS_CERT_RESOLVER }}'
+          traefik.http.services.traefik.loadbalancer.server.port: '8080'
+      docker_host: 'tcp://{{ lxc.ip }}:2375'

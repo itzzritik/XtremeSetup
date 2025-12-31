@@ -30,7 +30,7 @@
       - name: Install Ansible Requirements
         command: ansible-galaxy collection install -r requirements.yml
         register: galaxy_install
-        changed_when: "'Was skipped' not in galaxy_install.stdout"
+        changed_when: "'Installing' in galaxy_install.stdout"
 
       - name: Environment Setup
         include_tasks: tasks/env.yml
@@ -39,7 +39,7 @@
         add_host:
             name: 'proxmox'
             groups: 'proxmox'
-            ansible_host: '{{ env.JARVIS_HOST_IP }}'
+            ansible_host: '{{ env.JARVIS_HOST }}'
             ansible_user: 'root'
             ansible_password: '{{ env.JARVIS_ADMIN_PASSWORD }}'
             ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
@@ -56,14 +56,10 @@
         no_log: true
 
   tasks:
-      - name: Include System Update Tasks
-        include_tasks: tasks/update.yml
+      - name: Include System Tasks
+        include_tasks: '{{ item }}'
+        with_fileglob: 'tasks/system/*.yml'
 
-      - name: Include Automount Tasks
-        include_tasks: tasks/automount.yml
-
-      - name: Include Home Assistant Deployment
-        include_tasks: tasks/deploy/home_vm.yml
-
-      - name: Include Jellyfin Deployment
-        include_tasks: tasks/deploy/jellyfin_lxc.yml
+      - name: Include Deployment Tasks
+        include_tasks: '{{ item }}'
+        with_fileglob: 'tasks/instances/*/index.yml'

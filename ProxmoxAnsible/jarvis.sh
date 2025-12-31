@@ -23,7 +23,7 @@ prepare_workspace() {
 
 run_playbook() {
     cd "$TEMP_DIR/XtremeSetup/ProxmoxAnsible"
-    ansible-playbook index.yml
+    ansible-playbook main.yml
 }
 
 check_requirements

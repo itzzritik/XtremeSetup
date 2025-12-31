@@ -15,11 +15,11 @@
           swap: 512
           cores: 4
           storage: local-lvm
-          ip: 192.168.68.{{ lxc.id }}/24
-          gateway: 192.168.68.1
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ lxc.id }}/24'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
       paths:
-          config: '{{ env.configs_dir }}/{{ lxc.hostname }}/etc'
-          data: '{{ env.configs_dir }}/{{ lxc.hostname }}/lib'
+          config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ lxc.hostname }}/etc'
+          data: '{{ env.JARVIS_CONFIGS_DIR }}/{{ lxc.hostname }}/lib'
   block:
       - name: Collect all LXCs
         community.general.proxmox_lxc_info:
@@ -78,7 +78,7 @@
                   onboot: true
                   state: present
 
-            - name: Configure LXC Mounts and Passthrough (Config File)
+            - name: Configure LXC Mounts and Passthrough
               blockinfile:
                   path: '/etc/pve/lxc/{{ lxc.id }}.conf'
                   marker: '# {mark} ANSIBLE MANAGED BLOCK'
@@ -109,8 +109,6 @@
                   vmid: '{{ lxc.id }}'
                   state: restarted
 
-            - name: Wait for LXC after restart
-
             - name: Wait for LXC to be ready
               wait_for:
                   host: '{{ lxc.ip | ipv4 }}'
@@ -120,7 +118,7 @@
               ignore_errors: true
 
             - name: Install Dependencies
-              command: 'pct exec {{ lxc.id }} -- apt-get update && pct exec {{ lxc.id }} -- apt-get install -y curl gnupg'
+              command: 'pct exec {{ lxc.id }} -- bash -c "export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get install -y curl gnupg"'
               register: apt_install
               retries: 20
               delay: 3
@@ -128,7 +126,7 @@
               changed_when: false
 
             - name: Install Jellyfin
-              command: "pct exec {{ lxc.id }} -- bash -c 'curl https://repo.jellyfin.org/install-debuntu.sh | bash'"
+              command: "pct exec {{ lxc.id }} -- bash -c 'curl -fsSL https://repo.jellyfin.org/install-debuntu.sh | bash'"
               changed_when: false
 
         when: not jellyfin_lxc_exists

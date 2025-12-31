@@ -1,0 +1,49 @@
+- name: Create qBittorrent Directories
+  file:
+      path: '{{ paths.host_base }}/{{ item }}'
+      state: directory
+      mode: '0755'
+  loop:
+      - qbittorrent/config
+      - qbittorrent/downloads
+      - qbittorrent/vuetorrent
+
+- name: Check VueTorrent
+  stat:
+      path: '{{ paths.host_base }}/qbittorrent/vuetorrent/index.html'
+  register: vuetorrent_check
+
+- name: Download VueTorrent
+  unarchive:
+      src: https://github.com/VueTorrent/VueTorrent/releases/latest/download/vuetorrent.zip
+      dest: '{{ paths.host_base }}/qbittorrent/vuetorrent'
+      remote_src: true
+      exclude: ['vuetorrent.zip']
+  when: not vuetorrent_check.stat.exists
+
+- name: Deploy qBittorrent Container
+  community.docker.docker_container:
+      name: qbittorrent
+      image: linuxserver/qbittorrent:latest
+      restart_policy: unless-stopped
+      env:
+          PUID: '0'
+          PGID: '0'
+          TZ: '{{ env.JARVIS_TZ }}'
+          WEBUI_PORT: '8080'
+          ALTERNATIVE_UI_PATH: /themes/vuetorrent
+      ports:
+          - '6881:6881'
+          - '6881:6881/udp'
+          - '8082:8080'
+      volumes:
+          - '{{ paths.lxc_base }}/qbittorrent/config:/config'
+          - '/media/wdhdd:/downloads'
+          - '{{ paths.lxc_base }}/qbittorrent/vuetorrent:/themes/vuetorrent'
+      labels:
+          traefik.enable: 'true'
+          traefik.http.routers.qbittorrent.rule: 'Host(`qbittorrent.{{ env.JARVIS_DOMAIN }}`)'
+          traefik.http.routers.qbittorrent.entrypoints: 'websecure'
+          traefik.http.routers.qbittorrent.tls.certresolver: '{{ env.JARVIS_CERT_RESOLVER }}'
+          traefik.http.services.qbittorrent.loadbalancer.server.port: '8080'
+      docker_host: 'tcp://{{ lxc.ip }}:2375'
