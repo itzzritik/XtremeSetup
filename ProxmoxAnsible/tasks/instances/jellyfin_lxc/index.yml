@@ -1,12 +1,4 @@
 ---
-- name: Task Banner
-  debug:
-      msg: |
-
-          +-----------------------------------------------------------------------------------------------------------------------------------+
-
-          ● Deploying Jellyfin Media Server (LXC)
-
 - vars:
       lxc:
           id: 254
@@ -22,7 +14,7 @@
           data: '{{ env.JARVIS_CONFIGS_DIR }}/{{ lxc.hostname }}/lib'
   block:
       - name: Collect all LXCs
-        community.general.proxmox_lxc_info:
+        community.proxmox.proxmox_lxc_info:
             node: '{{ inventory_hostname }}'
         register: all_lxc_info
 
@@ -57,7 +49,7 @@
                   creates: '/var/lib/vz/template/cache/{{ ubuntu_template_name.stdout }}'
 
             - name: Create Jellyfin LXC
-              community.general.proxmox_lxc:
+              community.proxmox.proxmox_lxc:
                   node: '{{ inventory_hostname }}'
                   vmid: '{{ lxc.id }}'
                   hostname: '{{ lxc.hostname }}'
@@ -94,7 +86,7 @@
               register: lxc_config_update
 
             - name: Start Jellyfin LXC
-              community.general.proxmox_lxc:
+              community.proxmox.proxmox_lxc:
                   node: '{{ inventory_hostname }}'
                   vmid: '{{ lxc.id }}'
                   state: started
@@ -104,7 +96,7 @@
               changed_when: false
 
             - name: Restart Jellyfin LXC (Apply Transcode Mount)
-              community.general.proxmox_lxc:
+              community.proxmox.proxmox_lxc:
                   node: '{{ inventory_hostname }}'
                   vmid: '{{ lxc.id }}'
                   state: restarted

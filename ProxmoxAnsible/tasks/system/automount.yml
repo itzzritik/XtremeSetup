@@ -1,35 +1,31 @@
 ---
-- name: Task Banner
-  debug:
-      msg: |
-
-          +-----------------------------------------------------------------------------------------------------------------------------------+
-
-          ● Automounting drives
-
 - vars:
       mount_points:
           - { uuid: '06BDD2E367CF2A57', path: '/mnt/ssd', fstype: 'ext4' }
           - { uuid: '083AAA5A3AAA4492', path: '/mnt/wdhdd', fstype: 'ntfs' }
   block:
-      - name: Install NTFS Support
+      - name: Ensuring NTFS Support
         apt:
             name: ntfs-3g
             state: present
 
-      - name: Create Mount Points
+      - name: Ensure Mount Points
         file:
-            path: '{{ item.path }}'
+            path: '{{ mount_point_item.path }}'
             state: directory
             mode: '0755'
         loop: '{{ mount_points }}'
+        loop_control:
+            loop_var: mount_point_item
 
       - name: Mount Drives
         mount:
-            path: '{{ item.path }}'
-            src: 'UUID={{ item.uuid }}'
-            fstype: '{{ item.fstype }}'
+            path: '{{ mount_point_item.path }}'
+            src: 'UUID={{ mount_point_item.uuid }}'
+            fstype: '{{ mount_point_item.fstype }}'
             opts: defaults,noatime,nodiratime,users,permissions,nofail,x-systemd.device-timeout=5s
             state: mounted
         loop: '{{ mount_points }}'
+        loop_control:
+            loop_var: mount_point_item
   become: true

@@ -1,58 +1,23 @@
 ---
 - name: Setup Local Environment
-  hosts: localhost
+  hosts: local
   connection: local
-  gather_facts: false
+  gather_facts: true
   tasks:
-      - name: Welcome Banner
-        debug:
-            msg: |
-
-                +-----------------------------------------------------------------------------------------------------------------------------------+
-
-                ______________/\\\\\\\\\\\_____/\\\\\\\\\_________/\\\\\\\\\______/\\\________/\\\__/\\\\\\\\\\\_____/\\\\\\\\\\\___________
-                 _____________\/////\\\///____/\\\\\\\\\\\\\_____/\\\///////\\\___\/\\\_______\/\\\_\/////\\\///____/\\\/////////\\\_________
-                  _________________\/\\\______/\\\/////////\\\___\/\\\_____\/\\\___\//\\\______/\\\______\/\\\______\//\\\______\///__________
-                   _________________\/\\\_____\/\\\_______\/\\\___\/\\\\\\\\\\\/_____\//\\\____/\\\_______\/\\\_______\////\\\_________________
-                    _________________\/\\\_____\/\\\\\\\\\\\\\\\___\/\\\//////\\\______\//\\\__/\\\________\/\\\__________\////\\\______________
-                     _________________\/\\\_____\/\\\/////////\\\___\/\\\____\//\\\______\//\\\/\\\_________\/\\\_____________\////\\\___________
-                      __________/\\\___\/\\\_____\/\\\_______\/\\\___\/\\\_____\//\\\______\//\\\\\__________\/\\\______/\\\______\//\\\__________
-                       _________\//\\\\\\\\\______\/\\\_______\/\\\___\/\\\______\//\\\______\//\\\________/\\\\\\\\\\\_\///\\\\\\\\\\\/___________
-                        __________\/////////_______\///________\///____\///________\///________\///________\///////////____\///////////_____________
-
-
-                +-----------------------------------------------------------------------------------------------------------------------------------+
-                |                                                                                                                                   |
-                |                                                SETTING UP PROXMOX USING ANSIBLE                                                   |
-                |                                                                                                                                   |
-                +-----------------------------------------------------------------------------------------------------------------------------------+
-
       - name: Install Ansible Requirements
-        command: ansible-galaxy collection install -r requirements.yml
+        command: ansible-galaxy collection install -r requirements.yml --upgrade
         register: galaxy_install
         changed_when: "'Installing' in galaxy_install.stdout"
 
       - name: Environment Setup
         include_tasks: tasks/env.yml
 
-      - name: Register Proxmox Host
-        add_host:
-            name: 'proxmox'
-            groups: 'proxmox'
-            ansible_host: '{{ env.JARVIS_HOST }}'
-            ansible_user: 'root'
-            ansible_password: '{{ env.JARVIS_ADMIN_PASSWORD }}'
-            ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
-            env: '{{ env }}'
-
 - name: Deploy to Remote Proxmox
   hosts: proxmox
   gather_facts: true
   pre_tasks:
       - name: Restore Environment Variables
-        set_fact:
-            '{{ item.key }}': '{{ item.value }}'
-        loop: '{{ env | dict2items }}'
+        set_fact: '{{ hostvars["local"]["env"] }}'
         no_log: true
 
   tasks:

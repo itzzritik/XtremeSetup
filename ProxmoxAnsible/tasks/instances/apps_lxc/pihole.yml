@@ -31,8 +31,8 @@
                 - '53:53/udp'
                 - '7777:80'
             volumes:
-                - '{{ env.JARVIS_CONFIGS_DIR }}/{{ container_id }}/etc:/etc/pihole'
-                - '{{ env.JARVIS_CONFIGS_DIR }}/{{ container_id }}/dnsmasq:/etc/dnsmasq.d'
+                - '{{ paths.lxc_configs }}/{{ container_id }}/etc:/etc/pihole'
+                - '{{ paths.lxc_configs }}/{{ container_id }}/dnsmasq:/etc/dnsmasq.d'
             labels:
                 traefik.enable: 'true'
                 traefik.http.routers.{{ container_id }}.rule: 'Host(`{{ container_id }}.{{ env.JARVIS_DOMAIN }}`)'

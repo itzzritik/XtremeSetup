@@ -1,12 +1,4 @@
 ---
-- name: Task Banner
-  debug:
-      msg: |
-
-          +-----------------------------------------------------------------------------------------------------------------------------------+
-
-          ● Deploying Docker Apps LXC
-
 - vars:
       lxc:
           id: 250
@@ -18,12 +10,11 @@
           ip: '{{ env.JARVIS_NETWORK_PREFIX }}.250/24'
           gateway: '{{ env.JARVIS_GATEWAY }}'
       paths:
-          host_base: '{{ env.JARVIS_CONFIGS_DIR }}/apps'
-          lxc_base: '/opt/stacks'
+          lxc_configs: '/root/configs'
 
   block:
       - name: Collect all LXCs
-        community.general.proxmox_lxc_info:
+        community.proxmox.proxmox_lxc_info:
             node: '{{ inventory_hostname }}'
         register: all_lxc_info
 
@@ -33,7 +24,7 @@
 
       - name: Create Host Config Base Directory
         file:
-            path: '{{ paths.host_base }}'
+            path: '{{ env.JARVIS_CONFIGS_DIR }}'
             state: directory
             mode: '0755'
 
@@ -54,7 +45,7 @@
                   creates: '/var/lib/vz/template/cache/{{ ubuntu_template_name.stdout }}'
 
             - name: Create Docker LXC
-              community.general.proxmox_lxc:
+              community.proxmox.proxmox_lxc:
                   node: '{{ inventory_hostname }}'
                   vmid: '{{ lxc.id }}'
                   hostname: '{{ lxc.hostname }}'
@@ -81,11 +72,11 @@
                   block: |
                       mp0: /mnt/wdhdd,mp=/media/wdhdd
                       mp1: /mnt/ssd,mp=/media/ssd
-                      mp2: {{ paths.host_base }},mp={{ paths.lxc_base }}
+                      mp2: {{ env.JARVIS_CONFIGS_DIR }},mp={{ paths.lxc_configs }}
               register: lxc_config_update
 
             - name: Restart LXC
-              community.general.proxmox_lxc:
+              community.proxmox.proxmox_lxc:
                   node: '{{ inventory_hostname }}'
                   vmid: '{{ lxc.id }}'
                   state: restarted
