@@ -22,9 +22,27 @@
         no_log: true
 
   tasks:
-      - name: Include Tasks
-        include_tasks: '{{ deployment_task }}'
-        loop: '{{ lookup(''pipe'', ''find '' ~ playbook_dir ~ ''/tasks/system -name "*.yml"'').splitlines() +
-            lookup(''pipe'', ''find '' ~ playbook_dir ~ ''/tasks/instances -mindepth 2 -maxdepth 2 -name "index.yml"'').splitlines() }}'
+      - name: Find System Tasks
+        ansible.builtin.find:
+            paths: '{{ playbook_dir }}/tasks/system'
+            patterns: '*.yml'
+        register: system_tasks
+        delegate_to: localhost
+        run_once: true
+
+      - name: Find Instance Tasks
+        ansible.builtin.find:
+            paths: '{{ playbook_dir }}/tasks/instances'
+            patterns: 'index.yml'
+            recurse: true
+            depth: 2
+        register: instance_tasks
+        delegate_to: localhost
+        run_once: true
+
+      - name: Include Found Tasks
+        include_tasks: '{{ task_file.path }}'
+        loop: '{{ system_tasks.files + instance_tasks.files }}'
         loop_control:
-            loop_var: deployment_task
+            loop_var: task_file
+            label: '{{ task_file.path | relpath(playbook_dir) }}'

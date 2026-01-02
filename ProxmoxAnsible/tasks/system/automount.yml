@@ -1,8 +1,14 @@
 ---
 - vars:
       mount_points:
-          - { uuid: '06BDD2E367CF2A57', path: '/mnt/ssd', fstype: 'ext4' }
-          - { uuid: '083AAA5A3AAA4492', path: '/mnt/wdhdd', fstype: 'ntfs' }
+          - uuid: '06BDD2E367CF2A57'
+            path: '/mnt/ssd'
+            fstype: 'ext4'
+            opts: 'defaults,noatime,nodiratime,nofail,x-systemd.device-timeout=5s'
+          - uuid: '083AAA5A3AAA4492'
+            path: '/mnt/wdhdd'
+            fstype: 'ntfs-3g'
+            opts: 'defaults,noatime,nodiratime,nofail,x-systemd.device-timeout=5s,pdc_permissions,big_writes'
   block:
       - name: Ensuring NTFS Support
         apt:
@@ -23,7 +29,7 @@
             path: '{{ mount_point_item.path }}'
             src: 'UUID={{ mount_point_item.uuid }}'
             fstype: '{{ mount_point_item.fstype }}'
-            opts: defaults,noatime,nodiratime,users,permissions,nofail,x-systemd.device-timeout=5s
+            opts: '{{ mount_point_item.opts }}'
             state: mounted
         loop: '{{ mount_points }}'
         loop_control:

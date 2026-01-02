@@ -19,5 +19,5 @@
       env:
           TUNNEL_TOKEN: '{{ env.JARVIS_CF_TUNNEL_TOKEN }}'
       volumes:
-          - '{{ lxc.configs }}/{{ container_id }}:/etc/cloudflared'
-      docker_host: 'tcp://{{ lxc.ip }}:2375'
+          - '{{ instance.configs }}/{{ container_id }}:/etc/cloudflared'
+      docker_host: '{{ docker_host }}'

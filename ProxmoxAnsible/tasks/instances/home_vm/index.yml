@@ -1,26 +1,25 @@
----
 - vars:
-      vm:
-          id: 252
+      id: 252
+      instance:
           name: home
           memory: 4096
           cores: 2
           storage: local-lvm
           bridge: vmbr0
-          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.252'
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
           gateway: '{{ env.JARVIS_GATEWAY }}'
   block:
-      - name: Check if Home VM exists
-        command: qm status {{ vm.id }}
-        register: vm_status_check
+      - name: Check if Instance exists
+        command: qm status {{ id }}
+        register: instance_status_check
         failed_when: false
         changed_when: false
 
-      - name: Set Home VM Exists Fact
+      - name: Set Instance Exists Fact
         set_fact:
-            home_vm_exists: '{{ vm_status_check.rc == 0 }}'
+            instance_exists: '{{ instance_status_check.rc == 0 }}'
 
-      - name: Deploy Home Assistant
+      - name: Provision Instance
         block:
             - name: Fetch latest Home Assistant OS version
               uri:
@@ -46,31 +45,31 @@
 
             - name: Create VM
               command: >
-                  qm create {{ vm.id }}
-                  --name "{{ vm.name }}"
-                  --memory {{ vm.memory }}
-                  --cores {{ vm.cores }}
+                  qm create {{ id }}
+                  --name "{{ instance.name }}"
+                  --memory {{ instance.memory }}
+                  --cores {{ instance.cores }}
                   --bios ovmf
                   --machine q35
-                  --net0 "virtio=02:6e:c2:4a:00:29,bridge={{ vm.bridge }}"
-                  --ide2 "{{ vm.storage }}:cloudinit"
-                  --ipconfig0 "ip={{ vm.ip }}/24,gw={{ vm.gateway }}"
+                  --net0 "virtio=02:6e:c2:4a:00:29,bridge={{ instance.bridge }}"
+                  --ide2 "{{ instance.storage }}:cloudinit"
+                  --ipconfig0 "ip={{ instance.ip }}/24,gw={{ instance.gateway }}"
                   --nameserver "{{ env.JARVIS_DNS_SERVERS | join(' ') }}"
                   --searchdomain "local"
                   --onboot 1
                   --ostype l26
                   --agent 1
                   --scsihw virtio-scsi-pci
-                  --efidisk0 "{{ vm.storage }}:0,format=raw,efitype=4m,size=4M"
+                  --efidisk0 "{{ instance.storage }}:0,format=raw,efitype=4m,size=4M"
 
             - name: Import Disk
-              command: 'qm importdisk {{ vm.id }} /var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2 {{ vm.storage }}'
+              command: 'qm importdisk {{ id }} /var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2 {{ instance.storage }}'
 
             - name: Attach Disk
-              command: 'qm set {{ vm.id }} --scsi0 {{ vm.storage }}:vm-{{ vm.id }}-disk-0,ssd=1,discard=on,size=32G --boot order=scsi0'
+              command: 'qm set {{ id }} --scsi0 {{ instance.storage }}:vm-{{ id }}-disk-0,ssd=1,discard=on,size=32G --boot order=scsi0'
 
             - name: Start VM
-              command: qm start {{ vm.id }}
+              command: qm start {{ id }}
 
             - name: Cleanup Downloaded Files
               file:
@@ -80,5 +79,5 @@
                   - '/var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2.xz'
                   - '/var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2'
 
-        when: not home_vm_exists
+        when: not instance_exists
   become: true

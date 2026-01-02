@@ -85,13 +85,13 @@
       volumes:
           - /etc/localtime:/etc/localtime:ro
           - /var/run/docker.sock:/var/run/docker.sock:ro
-          - '{{ lxc.configs }}/{{ container_id }}/traefik.yml:/etc/traefik/traefik.yml:ro'
-          - '{{ lxc.configs }}/{{ container_id }}/dynamic.yml:/etc/traefik/dynamic.yml:ro'
-          - '{{ lxc.configs }}/{{ container_id }}/acme.json:/acme.json'
+          - '{{ instance.configs }}/{{ container_id }}/traefik.yml:/etc/traefik/traefik.yml:ro'
+          - '{{ instance.configs }}/{{ container_id }}/dynamic.yml:/etc/traefik/dynamic.yml:ro'
+          - '{{ instance.configs }}/{{ container_id }}/acme.json:/acme.json'
       labels:
           traefik.enable: 'true'
           traefik.http.routers.{{ container_id }}.rule: 'Host(`{{ container_id }}.{{ env.JARVIS_DOMAIN }}`)'
           traefik.http.routers.{{ container_id }}.entrypoints: 'websecure'
           traefik.http.routers.{{ container_id }}.tls.certresolver: '{{ env.JARVIS_CERT_RESOLVER }}'
           traefik.http.services.{{ container_id }}.loadbalancer.server.port: '8080'
-      docker_host: 'tcp://{{ lxc.ip }}:2375'
+      docker_host: '{{ docker_host }}'

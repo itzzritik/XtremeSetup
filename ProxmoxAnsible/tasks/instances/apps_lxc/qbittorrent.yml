@@ -43,13 +43,13 @@
           - '6881:6881/udp'
           - '8082:8080'
       volumes:
-          - '{{ lxc.configs }}/{{ container_id }}/config:/config'
+          - '{{ instance.configs }}/{{ container_id }}/config:/config'
           - '/media/wdhdd:/downloads'
-          - '{{ lxc.configs }}/{{ container_id }}/vuetorrent:/themes/vuetorrent'
+          - '{{ instance.configs }}/{{ container_id }}/vuetorrent:/themes/vuetorrent'
       labels:
           traefik.enable: 'true'
           traefik.http.routers.{{ container_id }}.rule: 'Host(`{{ container_id }}.{{ env.JARVIS_DOMAIN }}`)'
           traefik.http.routers.{{ container_id }}.entrypoints: 'websecure'
           traefik.http.routers.{{ container_id }}.tls.certresolver: '{{ env.JARVIS_CERT_RESOLVER }}'
           traefik.http.services.{{ container_id }}.loadbalancer.server.port: '8080'
-      docker_host: 'tcp://{{ lxc.ip }}:2375'
+      docker_host: '{{ docker_host }}'
