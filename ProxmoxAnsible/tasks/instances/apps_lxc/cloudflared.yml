@@ -1,23 +1,23 @@
-- vars:
+- name: Configure
+  set_fact:
       container_id: cloudflared
 
-  block:
-      - name: Create Cloudflared Directory
-        file:
-            path: '{{ env.JARVIS_CONFIGS_DIR }}/{{ container_id }}'
-            state: directory
-            mode: '0755'
+- name: Create Cloudflared Directory
+  file:
+      path: '{{ env.JARVIS_CONFIGS_DIR }}/{{ container_id }}'
+      state: directory
+      mode: '0755'
 
-      - name: Deploy Cloudflared Container
-        community.docker.docker_container:
-            name: '{{ container_id }}'
-            image: cloudflare/cloudflared:latest
-            restart_policy: unless-stopped
-            command: tunnel --no-autoupdate run
-            security_opts:
-                - no-new-privileges:true
-            env:
-                TUNNEL_TOKEN: '{{ env.JARVIS_CF_TUNNEL_TOKEN }}'
-            volumes:
-                - '{{ paths.lxc_configs }}/{{ container_id }}:/etc/cloudflared'
-            docker_host: 'tcp://{{ lxc.ip }}:2375'
+- name: Deploy Cloudflared Container
+  community.docker.docker_container:
+      name: '{{ container_id }}'
+      image: cloudflare/cloudflared:latest
+      restart_policy: unless-stopped
+      command: tunnel --no-autoupdate run
+      security_opts:
+          - no-new-privileges:true
+      env:
+          TUNNEL_TOKEN: '{{ env.JARVIS_CF_TUNNEL_TOKEN }}'
+      volumes:
+          - '{{ lxc.configs }}/{{ container_id }}:/etc/cloudflared'
+      docker_host: 'tcp://{{ lxc.ip }}:2375'

@@ -1,5 +1,6 @@
 ---
-- vars:
+- name: Set LXC Configuration
+  set_fact:
       lxc:
           id: 250
           hostname: apps
@@ -7,20 +8,27 @@
           swap: 512
           cores: 4
           storage: local-lvm
-          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.250/24'
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.250'
           gateway: '{{ env.JARVIS_GATEWAY }}'
-      paths:
-          lxc_configs: '/root/configs'
+          configs: '/root/configs'
 
-  block:
-      - name: Collect all LXCs
-        community.proxmox.proxmox_lxc_info:
-            node: '{{ inventory_hostname }}'
-        register: all_lxc_info
+- block:
+      - name: Install Host Dependencies
+        apt:
+            name:
+                - python3-docker
+                - unzip
+            state: present
 
       - name: Check if Docker LXC exists
+        command: pct status {{ lxc.id }}
+        register: lxc_status_check
+        failed_when: false
+        changed_when: false
+
+      - name: Set Docker LXC Exists Fact
         set_fact:
-            docker_lxc_exists: "{{ all_lxc_info.proxmox_lxc | selectattr('vmid', 'equalto', lxc.id | string) | list | length > 0 }}"
+            docker_lxc_exists: '{{ lxc_status_check.rc == 0 }}'
 
       - name: Create Host Config Base Directory
         file:
@@ -45,25 +53,32 @@
                   creates: '/var/lib/vz/template/cache/{{ ubuntu_template_name.stdout }}'
 
             - name: Create Docker LXC
-              community.proxmox.proxmox_lxc:
-                  node: '{{ inventory_hostname }}'
-                  vmid: '{{ lxc.id }}'
-                  hostname: '{{ lxc.hostname }}'
-                  memory: '{{ lxc.memory }}'
-                  swap: '{{ lxc.swap }}'
-                  cores: '{{ lxc.cores }}'
-                  ostype: ubuntu
-                  ostemplate: 'local:vztmpl/{{ ubuntu_template_name.stdout }}'
-                  net:
-                      net0: 'name=eth0,bridge=vmbr0,ip={{ lxc.ip }},gw={{ lxc.gateway }},type=veth'
-                  storage: '{{ lxc.storage }}'
-                  disk: 32
-                  unprivileged: true
-                  features:
-                      - keyctl=1
-                      - nesting=1
-                  onboot: true
-                  state: present
+              command: >
+                  pct create {{ lxc.id }} /var/lib/vz/template/cache/{{ ubuntu_template_name.stdout }}
+                  --hostname {{ lxc.hostname }}
+                  --memory {{ lxc.memory }}
+                  --swap {{ lxc.swap }}
+                  --cores {{ lxc.cores }}
+                  --ostype ubuntu
+                  --net0 name=eth0,bridge=vmbr0,ip={{ lxc.ip }}/24,gw={{ lxc.gateway }}
+                  --nameserver "{{ env.JARVIS_DNS_SERVERS | join(' ') }}"
+                  --storage {{ lxc.storage }}
+                  --rootfs {{ lxc.storage }}:32
+                  --unprivileged 1
+                  --features keyctl=1,nesting=1
+                  --onboot 1
+
+            - name: Start LXC
+              command: pct start {{ lxc.id }}
+
+            - name: Wait for LXC Ready
+              wait_for:
+                  host: '{{ lxc.ip }}'
+                  port: 22
+                  timeout: 60
+              delegate_to: localhost
+              become: false
+              ignore_errors: true
 
             - name: Configure LXC Mounts
               blockinfile:
@@ -72,49 +87,77 @@
                   block: |
                       mp0: /mnt/wdhdd,mp=/media/wdhdd
                       mp1: /mnt/ssd,mp=/media/ssd
-                      mp2: {{ env.JARVIS_CONFIGS_DIR }},mp={{ paths.lxc_configs }}
+                      mp2: {{ env.JARVIS_CONFIGS_DIR }},mp={{ lxc.configs }}
               register: lxc_config_update
 
-            - name: Restart LXC
-              community.proxmox.proxmox_lxc:
-                  node: '{{ inventory_hostname }}'
-                  vmid: '{{ lxc.id }}'
-                  state: restarted
+            - name: Restart LXC (Apply Mounts)
+              command: pct reboot {{ lxc.id }}
               when: lxc_config_update.changed
 
-            - name: Wait for LXC Ready
+            - name: Wait for LXC Ready (After Restart)
               wait_for:
-                  host: '{{ lxc.ip | ipv4 }}'
+                  host: '{{ lxc.ip }}'
                   port: 22
                   timeout: 60
               delegate_to: localhost
+              become: false
               ignore_errors: true
+              when: lxc_config_update.changed
 
             - name: Install Dependencies
               command: 'pct exec {{ lxc.id }} -- bash -c "apt-get update && apt-get install -y curl ca-certificates gnupg python3-requests"'
               changed_when: false
-
-            - name: Install Python Docker Library on Host
-              apt:
-                  name: python3-docker
-                  state: present
-              delegate_to: proxmox
 
             - name: Install Docker
               command: 'pct exec {{ lxc.id }} -- bash -c "curl -fsSL https://get.docker.com | sh"'
               args:
                   creates: /usr/bin/docker
 
-            - name: Enable Docker Remote API
-              command: 'pct exec {{ lxc.id }} -- bash -c "if ! grep -q \"tcp://0.0.0.0:2375\" /lib/systemd/system/docker.service; then sed -i \"s/-H fd:\/\//-H fd:\/\/ -H tcp:\/\/0.0.0.0:2375/\" /lib/systemd/system/docker.service && systemctl daemon-reload && systemctl restart docker; fi"'
-              changed_when: false
-
         when: not docker_lxc_exists
 
+      - name: Get Docker LXC Status
+        command: pct status {{ lxc.id }}
+        register: lxc_status
+        changed_when: false
+
+      - name: Ensure Docker LXC is Running
+        command: pct start {{ lxc.id }}
+        when: "'status: stopped' in lxc_status.stdout"
+
+      - name: Enforce LXC Network Config (Persistent)
+        command: >
+            pct set {{ lxc.id }}
+            --net0 name=eth0,bridge=vmbr0,ip={{ lxc.ip }}/24,gw={{ lxc.gateway }}
+            --nameserver "{{ env.JARVIS_DNS_SERVERS | join(' ') }}"
+        changed_when: false
+
+      - name: Enforce LXC Network Config (Runtime)
+        command: 'pct exec {{ lxc.id }} -- bash -c "ip route replace default via {{ lxc.gateway }} && echo \"nameserver {{ env.JARVIS_DNS_SERVERS | first }}\" > /etc/resolv.conf"'
+        changed_when: false
+
+      - name: Wait for LXC Ready (SSH)
+        wait_for:
+            host: '{{ lxc.ip }}'
+            port: 22
+            timeout: 60
+        delegate_to: localhost
+        become: false
+
+      - name: Enable Docker Remote API
+        command: 'pct exec {{ lxc.id }} -- bash -c "if ! grep -q \"tcp://0.0.0.0:2375\" /lib/systemd/system/docker.service; then sed -i \"s/-H fd:\/\//-H fd:\/\/ -H tcp:\/\/0.0.0.0:2375/\" /lib/systemd/system/docker.service && systemctl daemon-reload && systemctl restart docker; fi"'
+        changed_when: false
+
+      - name: Wait for Docker Remote API
+        wait_for:
+            host: '{{ lxc.ip }}'
+            port: 2375
+            timeout: 60
+        delegate_to: localhost
+        become: false
+
       - name: Deploy Apps
-        block:
-            - include_tasks: traefik.yml
-            - include_tasks: pihole.yml
-            - include_tasks: qbittorrent.yml
-            - include_tasks: cloudflared.yml
+        include_tasks: '{{ app_task }}'
+        loop: '{{ lookup("fileglob", "tasks/instances/apps_lxc/*.yml", wantlist=True) | reject("search", "index.yml") | sort }}'
+        loop_control:
+            loop_var: app_task
   become: true

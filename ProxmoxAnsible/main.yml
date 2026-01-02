@@ -17,14 +17,14 @@
   gather_facts: true
   pre_tasks:
       - name: Restore Environment Variables
-        set_fact: '{{ hostvars["local"]["env"] }}'
+        set_fact:
+            env: '{{ hostvars["local"]["env"] }}'
         no_log: true
 
   tasks:
-      - name: Include System Tasks
-        include_tasks: '{{ item }}'
-        with_fileglob: 'tasks/system/*.yml'
-
-      - name: Include Deployment Tasks
-        include_tasks: '{{ item }}'
-        with_fileglob: 'tasks/instances/*/index.yml'
+      - name: Include Tasks
+        include_tasks: '{{ deployment_task }}'
+        loop: '{{ lookup(''pipe'', ''find '' ~ playbook_dir ~ ''/tasks/system -name "*.yml"'').splitlines() +
+            lookup(''pipe'', ''find '' ~ playbook_dir ~ ''/tasks/instances -mindepth 2 -maxdepth 2 -name "index.yml"'').splitlines() }}'
+        loop_control:
+            loop_var: deployment_task

@@ -7,17 +7,18 @@
           cores: 2
           storage: local-lvm
           bridge: vmbr0
-          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ vm.id }}/24'
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.252'
           gateway: '{{ env.JARVIS_GATEWAY }}'
   block:
-      - name: Collect all VMs
-        community.proxmox.proxmox_kvm_info:
-            node: '{{ inventory_hostname }}'
-        register: all_vms_info
+      - name: Check if Home VM exists
+        command: qm status {{ vm.id }}
+        register: vm_status_check
+        failed_when: false
+        changed_when: false
 
-      - name: Check if Home VM exists by name
+      - name: Set Home VM Exists Fact
         set_fact:
-            home_vm_exists: "{{ all_vms_info.proxmox_vms | selectattr('name', 'equalto', vm.name) | list | length > 0 }}"
+            home_vm_exists: '{{ vm_status_check.rc == 0 }}'
 
       - name: Deploy Home Assistant
         block:
@@ -44,31 +45,23 @@
                   creates: '/var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2'
 
             - name: Create VM
-              community.proxmox.proxmox_kvm:
-                  node: '{{ inventory_hostname }}'
-                  vmid: '{{ vm.id }}'
-                  name: '{{ vm.name }}'
-                  memory: '{{ vm.memory }}'
-                  cores: '{{ vm.cores }}'
-                  bios: ovmf
-                  machine: q35
-                  net:
-                      net0: 'virtio=02:6e:c2:4a:00:29,bridge={{ vm.bridge }}'
-                  ide:
-                      ide2: '{{ vm.storage }}:cloudinit'
-                  ipconfig0: 'ip={{ vm.ip }},gw={{ vm.gateway }}'
-                  nameservers: '{{ env.JARVIS_DNS_SERVERS }}'
-                  searchdomain: 'local'
-                  onboot: true
-                  ostype: l26
-                  agent: 1
-                  scsihw: virtio-scsi-pci
-                  efidisk0:
-                      storage: '{{ vm.storage }}'
-                      format: raw
-                      efitype: 4m
-                      size: 4M
-                  state: present
+              command: >
+                  qm create {{ vm.id }}
+                  --name "{{ vm.name }}"
+                  --memory {{ vm.memory }}
+                  --cores {{ vm.cores }}
+                  --bios ovmf
+                  --machine q35
+                  --net0 "virtio=02:6e:c2:4a:00:29,bridge={{ vm.bridge }}"
+                  --ide2 "{{ vm.storage }}:cloudinit"
+                  --ipconfig0 "ip={{ vm.ip }}/24,gw={{ vm.gateway }}"
+                  --nameserver "{{ env.JARVIS_DNS_SERVERS | join(' ') }}"
+                  --searchdomain "local"
+                  --onboot 1
+                  --ostype l26
+                  --agent 1
+                  --scsihw virtio-scsi-pci
+                  --efidisk0 "{{ vm.storage }}:0,format=raw,efitype=4m,size=4M"
 
             - name: Import Disk
               command: 'qm importdisk {{ vm.id }} /var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2 {{ vm.storage }}'
@@ -77,10 +70,7 @@
               command: 'qm set {{ vm.id }} --scsi0 {{ vm.storage }}:vm-{{ vm.id }}-disk-0,ssd=1,discard=on,size=32G --boot order=scsi0'
 
             - name: Start VM
-              community.proxmox.proxmox_kvm:
-                  node: '{{ inventory_hostname }}'
-                  vmid: '{{ vm.id }}'
-                  state: started
+              command: qm start {{ vm.id }}
 
             - name: Cleanup Downloaded Files
               file:

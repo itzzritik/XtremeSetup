@@ -7,20 +7,21 @@
           swap: 512
           cores: 4
           storage: local-lvm
-          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ lxc.id }}/24'
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.254'
           gateway: '{{ env.JARVIS_GATEWAY }}'
       paths:
           config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ lxc.hostname }}/etc'
           data: '{{ env.JARVIS_CONFIGS_DIR }}/{{ lxc.hostname }}/lib'
   block:
-      - name: Collect all LXCs
-        community.proxmox.proxmox_lxc_info:
-            node: '{{ inventory_hostname }}'
-        register: all_lxc_info
+      - name: Check if Jellyfin LXC exists
+        command: pct status {{ lxc.id }}
+        register: lxc_status_check
+        failed_when: false
+        changed_when: false
 
-      - name: Check if Jellyfin LXC exists by name
+      - name: Set Jellyfin LXC Exists Fact
         set_fact:
-            jellyfin_lxc_exists: "{{ all_lxc_info.proxmox_lxc | selectattr('name', 'search', lxc.hostname) | list | length > 0 }}"
+            jellyfin_lxc_exists: '{{ lxc_status_check.rc == 0 }}'
 
       - name: Create Config Directory on Host
         file:
@@ -49,26 +50,24 @@
                   creates: '/var/lib/vz/template/cache/{{ ubuntu_template_name.stdout }}'
 
             - name: Create Jellyfin LXC
-              community.proxmox.proxmox_lxc:
-                  node: '{{ inventory_hostname }}'
-                  vmid: '{{ lxc.id }}'
-                  hostname: '{{ lxc.hostname }}'
-                  memory: '{{ lxc.memory }}'
-                  swap: '{{ lxc.swap }}'
-                  cores: '{{ lxc.cores }}'
-                  ostype: ubuntu
-                  ostemplate: 'local:vztmpl/{{ ubuntu_template_name.stdout }}'
-                  net:
-                      net0: 'name=eth0,bridge=vmbr0,hwaddr=02:35:fa:19:7c:e8,ip={{ lxc.ip }},gw={{ lxc.gateway }},type=veth'
-                  storage: '{{ lxc.storage }}'
-                  disk: 8
-                  unprivileged: true
-                  features:
-                      - keyctl=1
-                      - nesting=1
-                  tags: media
-                  onboot: true
-                  state: present
+              command: >
+                  pct create {{ lxc.id }} /var/lib/vz/template/cache/{{ ubuntu_template_name.stdout }}
+                  --hostname {{ lxc.hostname }}
+                  --memory {{ lxc.memory }}
+                  --swap {{ lxc.swap }}
+                  --cores {{ lxc.cores }}
+                  --ostype ubuntu
+                  --net0 name=eth0,bridge=vmbr0,hwaddr=02:35:fa:19:7c:e8,ip={{ lxc.ip }}/24,gw={{ lxc.gateway }}
+                  --nameserver "{{ env.JARVIS_DNS_SERVERS | join(' ') }}"
+                  --storage {{ lxc.storage }}
+                  --rootfs {{ lxc.storage }}:8
+                  --unprivileged 1
+                  --features keyctl=1,nesting=1
+                  --tags media
+                  --onboot 1
+
+            - name: Start Jellyfin LXC
+              command: pct start {{ lxc.id }}
 
             - name: Configure LXC Mounts and Passthrough
               blockinfile:
@@ -85,29 +84,33 @@
                       lxc.mount.entry: var/cache/transcodes var/lib/jellyfin/transcodes none bind,create=dir,optional 0 0
               register: lxc_config_update
 
-            - name: Start Jellyfin LXC
-              community.proxmox.proxmox_lxc:
-                  node: '{{ inventory_hostname }}'
-                  vmid: '{{ lxc.id }}'
-                  state: started
-
             - name: Create Local Transcode Directory
               command: 'pct exec {{ lxc.id }} -- mkdir -p /var/cache/transcodes'
               changed_when: false
 
-            - name: Restart Jellyfin LXC (Apply Transcode Mount)
-              community.proxmox.proxmox_lxc:
-                  node: '{{ inventory_hostname }}'
-                  vmid: '{{ lxc.id }}'
-                  state: restarted
+            - name: Restart Jellyfin LXC (Apply Mounts/Passthrough)
+              command: pct reboot {{ lxc.id }}
+              when: lxc_config_update.changed
 
             - name: Wait for LXC to be ready
               wait_for:
-                  host: '{{ lxc.ip | ipv4 }}'
+                  host: '{{ lxc.ip }}'
                   port: 22
                   timeout: 60
               delegate_to: localhost
+              become: false
               ignore_errors: true
+
+            - name: Enforce LXC Network Config (Persistence)
+              command: >
+                  pct set {{ lxc.id }}
+                  --net0 name=eth0,bridge=vmbr0,hwaddr=02:35:fa:19:7c:e8,ip={{ lxc.ip }}/24,gw={{ lxc.gateway }}
+                  --nameserver "{{ env.JARVIS_DNS_SERVERS | join(' ') }}"
+              changed_when: false
+
+            - name: Enforce LXC Network Config (Runtime)
+              command: 'pct exec {{ lxc.id }} -- bash -c "ip route replace default via {{ lxc.gateway }} && echo \"nameserver {{ env.JARVIS_DNS_SERVERS | first }}\" > /etc/resolv.conf"'
+              changed_when: false
 
             - name: Install Dependencies
               command: 'pct exec {{ lxc.id }} -- bash -c "export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get install -y curl gnupg"'

@@ -10,7 +10,7 @@
   become: true
   register: apt_update_result
 
-- name: Upgrade Packages (Dist Upgrade)
+- name: Upgrade Packages
   apt:
       upgrade: dist
   become: true
