@@ -66,6 +66,7 @@
                   export var_hostname="{{ instance.hostname }}"
                   export var_cpu="{{ instance.cores }}"
                   export var_ram="{{ instance.memory }}"
+                  export var_swap="{{ instance.swap }}"
                   export var_disk="8"
                   export var_net="{{ instance.ip }}/24"
                   export var_gateway="{{ instance.gateway }}"
@@ -90,9 +91,6 @@
               command: pct stop {{ id }}
               ignore_errors: true
 
-            - name: '{{ instance.hostname | upper }}: Set Swap Size'
-              command: pct set {{ id }} -swap {{ instance.swap }}
-
             - name: '{{ instance.hostname | upper }}: Configure LXC Mounts'
               blockinfile:
                   path: '/etc/pve/lxc/{{ id }}.conf'
@@ -114,39 +112,58 @@
                   timeout: 120
 
             - name: '{{ instance.hostname | upper }}: Install Dependencies'
-              shell: pct exec {{ id }} -- apt-get update && pct exec {{ id }} -- apt-get install -y unzip iptables
+              shell: pct exec {{ id }} -- apt-get update && pct exec {{ id }} -- apt-get install -y unzip iptables python3
 
             - name: '{{ instance.hostname | upper }}: Install VueTorrent'
               shell: |
-                  pct exec {{ id }} -- bash -c "rm -rf /opt/vuetorrent && \
+                  pct exec {{ id }} -- bash -c "rm -rf /opt/vuetorrent /opt/VueTorrent && \
                   wget -qO /tmp/vuetorrent.zip https://github.com/VueTorrent/VueTorrent/releases/latest/download/vuetorrent.zip && \
                   unzip -o /tmp/vuetorrent.zip -d /opt && \
+                  if [ -d '/opt/VueTorrent' ]; then mv /opt/VueTorrent /opt/vuetorrent; fi && \
                   rm /tmp/vuetorrent.zip"
               args:
                   executable: /bin/bash
 
-            - name: '{{ instance.hostname | upper }}: Configure qBittorrent Settings'
+            - name: '{{ instance.hostname | upper }}: Generate qBittorrent Password Hash'
               shell: |
-                  pct exec {{ id }} -- bash -c "mkdir -p /root/.config/qBittorrent && \
-                  if grep -q 'WebUI\\\\HostHeaderValidation' /root/.config/qBittorrent/qBittorrent.conf; then \
-                    sed -i 's/^WebUI\\\\HostHeaderValidation=.*/WebUI\\\\HostHeaderValidation=false/' /root/.config/qBittorrent/qBittorrent.conf; \
-                  else \
-                    sed -i '/\[Preferences\]/a WebUI\\\HostHeaderValidation=false' /root/.config/qBittorrent/qBittorrent.conf || \
-                    echo -e '[Preferences]\nWebUI\HostHeaderValidation=false' >> /root/.config/qBittorrent/qBittorrent.conf; \
-                  fi && \
-                  if grep -q 'WebUI\\\\AlternativeUIEnabled' /root/.config/qBittorrent/qBittorrent.conf; then \
-                    sed -i 's/^WebUI\\\\AlternativeUIEnabled=.*/WebUI\\\\AlternativeUIEnabled=true/' /root/.config/qBittorrent/qBittorrent.conf; \
-                  else \
-                     sed -i '/\[Preferences\]/a WebUI\\\AlternativeUIEnabled=true' /root/.config/qBittorrent/qBittorrent.conf; \
-                  fi && \
-                  if grep -q 'WebUI\\\\RootFolder' /root/.config/qBittorrent/qBittorrent.conf; then \
-                    sed -i 's|^WebUI\\\\RootFolder=.*|WebUI\\\\RootFolder=/opt/vuetorrent/public|' /root/.config/qBittorrent/qBittorrent.conf; \
-                  else \
-                     sed -i '/\[Preferences\]/a WebUI\\\RootFolder=/opt/vuetorrent/public' /root/.config/qBittorrent/qBittorrent.conf; \
-                  fi && \
-                  systemctl restart qbittorrent-nox"
-              args:
-                  executable: /bin/bash
+                  python3 -c 'import base64, hashlib, os; password = os.environ.get("QB_PASSWORD", "").encode(); salt = os.urandom(16); key = hashlib.pbkdf2_hmac("sha512", password, salt, 100000); print("@ByteArray({}:{})".format(base64.b64encode(salt).decode(), base64.b64encode(key).decode()), end="")'
+              environment:
+                  QB_PASSWORD: '{{ env.JARVIS_ADMIN_PASSWORD }}'
+              register: qbit_password_hash
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Stop qBittorrent for Config'
+              command: pct exec {{ id }} -- systemctl stop qbittorrent-nox
+              ignore_errors: true
+
+            - name: '{{ instance.hostname | upper }}: Ensure qBittorrent Config Exists'
+              copy:
+                  content: "[Preferences]\n"
+                  dest: '{{ paths.config }}/qBittorrent.conf'
+                  force: false
+                  owner: '{{ instance.subuid }}'
+                  group: '{{ instance.subuid }}'
+                  mode: '0644'
+
+            - name: '{{ instance.hostname | upper }}: Configure qBittorrent Settings'
+              community.general.ini_file:
+                  path: '{{ paths.config }}/qBittorrent.conf'
+                  section: 'Preferences'
+                  option: '{{ item.key }}'
+                  value: '{{ item.value }}'
+                  owner: '{{ instance.subuid }}'
+                  group: '{{ instance.subuid }}'
+                  mode: '0644'
+              loop:
+                  - { key: 'WebUI\HostHeaderValidation', value: 'false' }
+                  - { key: 'WebUI\AlternativeUIEnabled', value: 'true' }
+                  - { key: 'WebUI\RootFolder', value: '/opt/vuetorrent' }
+                  - { key: 'Downloads\SavePath', value: '/media/wdhdd/torrents' }
+                  - { key: 'WebUI\Username', value: '{{ env.JARVIS_ADMIN_USERNAME }}' }
+                  - { key: 'WebUI\Password_PBKDF2', value: '{{ qbit_password_hash.stdout }}' }
+
+            - name: '{{ instance.hostname | upper }}: Start qBittorrent'
+              command: pct exec {{ id }} -- systemctl start qbittorrent-nox
 
             - name: '{{ instance.hostname | upper }}: Configure Port Forwarding (80 -> 8080)'
               shell: |

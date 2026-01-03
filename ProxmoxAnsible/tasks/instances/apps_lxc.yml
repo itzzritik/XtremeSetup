@@ -124,11 +124,11 @@
         register: docker_clean
         changed_when: docker_clean.stdout != ""
 
-      - name: '{{ instance.hostname | upper }}: Deploy Apps'
-        include_tasks: '{{ app_task }}'
-        vars:
-            ansible_user: root
-        loop: '{{ lookup("fileglob", "tasks/instances/apps_lxc/*.yml", wantlist=True) | reject("search", "index.yml") | sort }}'
-        loop_control:
-            loop_var: app_task
+      # - name: '{{ instance.hostname | upper }}: Deploy Apps'
+      #   include_tasks: '{{ app_task }}'
+      #   vars:
+      #       ansible_user: '{{ env.JARVIS_ADMIN_USERNAME }}'
+      #   loop: '{{ lookup("fileglob", "tasks/instances/apps_lxc/*.yml", wantlist=True) | reject("search", "index.yml") | sort }}'
+      #   loop_control:
+      #       loop_var: app_task
   become: true

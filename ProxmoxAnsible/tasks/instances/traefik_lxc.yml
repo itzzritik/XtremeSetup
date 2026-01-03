@@ -34,6 +34,7 @@
             recurse: true
         loop:
             - '{{ paths.config }}'
+            - '{{ paths.config }}/dynamic'
             - '{{ paths.cloudflared_config }}'
 
       - name: '{{ instance.hostname | upper }}: Provision Instance'
@@ -55,6 +56,7 @@
                   content: |
                       var_container_storage={{ instance.storage }}
                       var_template_storage={{ instance.storage }}
+                      var_sysctl_conf="net.ipv4.ip_forward=1"
 
             - name: '{{ instance.hostname | upper }}: Install Traefik using community script'
               shell: |
@@ -98,10 +100,34 @@
                       mp0: {{ paths.config }},mp=/etc/traefik
                       mp1: {{ paths.cloudflared_config }},mp=/etc/cloudflared
 
-            - name: '{{ instance.hostname | upper }}: Create Custom Traefik Config'
+            - name: '{{ instance.hostname | upper }}: Start LXC'
+              command: pct start {{ id }}
+
+        when: not instance_exists
+
+      - name: '{{ instance.hostname | upper }}: Configure Traefik'
+        block:
+            - name: '{{ instance.hostname | upper }}: Ensure acme.json exists'
+              file:
+                  path: '{{ paths.config }}/acme.json'
+                  state: touch
+                  access_time: preserve
+                  modification_time: preserve
+                  mode: '0600'
+                  owner: '{{ instance.subuid }}'
+                  group: '{{ instance.subuid }}'
+
+            - name: '{{ instance.hostname | upper }}: Update Traefik Static Config (traefik.yml)'
               copy:
                   dest: '{{ paths.config }}/traefik.yml'
                   content: |
+                      global:
+                        checkNewVersion: true
+                        sendAnonymousUsage: false
+
+                      log:
+                        level: INFO
+
                       api:
                         dashboard: true
                         insecure: true
@@ -109,18 +135,117 @@
                       entryPoints:
                         web:
                           address: ":80"
+                          http:
+                            redirections:
+                              entryPoint:
+                                to: websecure
+                                scheme: https
+                        websecure:
+                          address: ":443"
+                          http:
+                            tls:
+                              certResolver: letsencrypt
 
                       providers:
                         file:
                           directory: /etc/traefik/dynamic
                           watch: true
+
+                      certificatesResolvers:
+                        letsencrypt:
+                          acme:
+                            email: "{{ env.JARVIS_ADMIN_EMAIL }}"
+                            storage: /etc/traefik/acme.json
+                            dnsChallenge:
+                              provider: cloudflare
+                              resolvers:
+                                - "1.1.1.1:53"
+                                - "8.8.8.8:53"
                   owner: '{{ instance.subuid }}'
                   group: '{{ instance.subuid }}'
                   mode: '0644'
 
-            - name: '{{ instance.hostname | upper }}: Start LXC'
-              command: pct start {{ id }}
+            - name: '{{ instance.hostname | upper }}: Update Traefik Dynamic Rules (rules.yml)'
+              copy:
+                  dest: '{{ paths.config }}/dynamic/rules.yml'
+                  content: |
+                      http:
+                        middlewares:
+                          pihole-redirect:
+                            redirectRegex:
+                              regex: "^https?://pihole\\.{{ env.JARVIS_DOMAIN | replace('.', '\\.') }}/?$"
+                              replacement: "https://pihole.{{ env.JARVIS_DOMAIN }}/admin/"
 
+                        routers:
+                          traefik:
+                            rule: "Host(`traefik.{{ env.JARVIS_DOMAIN }}`)"
+                            service: "api@internal"
+                            tls:
+                              certResolver: letsencrypt
+
+                          home:
+                            rule: "Host(`home.{{ env.JARVIS_DOMAIN }}`)"
+                            service: "home"
+                            tls:
+                              certResolver: letsencrypt
+
+                          jellyfin:
+                            rule: "Host(`jellyfin.{{ env.JARVIS_DOMAIN }}`)"
+                            service: "jellyfin"
+                            tls:
+                              certResolver: letsencrypt
+
+                          pihole:
+                            rule: "Host(`pihole.{{ env.JARVIS_DOMAIN }}`)"
+                            service: "pihole"
+                            middlewares:
+                              - "pihole-redirect"
+                            tls:
+                              certResolver: letsencrypt
+
+                          qbittorrent:
+                            rule: "Host(`qbittorrent.{{ env.JARVIS_DOMAIN }}`)"
+                            service: "qbittorrent"
+                            tls:
+                              certResolver: letsencrypt
+
+                        services:
+                          home:
+                            loadBalancer:
+                              servers:
+                                - url: "http://192.168.68.252:8123"
+                          jellyfin:
+                            loadBalancer:
+                              servers:
+                                - url: "http://192.168.68.254:8096"
+                          pihole:
+                            loadBalancer:
+                              servers:
+                                - url: "http://192.168.68.250:80"
+                          qbittorrent:
+                            loadBalancer:
+                              servers:
+                                - url: "http://192.168.68.249:80"
+                  owner: '{{ instance.subuid }}'
+                  group: '{{ instance.subuid }}'
+                  mode: '0644'
+
+            - name: '{{ instance.hostname | upper }}: Configure Service Override'
+              shell: |
+                  pct exec {{ id }} -- bash -c "mkdir -p /etc/systemd/system/traefik.service.d && \
+                  echo '[Service]' > /etc/systemd/system/traefik.service.d/override.conf && \
+                  echo 'Environment=\"CF_DNS_API_TOKEN={{ env.JARVIS_CF_DNS_API_TOKEN }}\"' >> /etc/systemd/system/traefik.service.d/override.conf"
+
+            - name: '{{ instance.hostname | upper }}: Convert Service to Simple Type (Fix for Community Script)'
+              # The community script might set Type=notify which expects sd_notify which might not work well in LXC without loopback or privs
+              # Just to be safe, we reload and restart.
+              # Community script usually makes it simple/notify.
+              # We will just reload and restart.
+              shell: |
+                  pct exec {{ id }} -- bash -c "systemctl daemon-reload && systemctl restart traefik"
+
+      - name: '{{ instance.hostname | upper }}: Configure Cloudflared'
+        block:
             - name: '{{ instance.hostname | upper }}: Install Cloudflared'
               shell: |
                   pct exec {{ id }} -- bash -c "wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && dpkg -i cloudflared-linux-amd64.deb && rm cloudflared-linux-amd64.deb"
@@ -134,7 +259,6 @@
                   pct exec {{ id }} -- bash -c "cloudflared service install {{ env.JARVIS_CF_TUNNEL_TOKEN }}"
               args:
                   executable: /bin/bash
-
-        when: not instance_exists
+              when: env.JARVIS_CF_TUNNEL_TOKEN is defined and env.JARVIS_CF_TUNNEL_TOKEN | length > 0
 
   become: true
