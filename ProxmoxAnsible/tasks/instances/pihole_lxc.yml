@@ -1,0 +1,139 @@
+- vars:
+      id: 250
+      instance:
+          hostname: pihole
+          memory: 1024
+          swap: 512
+          cores: 1
+          storage: local-lvm
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+          subuid: '100000'
+      paths:
+          config_pihole: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/etc-pihole'
+          config_dnsmasq: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/etc-dnsmasq.d'
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        uri:
+            url: 'http://{{ instance.ip }}/admin'
+            timeout: 5
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - set_fact:
+            instance_exists: '{{ instance_check.status | default(0) == 200 }}'
+
+      - name: '{{ instance.hostname | upper }}: Create Config Directories on Host'
+        file:
+            path: '{{ item }}'
+            state: directory
+            mode: '0755'
+            owner: '{{ instance.subuid }}'
+            group: '{{ instance.subuid }}'
+            recurse: true
+        loop:
+            - '{{ paths.config_pihole }}'
+            - '{{ paths.config_dnsmasq }}'
+
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
+        block:
+            - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
+              shell: pct stop {{ id }}; pct destroy {{ id }}
+              failed_when: false
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Create Temporary Install Directory'
+              tempfile:
+                  state: directory
+                  suffix: _pihole_install
+              register: temp_install_dir
+
+            - name: '{{ instance.hostname | upper }}: Create default.vars for Silent Install'
+              copy:
+                  dest: '{{ temp_install_dir.path }}/default.vars'
+                  content: |
+                      var_container_storage={{ instance.storage }}
+                      var_template_storage={{ instance.storage }}
+
+            - name: '{{ instance.hostname | upper }}: Install Pihole using community script'
+              shell: |
+                  export mode="default"
+                  export var_ctid="{{ id }}"
+                  export var_hostname="{{ instance.hostname }}"
+                  export var_cpu="{{ instance.cores }}"
+                  export var_ram="{{ instance.memory }}"
+                  export var_disk="4"
+                  export var_net="{{ instance.ip }}/24"
+                  export var_gateway="{{ instance.gateway }}"
+                  export var_unprivileged="1"
+                  export TERM=xterm
+                  echo -e "y\nn" | bash -c "$(curl -fsSL {{ env.JARVIS_COMMUNITY_SCRIPTS_URL }}/ct/pihole.sh)"
+              args:
+                  chdir: '{{ temp_install_dir.path }}'
+                  executable: /bin/bash
+              register: pihole_install
+
+            - name: '{{ instance.hostname | upper }}: Show Pihole Install Output'
+              debug:
+                  var: pihole_install.stdout_lines
+
+            - name: '{{ instance.hostname | upper }}: Cleanup Temporary Directory'
+              file:
+                  path: '{{ temp_install_dir.path }}'
+                  state: absent
+
+            - name: '{{ instance.hostname | upper }}: Stop LXC for Configuration'
+              command: pct stop {{ id }}
+              ignore_errors: true
+
+            - name: '{{ instance.hostname | upper }}: Set Swap Size'
+              command: pct set {{ id }} -swap {{ instance.swap }}
+
+            - name: '{{ instance.hostname | upper }}: Configure LXC Mounts'
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ id }}.conf'
+                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
+                  block: |
+                      mp0: {{ paths.config_pihole }},mp=/etc/pihole
+                      mp1: {{ paths.config_dnsmasq }},mp=/etc/dnsmasq.d
+
+            - name: '{{ instance.hostname | upper }}: Start LXC'
+              command: pct start {{ id }}
+
+            - name: '{{ instance.hostname | upper }}: Wait for Pi-hole to be ready'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: 80
+                  delay: 5
+                  timeout: 60
+
+            - name: '{{ instance.hostname | upper }}: Create Password Set Script'
+              copy:
+                  dest: '/tmp/pihole_password_set_{{ id }}.sh'
+                  content: |
+                      #!/bin/bash
+                      set -e
+                      export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+                      pihole -a -p {{ env.JARVIS_ADMIN_PASSWORD | quote }}
+                  mode: '0700'
+              no_log: true
+
+            - name: '{{ instance.hostname | upper }}: Push Password Script to Container'
+              command: pct push {{ id }} /tmp/pihole_password_set_{{ id }}.sh /tmp/set_password.sh
+
+            - name: '{{ instance.hostname | upper }}: Execute Password Script'
+              command: pct exec {{ id }} -- bash /tmp/set_password.sh
+              register: set_password
+              until: set_password.rc == 0
+              retries: 10
+              delay: 5
+              no_log: true
+
+            - name: '{{ instance.hostname | upper }}: Remove Password Script from Container'
+              command: pct exec {{ id }} -- rm -f /tmp/set_password.sh
+              ignore_errors: true
+
+        when: not instance_exists
+
+  become: true

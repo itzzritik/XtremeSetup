@@ -1,0 +1,107 @@
+- vars:
+      id: 254
+      instance:
+          hostname: jellyfin
+          memory: 6144
+          swap: 512
+          cores: 4
+          storage: local-lvm
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+      paths:
+          config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/etc'
+          data: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/lib'
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        uri:
+            url: 'http://{{ instance.ip }}:8096'
+            timeout: 5
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - set_fact:
+            instance_exists: '{{ instance_check.status | default(0) == 200 }}'
+
+      - name: '{{ instance.hostname | upper }}: Create Config Directory on Host'
+        file:
+            path: '{{ item }}'
+            state: directory
+            mode: '0777'
+            recurse: true
+        loop:
+            - '{{ paths.config }}'
+            - '{{ paths.data }}'
+
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
+        block:
+            - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
+              shell: pct stop {{ id }}; pct destroy {{ id }}
+              failed_when: false
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Create Temporary Install Directory'
+              tempfile:
+                  state: directory
+                  suffix: _jellyfin_install
+              register: temp_install_dir
+
+            - name: '{{ instance.hostname | upper }}: Create default.vars for Silent Install'
+              copy:
+                  dest: '{{ temp_install_dir.path }}/default.vars'
+                  content: |
+                      var_container_storage={{ instance.storage }}
+                      var_template_storage={{ instance.storage }}
+
+            - name: '{{ instance.hostname | upper }}: Install Jellyfin using community script'
+              shell: |
+                  export mode="default"
+                  export var_ctid="{{ id }}"
+                  export var_hostname="{{ instance.hostname }}"
+                  export var_cpu="{{ instance.cores }}"
+                  export var_ram="{{ instance.memory }}"
+                  export var_disk="16"
+                  export var_net="{{ instance.ip }}/24"
+                  export var_gateway="{{ instance.gateway }}"
+                  export var_gpu="yes"
+                  export var_unprivileged="1"
+                  export TERM=xterm
+                  bash -c "$(curl -fsSL {{ env.JARVIS_COMMUNITY_SCRIPTS_URL }}/ct/jellyfin.sh)"
+              args:
+                  chdir: '{{ temp_install_dir.path }}'
+                  executable: /bin/bash
+              register: jellyfin_install
+
+            - name: '{{ instance.hostname | upper }}: Show Jellyfin Install Output'
+              debug:
+                  var: jellyfin_install.stdout_lines
+
+            - name: '{{ instance.hostname | upper }}: Cleanup Temporary Directory'
+              file:
+                  path: '{{ temp_install_dir.path }}'
+                  state: absent
+
+            - name: '{{ instance.hostname | upper }}: Stop LXC for Configuration'
+              command: pct stop {{ id }}
+              ignore_errors: true
+
+            - name: '{{ instance.hostname | upper }}: Set Swap Size'
+              command: pct set {{ id }} -swap {{ instance.swap }}
+
+            - name: '{{ instance.hostname | upper }}: Configure LXC Mounts and Passthrough'
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ id }}.conf'
+                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
+                  block: |
+                      mp0: /mnt/wdhdd,mp=/media/wdhdd
+                      mp1: /mnt/ssd,mp=/media/ssd
+                      mp2: {{ paths.config }},mp=/etc/jellyfin
+                      mp3: {{ paths.data }},mp=/var/lib/jellyfin
+                      lxc.mount.entry: var/cache/transcodes var/lib/jellyfin/transcodes none bind,create=dir,optional 0 0
+
+            - name: '{{ instance.hostname | upper }}: Start LXC'
+              command: pct start {{ id }}
+
+        when: not instance_exists
+
+  become: true

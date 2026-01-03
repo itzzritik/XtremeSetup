@@ -28,11 +28,20 @@
       - name: Automount Drives
         include_tasks: tasks/system/automount.yml
 
-      - name: Install Home Assistant OS
-        include_tasks: tasks/instances/home_vm/index.yml
+      - name: Run Home Assistant OS Installer
+        include_tasks: tasks/instances/home_vm.yml
 
-      - name: Install Jellyfin
-        include_tasks: tasks/instances/jellyfin_lxc/index.yml
+      - name: Run Jellyfin Installer
+        include_tasks: tasks/instances/jellyfin_lxc.yml
 
-      - name: Install Apps
-        include_tasks: tasks/instances/apps_lxc/index.yml
+      # - name: Run Apps Installer
+      #   include_tasks: tasks/instances/apps_lxc.yml
+
+      - name: Run Traefik Installer
+        include_tasks: tasks/instances/traefik_lxc.yml
+
+      - name: Run Pihole Installer
+        include_tasks: tasks/instances/pihole_lxc.yml
+
+      - name: Run Qbittorrent Installer
+        include_tasks: tasks/instances/qbittorrent_lxc.yml

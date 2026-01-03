@@ -1,0 +1,140 @@
+- vars:
+      id: 251
+      instance:
+          hostname: traefik
+          memory: 2048
+          swap: 512
+          cores: 2
+          storage: local-lvm
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+          subuid: '100000'
+      paths:
+          config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/traefik'
+          cloudflared_config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/cloudflared'
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        uri:
+            url: 'http://{{ instance.ip }}:8080'
+            timeout: 5
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - set_fact:
+            instance_exists: '{{ instance_check.status | default(0) == 200 }}'
+
+      - name: '{{ instance.hostname | upper }}: Create Config Directories on Host'
+        file:
+            path: '{{ item }}'
+            state: directory
+            mode: '0755'
+            owner: '{{ instance.subuid }}'
+            group: '{{ instance.subuid }}'
+            recurse: true
+        loop:
+            - '{{ paths.config }}'
+            - '{{ paths.cloudflared_config }}'
+
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
+        block:
+            - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
+              shell: pct stop {{ id }}; pct destroy {{ id }}
+              failed_when: false
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Create Temporary Install Directory'
+              tempfile:
+                  state: directory
+                  suffix: _traefik_install
+              register: temp_install_dir
+
+            - name: '{{ instance.hostname | upper }}: Create default.vars for Silent Install'
+              copy:
+                  dest: '{{ temp_install_dir.path }}/default.vars'
+                  content: |
+                      var_container_storage={{ instance.storage }}
+                      var_template_storage={{ instance.storage }}
+
+            - name: '{{ instance.hostname | upper }}: Install Traefik using community script'
+              shell: |
+                  export mode="default"
+                  export var_ctid="{{ id }}"
+                  export var_hostname="{{ instance.hostname }}"
+                  export var_cpu="{{ instance.cores }}"
+                  export var_ram="{{ instance.memory }}"
+                  export var_disk="8"
+                  export var_net="{{ instance.ip }}/24"
+                  export var_gateway="{{ instance.gateway }}"
+                  export var_unprivileged="1"
+                  export TERM=xterm
+                  bash -c "$(curl -fsSL {{ env.JARVIS_COMMUNITY_SCRIPTS_URL }}/ct/traefik.sh)"
+              args:
+                  chdir: '{{ temp_install_dir.path }}'
+                  executable: /bin/bash
+              register: traefik_install
+
+            - name: '{{ instance.hostname | upper }}: Show Traefik Install Output'
+              debug:
+                  var: traefik_install.stdout_lines
+
+            - name: '{{ instance.hostname | upper }}: Cleanup Temporary Directory'
+              file:
+                  path: '{{ temp_install_dir.path }}'
+                  state: absent
+
+            - name: '{{ instance.hostname | upper }}: Stop LXC for Configuration'
+              command: pct stop {{ id }}
+              ignore_errors: true
+
+            - name: '{{ instance.hostname | upper }}: Set Swap Size'
+              command: pct set {{ id }} -swap {{ instance.swap }}
+
+            - name: '{{ instance.hostname | upper }}: Configure LXC Mounts'
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ id }}.conf'
+                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
+                  block: |
+                      mp0: {{ paths.config }},mp=/etc/traefik
+                      mp1: {{ paths.cloudflared_config }},mp=/etc/cloudflared
+
+            - name: '{{ instance.hostname | upper }}: Create Custom Traefik Config'
+              copy:
+                  dest: '{{ paths.config }}/traefik.yml'
+                  content: |
+                      api:
+                        dashboard: true
+                        insecure: true
+
+                      entryPoints:
+                        web:
+                          address: ":80"
+
+                      providers:
+                        file:
+                          directory: /etc/traefik/dynamic
+                          watch: true
+                  owner: '{{ instance.subuid }}'
+                  group: '{{ instance.subuid }}'
+                  mode: '0644'
+
+            - name: '{{ instance.hostname | upper }}: Start LXC'
+              command: pct start {{ id }}
+
+            - name: '{{ instance.hostname | upper }}: Install Cloudflared'
+              shell: |
+                  pct exec {{ id }} -- bash -c "wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && dpkg -i cloudflared-linux-amd64.deb && rm cloudflared-linux-amd64.deb"
+              args:
+                  executable: /bin/bash
+              register: cloudflared_install
+
+            - name: '{{ instance.hostname | upper }}: Configure Cloudflared Service'
+              shell: |
+                  pct exec {{ id }} -- bash -c "cloudflared service uninstall || true"
+                  pct exec {{ id }} -- bash -c "cloudflared service install {{ env.JARVIS_CF_TUNNEL_TOKEN }}"
+              args:
+                  executable: /bin/bash
+
+        when: not instance_exists
+
+  become: true

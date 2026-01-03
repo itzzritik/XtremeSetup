@@ -1,0 +1,181 @@
+- vars:
+      id: 249
+      instance:
+          hostname: qbittorrent
+          memory: 2048
+          swap: 512
+          cores: 2
+          storage: local-lvm
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+          subuid: '100000'
+      paths:
+          config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/config'
+          data: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/data'
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        uri:
+            url: 'http://{{ instance.ip }}/'
+            timeout: 5
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - set_fact:
+            instance_exists: '{{ instance_check.status | default(0) == 200 }}'
+
+      - name: '{{ instance.hostname | upper }}: Create Config Directories on Host'
+        file:
+            path: '{{ item }}'
+            state: directory
+            mode: '0755'
+            owner: '{{ instance.subuid }}'
+            group: '{{ instance.subuid }}'
+            recurse: true
+        loop:
+            - '{{ paths.config }}'
+            - '{{ paths.data }}'
+
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
+        block:
+            - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
+              shell: pct stop {{ id }}; pct destroy {{ id }}
+              failed_when: false
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Create Temporary Install Directory'
+              tempfile:
+                  state: directory
+                  suffix: _qbittorrent_install
+              register: temp_install_dir
+
+            - name: '{{ instance.hostname | upper }}: Create default.vars for Silent Install'
+              copy:
+                  dest: '{{ temp_install_dir.path }}/default.vars'
+                  content: |
+                      var_container_storage={{ instance.storage }}
+                      var_template_storage={{ instance.storage }}
+
+            - name: '{{ instance.hostname | upper }}: Install qBittorrent using community script'
+              shell: |
+                  export var_os="ubuntu"
+                  export var_version="24.04"
+                  export DEBIAN_FRONTEND=noninteractive
+                  export mode="default"
+                  export var_ctid="{{ id }}"
+                  export var_hostname="{{ instance.hostname }}"
+                  export var_cpu="{{ instance.cores }}"
+                  export var_ram="{{ instance.memory }}"
+                  export var_disk="8"
+                  export var_net="{{ instance.ip }}/24"
+                  export var_gateway="{{ instance.gateway }}"
+                  export var_unprivileged="1"
+                  export TERM=xterm
+                  echo -e "y" | bash -c "$(curl -fsSL {{ env.JARVIS_COMMUNITY_SCRIPTS_URL }}/ct/qbittorrent.sh)"
+              args:
+                  chdir: '{{ temp_install_dir.path }}'
+                  executable: /bin/bash
+              register: qbittorrent_install
+
+            - name: '{{ instance.hostname | upper }}: Show qBittorrent Install Output'
+              debug:
+                  var: qbittorrent_install.stdout_lines
+
+            - name: '{{ instance.hostname | upper }}: Cleanup Temporary Directory'
+              file:
+                  path: '{{ temp_install_dir.path }}'
+                  state: absent
+
+            - name: '{{ instance.hostname | upper }}: Stop LXC for Configuration'
+              command: pct stop {{ id }}
+              ignore_errors: true
+
+            - name: '{{ instance.hostname | upper }}: Set Swap Size'
+              command: pct set {{ id }} -swap {{ instance.swap }}
+
+            - name: '{{ instance.hostname | upper }}: Configure LXC Mounts'
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ id }}.conf'
+                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
+                  block: |
+                      mp0: /mnt/wdhdd,mp=/media/wdhdd
+                      mp1: /mnt/ssd,mp=/media/ssd
+                      mp2: {{ paths.config }},mp=/root/.config/qBittorrent
+                      mp3: {{ paths.data }},mp=/root/.local/share/qBittorrent
+
+            - name: '{{ instance.hostname | upper }}: Start LXC'
+              command: pct start {{ id }}
+
+            - name: '{{ instance.hostname | upper }}: Wait for qBittorrent to be ready (Internal Port)'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: 8080
+                  delay: 5
+                  timeout: 120
+
+            - name: '{{ instance.hostname | upper }}: Install Dependencies'
+              shell: pct exec {{ id }} -- apt-get update && pct exec {{ id }} -- apt-get install -y unzip iptables
+
+            - name: '{{ instance.hostname | upper }}: Install VueTorrent'
+              shell: |
+                  pct exec {{ id }} -- bash -c "rm -rf /opt/vuetorrent && \
+                  wget -qO /tmp/vuetorrent.zip https://github.com/VueTorrent/VueTorrent/releases/latest/download/vuetorrent.zip && \
+                  unzip -o /tmp/vuetorrent.zip -d /opt && \
+                  rm /tmp/vuetorrent.zip"
+              args:
+                  executable: /bin/bash
+
+            - name: '{{ instance.hostname | upper }}: Configure qBittorrent Settings'
+              shell: |
+                  pct exec {{ id }} -- bash -c "mkdir -p /root/.config/qBittorrent && \
+                  if grep -q 'WebUI\\\\HostHeaderValidation' /root/.config/qBittorrent/qBittorrent.conf; then \
+                    sed -i 's/^WebUI\\\\HostHeaderValidation=.*/WebUI\\\\HostHeaderValidation=false/' /root/.config/qBittorrent/qBittorrent.conf; \
+                  else \
+                    sed -i '/\[Preferences\]/a WebUI\\\HostHeaderValidation=false' /root/.config/qBittorrent/qBittorrent.conf || \
+                    echo -e '[Preferences]\nWebUI\HostHeaderValidation=false' >> /root/.config/qBittorrent/qBittorrent.conf; \
+                  fi && \
+                  if grep -q 'WebUI\\\\AlternativeUIEnabled' /root/.config/qBittorrent/qBittorrent.conf; then \
+                    sed -i 's/^WebUI\\\\AlternativeUIEnabled=.*/WebUI\\\\AlternativeUIEnabled=true/' /root/.config/qBittorrent/qBittorrent.conf; \
+                  else \
+                     sed -i '/\[Preferences\]/a WebUI\\\AlternativeUIEnabled=true' /root/.config/qBittorrent/qBittorrent.conf; \
+                  fi && \
+                  if grep -q 'WebUI\\\\RootFolder' /root/.config/qBittorrent/qBittorrent.conf; then \
+                    sed -i 's|^WebUI\\\\RootFolder=.*|WebUI\\\\RootFolder=/opt/vuetorrent/public|' /root/.config/qBittorrent/qBittorrent.conf; \
+                  else \
+                     sed -i '/\[Preferences\]/a WebUI\\\RootFolder=/opt/vuetorrent/public' /root/.config/qBittorrent/qBittorrent.conf; \
+                  fi && \
+                  systemctl restart qbittorrent-nox"
+              args:
+                  executable: /bin/bash
+
+            - name: '{{ instance.hostname | upper }}: Configure Port Forwarding (80 -> 8080)'
+              shell: |
+                  pct exec {{ id }} -- bash -c "cat <<EOF > /etc/systemd/system/qbittorrent-port-forward.service
+                  [Unit]
+                  Description=Qbittorrent Port Forward 80 to 8080
+                  After=network.target
+
+                  [Service]
+                  Type=oneshot
+                  ExecStart=/usr/sbin/iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080
+                  ExecStop=/usr/sbin/iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080
+                  RemainAfterExit=yes
+
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+                  systemctl daemon-reload && \
+                  systemctl enable --now qbittorrent-port-forward.service"
+              args:
+                  executable: /bin/bash
+
+            - name: '{{ instance.hostname | upper }}: Wait for qBittorrent on Port 80'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: 80
+                  delay: 2
+                  timeout: 30
+
+        when: not instance_exists
+
+  become: true
