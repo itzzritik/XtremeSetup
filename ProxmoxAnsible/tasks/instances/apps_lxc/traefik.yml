@@ -7,10 +7,14 @@
       path: '{{ env.JARVIS_CONFIGS_DIR }}/{{ container_id }}'
       state: directory
       mode: '0755'
+      owner: '{{ instance.subuid }}'
+      group: '{{ instance.subuid }}'
 
 - name: Create Traefik Config
   copy:
       dest: '{{ env.JARVIS_CONFIGS_DIR }}/{{ container_id }}/traefik.yml'
+      owner: '{{ instance.subuid }}'
+      group: '{{ instance.subuid }}'
       content: |
           api:
             dashboard: true
@@ -41,6 +45,8 @@
 - name: Create Traefik Dynamic Config
   copy:
       dest: '{{ env.JARVIS_CONFIGS_DIR }}/{{ container_id }}/dynamic.yml'
+      owner: '{{ instance.subuid }}'
+      group: '{{ instance.subuid }}'
       content: |
           http:
             routers:
@@ -70,6 +76,14 @@
                     - url: "http://{{ env.JARVIS_NETWORK_PREFIX }}.254:8096"
 
       mode: '0600'
+
+- name: Create ACME Storage
+  file:
+      path: '{{ env.JARVIS_CONFIGS_DIR }}/{{ container_id }}/acme.json'
+      state: touch
+      mode: '0600'
+      owner: '{{ instance.subuid }}'
+      group: '{{ instance.subuid }}'
 
 - name: Deploy Traefik Container
   community.docker.docker_container:

@@ -9,49 +9,56 @@
           ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
           gateway: '{{ env.JARVIS_GATEWAY }}'
           configs: '/root/configs'
+          subuid: '100000'
       docker_host: 'tcp://{{ instance.ip }}:2375'
   block:
-      - name: Install Host Dependencies
+      - name: '{{ instance.hostname | upper }}: Install Host Dependencies'
         apt:
             name:
                 - python3-docker
-                - unzip
             state: present
 
-      - name: Check if Instance exists
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
         command: pct status {{ id }}
         register: instance_status_check
         failed_when: false
         changed_when: false
 
-      - name: Set Instance Exists Fact
+      - name: '{{ instance.hostname | upper }}: Set Instance Exists Fact'
         set_fact:
             instance_exists: '{{ instance_status_check.rc == 0 }}'
+            instance_running: '{{ "status: running" in instance_status_check.stdout }}'
 
-      - name: Create Host Config Base Directory
+      - name: '{{ instance.hostname | upper }}: Create Host Config Base Directory'
         file:
             path: '{{ env.JARVIS_CONFIGS_DIR }}'
             state: directory
             mode: '0755'
-        when: not instance_exists
+            owner: '{{ instance.subuid }}'
+            group: '{{ instance.subuid }}'
 
-      - name: Provision Instance
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
         block:
-            - name: Update LXC Template Database
+            - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
+              shell: pct stop {{ id }}; pct destroy {{ id }}; sleep 5
+              failed_when: false
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Update LXC Template Database'
               command: pveam update
               changed_when: false
 
-            - name: Determine Latest Ubuntu Template
-              shell: pveam available | grep "ubuntu-[0-9.]*-standard" | sort -V | tail -n 1 | awk '{print $2}'
+            - name: '{{ instance.hostname | upper }}: Determine Latest Ubuntu Template'
+              shell: pveam available | grep "ubuntu-24.04-standard" | sort -V | tail -n 1 | awk '{print $2}'
               register: ubuntu_template_name
               changed_when: false
 
-            - name: Download Ubuntu Template
+            - name: '{{ instance.hostname | upper }}: Download Ubuntu Template'
               command: 'pveam download local {{ ubuntu_template_name.stdout }}'
               args:
                   creates: '/var/lib/vz/template/cache/{{ ubuntu_template_name.stdout }}'
 
-            - name: Create LXC
+            - name: '{{ instance.hostname | upper }}: Create LXC'
               command: >
                   pct create {{ id }} /var/lib/vz/template/cache/{{ ubuntu_template_name.stdout }}
                   --hostname {{ instance.hostname }}
@@ -66,8 +73,12 @@
                   --unprivileged 1
                   --features keyctl=1,nesting=1
                   --onboot 1
+              register: lxc_create_result
+              retries: 3
+              delay: 5
+              until: lxc_create_result.rc == 0
 
-            - name: Configure LXC Mounts
+            - name: '{{ instance.hostname | upper }}: Configure LXC Mounts'
               blockinfile:
                   path: '/etc/pve/lxc/{{ id }}.conf'
                   marker: '# {mark} ANSIBLE MANAGED BLOCK'
@@ -76,26 +87,97 @@
                       mp1: /mnt/ssd,mp=/media/ssd
                       mp2: {{ env.JARVIS_CONFIGS_DIR }},mp={{ instance.configs }}
 
-            - name: Start LXC
+            - name: '{{ instance.hostname | upper }}: Start LXC'
               command: pct start {{ id }}
 
-            - name: Wait for LXC Network
-              wait_for:
-                  host: '{{ instance.ip }}'
-                  port: 22
-                  timeout: 60
-                  state: started
-              delegate_to: localhost
-              become: false
-              ignore_errors: true
+            - name: '{{ instance.hostname | upper }}: Configure System DNS'
+              command: |
+                  pct exec {{ id }} -- bash -c "
+                  sed -r -i 's/#?DNSStubListener=yes/DNSStubListener=no/g' /etc/systemd/resolved.conf && \
+                  systemctl restart systemd-resolved && \
+                  rm -f /etc/resolv.conf && \
+                  printf 'nameserver %s\n' {{ env.JARVIS_DNS_SERVERS | join(' ') }} > /etc/resolv.conf"
+              changed_when: false
 
-            - name: Install Docker and Dependencies
+            - name: '{{ instance.hostname | upper }}: Wait for Internet Connectivity'
+              command: pct exec {{ id }} -- ping -c 1 -W 1 {{ env.JARVIS_DNS_SERVERS[0] }}
+              register: network_check
+              until: network_check.rc == 0
+              retries: 30
+              delay: 2
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Wait for Background Apt Tasks'
+              command: >
+                  pct exec {{ id }} -- bash -c "
+                  while ps -A | grep -E 'apt|dpkg|unattended-upgr' | grep -v grep > /dev/null; do sleep 5; done"
+              changed_when: false
+              register: wait_apt_prereq
+              retries: 10
+              delay: 5
+              until: wait_apt_prereq.rc == 0
+
+            - name: '{{ instance.hostname | upper }}: Install Docker Prerequisites'
               command: |
                   pct exec {{ id }} -- bash -c "
                   export DEBIAN_FRONTEND=noninteractive && \
+                  rm -rf /var/lib/apt/lists/* && \
+                  mkdir -p /var/lib/apt/lists/partial && \
+                  apt-get clean && \
                   apt-get update && \
-                  apt-get install -y curl ca-certificates gnupg python3-requests unzip && \
-                  curl -fsSL https://get.docker.com | sh && \
+                  apt-get install -y ca-certificates curl unzip"
+              changed_when: false
+              register: prereq_install
+              retries: 5
+              delay: 10
+              until: prereq_install.rc == 0
+
+            - name: '{{ instance.hostname | upper }}: Add Docker GPG Key'
+              command: |
+                  pct exec {{ id }} -- bash -c "
+                  install -m 0755 -d /etc/apt/keyrings && \
+                  rm -f /etc/apt/keyrings/docker.asc && \
+                  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
+                  chmod a+r /etc/apt/keyrings/docker.asc"
+              changed_when: false
+              register: docker_gpg_key
+              retries: 5
+              delay: 5
+              until: docker_gpg_key.rc == 0
+
+            - name: '{{ instance.hostname | upper }}: Add Docker Repository'
+              shell: |
+                  pct exec {{ id }} -- bash -c 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list'
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Wait for Background Apt Tasks for Docker'
+              command: >
+                  pct exec {{ id }} -- bash -c "
+                  while ps -A | grep -E 'apt|dpkg|unattended-upgr' | grep -v grep > /dev/null; do sleep 5; done"
+              changed_when: false
+              register: wait_apt_docker
+              retries: 10
+              delay: 5
+              until: wait_apt_docker.rc == 0
+
+            - name: '{{ instance.hostname | upper }}: Install Docker Packages'
+              command: |
+                  pct exec {{ id }} -- bash -c "
+                  export DEBIAN_FRONTEND=noninteractive && \
+                  rm -rf /var/lib/apt/lists/* && \
+                  mkdir -p /var/lib/apt/lists/partial && \
+                  apt-get clean && \
+                  apt-get update && \
+                  apt-get install -y --fix-missing --allow-downgrades docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
+              changed_when: false
+              retries: 10
+              delay: 10
+              register: docker_install_result
+              until: docker_install_result.rc == 0
+
+            - name: '{{ instance.hostname | upper }}: Configure Docker Remote API'
+              command: |
+                  pct exec {{ id }} -- bash -c "
                   mkdir -p /etc/systemd/system/docker.service.d && \
                   printf '[Service]\nExecStart=\nExecStart=/usr/bin/dockerd -H fd:// -H tcp://0.0.0.0:2375\n' > /etc/systemd/system/docker.service.d/override.conf && \
                   systemctl daemon-reload && \
@@ -104,25 +186,36 @@
 
         when: not instance_exists
 
-      - name: Get LXC Status
-        command: pct status {{ id }}
-        register: instance_status
+      - name: '{{ instance.hostname | upper }}: Ensure LXC is Running'
+        command: pct start {{ id }}
+        when: instance_exists and not instance_running
+
+      - name: '{{ instance.hostname | upper }}: Enable Passwordless Console Access'
+        command: |
+            pct exec {{ id }} -- bash -c "
+            mkdir -p /etc/systemd/system/container-getty@1.service.d && \
+            printf '[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%%I 115200,38400,9600 \$TERM\n' > /etc/systemd/system/container-getty@1.service.d/override.conf && \
+            systemctl daemon-reload && \
+            systemctl restart container-getty@1"
         changed_when: false
 
-      - name: Ensure LXC is Running
-        command: pct start {{ id }}
-        when: "'status: stopped' in instance_status.stdout"
+      - name: '{{ instance.hostname | upper }}: Wait for Docker Remote API'
+        command: pct exec {{ id }} -- curl -s http://127.0.0.1:2375/version
+        register: docker_ready
+        until: docker_ready.rc == 0
+        retries: 30
+        delay: 2
+        changed_when: false
 
-      - name: Wait for Docker Remote API
-        wait_for:
-            host: '{{ instance.ip }}'
-            port: 2375
-            timeout: 60
-        delegate_to: localhost
-        become: false
+      - name: '{{ instance.hostname | upper }}: Clean All Docker Containers'
+        command: pct exec {{ id }} -- bash -c "docker ps -aq | xargs -r docker rm -f"
+        register: docker_clean
+        changed_when: docker_clean.stdout != ""
 
-      - name: Deploy Apps
+      - name: '{{ instance.hostname | upper }}: Deploy Apps'
         include_tasks: '{{ app_task }}'
+        vars:
+            ansible_user: root
         loop: '{{ lookup("fileglob", "tasks/instances/apps_lxc/*.yml", wantlist=True) | reject("search", "index.yml") | sort }}'
         loop_control:
             loop_var: app_task

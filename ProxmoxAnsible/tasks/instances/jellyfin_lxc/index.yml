@@ -12,17 +12,18 @@
           config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/etc'
           data: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/lib'
   block:
-      - name: Check if Instance exists
-        command: pct status {{ id }}
-        register: instance_status_check
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        uri:
+            url: 'http://{{ instance.ip }}:8096'
+            timeout: 5
+        register: instance_check
         failed_when: false
         changed_when: false
 
-      - name: Set Instance Exists Fact
-        set_fact:
-            instance_exists: '{{ instance_status_check.rc == 0 }}'
+      - set_fact:
+            instance_exists: '{{ instance_check.status | default(0) == 200 }}'
 
-      - name: Create Config Directory on Host
+      - name: '{{ instance.hostname | upper }}: Create Config Directory on Host'
         file:
             path: '{{ item }}'
             state: directory
@@ -32,77 +33,70 @@
             - '{{ paths.config }}'
             - '{{ paths.data }}'
 
-      - name: Provision Instance
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
         block:
-            - name: Update LXC Template Database
-              command: pveam update
+            - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
+              shell: pct stop {{ id }}; pct destroy {{ id }}
+              failed_when: false
               changed_when: false
 
-            - name: Determine Latest Ubuntu Template
-              shell: pveam available | grep "ubuntu-[0-9.]*-standard" | sort -V | tail -n 1 | awk '{print $2}'
-              register: ubuntu_template_name
-              changed_when: false
+            - name: '{{ instance.hostname | upper }}: Create Temporary Install Directory'
+              tempfile:
+                  state: directory
+                  suffix: _jellyfin_install
+              register: temp_install_dir
 
-            - name: Download Ubuntu Template
-              command: 'pveam download local {{ ubuntu_template_name.stdout }}'
+            - name: '{{ instance.hostname | upper }}: Create default.vars for Silent Install'
+              copy:
+                  dest: '{{ temp_install_dir.path }}/default.vars'
+                  content: |
+                      var_container_storage={{ instance.storage }}
+                      var_template_storage={{ instance.storage }}
+
+            - name: '{{ instance.hostname | upper }}: Run Jellyfin Install Script'
+              shell: |
+                  export mode="default"
+                  export var_ctid="{{ id }}"
+                  export var_hostname="{{ instance.hostname }}"
+                  export var_cpu="{{ instance.cores }}"
+                  export var_ram="{{ instance.memory }}"
+                  export var_disk="16"
+                  export var_net="{{ instance.ip }}/24"
+                  export var_gateway="{{ instance.gateway }}"
+                  export var_gpu="yes"
+                  export var_unprivileged="1"
+                  export TERM=xterm
+                  bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/jellyfin.sh)"
               args:
-                  creates: '/var/lib/vz/template/cache/{{ ubuntu_template_name.stdout }}'
+                  chdir: '{{ temp_install_dir.path }}'
+                  executable: /bin/bash
 
-            - name: Create LXC
-              command: >
-                  pct create {{ id }} /var/lib/vz/template/cache/{{ ubuntu_template_name.stdout }}
-                  --hostname {{ instance.hostname }}
-                  --memory {{ instance.memory }}
-                  --swap {{ instance.swap }}
-                  --cores {{ instance.cores }}
-                  --ostype ubuntu
-                  --net0 name=eth0,bridge=vmbr0,hwaddr=02:35:fa:19:7c:e8,ip={{ instance.ip }}/24,gw={{ instance.gateway }}
-                  --nameserver "{{ env.JARVIS_DNS_SERVERS | join(' ') }}"
-                  --storage {{ instance.storage }}
-                  --rootfs {{ instance.storage }}:16
-                  --unprivileged 1
-                  --features keyctl=1,nesting=1
-                  --tags media
-                  --onboot 1
+            - name: '{{ instance.hostname | upper }}: Cleanup Temporary Directory'
+              file:
+                  path: '{{ temp_install_dir.path }}'
+                  state: absent
 
-            - name: Configure LXC Mounts and Passthrough
+            - name: '{{ instance.hostname | upper }}: Stop LXC for Configuration'
+              command: pct stop {{ id }}
+              ignore_errors: true
+
+            - name: '{{ instance.hostname | upper }}: Set Swap Size'
+              command: pct set {{ id }} -swap {{ instance.swap }}
+
+            - name: '{{ instance.hostname | upper }}: Configure LXC Mounts and Passthrough'
               blockinfile:
                   path: '/etc/pve/lxc/{{ id }}.conf'
                   marker: '# {mark} ANSIBLE MANAGED BLOCK'
                   block: |
-                      lxc.cgroup2.devices.allow: c 226:* rwm
-                      lxc.mount.entry: /dev/dri/renderD128 dev/dri/renderD128 none bind,optional,create=file
-                      lxc.mount.entry: /dev/dri/card1 dev/dri/card1 none bind,optional,create=file
                       mp0: /mnt/wdhdd,mp=/media/wdhdd
                       mp1: /mnt/ssd,mp=/media/ssd
                       mp2: {{ paths.config }},mp=/etc/jellyfin
                       mp3: {{ paths.data }},mp=/var/lib/jellyfin
                       lxc.mount.entry: var/cache/transcodes var/lib/jellyfin/transcodes none bind,create=dir,optional 0 0
 
-            - name: Start LXC
+            - name: '{{ instance.hostname | upper }}: Start LXC'
               command: pct start {{ id }}
 
-            - name: Wait for LXC Network
-              wait_for:
-                  host: '{{ instance.ip }}'
-                  port: 22
-                  timeout: 60
-                  state: started
-              delegate_to: localhost
-              become: false
-              ignore_errors: true
-
-            - name: Install Jellyfin and Dependencies
-              command: |
-                  pct exec {{ id }} -- bash -c "
-                  export DEBIAN_FRONTEND=noninteractive && \
-                  apt-get update && \
-                  apt-get install -y curl gnupg libjemalloc2 intel-media-va-driver-non-free vainfo && \
-                  if [[ ! -f /usr/lib/libjemalloc.so ]]; then ln -sf /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 /usr/lib/libjemalloc.so; fi && \
-                  curl -fsSL https://repo.jellyfin.org/install-debuntu.sh | bash"
-              changed_when: false
-              args:
-                  creates: /usr/bin/jellyfin
-
         when: not instance_exists
+
   become: true

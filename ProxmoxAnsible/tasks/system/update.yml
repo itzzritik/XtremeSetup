@@ -1,30 +1,32 @@
 ---
-- name: System Update Started
-  debug:
-      msg: 'Starting system update and upgrade process...'
+- name: Check Last Update Time
+  stat:
+      path: '{{ env.JARVIS_DIR }}/last_apt_update'
+  register: last_update
 
-- name: Update Apt Cache
-  apt:
-      update_cache: yes
-      cache_valid_time: 3600
+- name: System Update & Cleanup
+  block:
+      - name: Update Apt Cache
+        block:
+            - name: Run Apt Update
+              command: apt-get update
+        rescue:
+            - name: Clear apt lists and cache
+              shell: rm -rf /var/lib/apt/lists/* /var/cache/apt/*.bin && apt-get clean
+
+            - name: Retry Apt Update
+              command: apt-get update
+
+      - name: Upgrade, Autoremove & Clean
+        apt:
+            upgrade: dist
+            autoremove: yes
+            purge: yes
+            autoclean: yes
+
+      - name: Update Timestamp
+        file:
+            path: '{{ env.JARVIS_DIR }}/last_apt_update'
+            state: touch
   become: true
-  register: apt_update_result
-
-- name: Upgrade Packages
-  apt:
-      upgrade: dist
-  become: true
-  register: apt_upgrade_result
-  when: apt_update_result is success
-
-- name: Autoremove Unused Packages
-  apt:
-      autoremove: yes
-      purge: yes
-  become: true
-  when: apt_upgrade_result is success
-
-- name: Check Reboot Status
-  shell: "[ -f /var/run/reboot-required ] && echo 'System requires a reboot.' || echo 'No reboot required.'"
-  register: reboot_status
-  changed_when: false
+  when: not last_update.stat.exists or ((ansible_facts['date_time']['epoch'] | int - last_update.stat.mtime | int) > 86400)

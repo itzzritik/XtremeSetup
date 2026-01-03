@@ -10,22 +10,18 @@
   loop:
       - config
       - downloads
-      - vuetorrent
   loop_control:
       loop_var: qbit_dir
 
-- name: Check VueTorrent
-  stat:
-      path: '{{ env.JARVIS_CONFIGS_DIR }}/{{ container_id }}/vuetorrent/index.html'
-  register: vuetorrent_check
-
-- name: Download VueTorrent
-  unarchive:
-      src: https://github.com/VueTorrent/VueTorrent/releases/latest/download/vuetorrent.zip
-      dest: '{{ env.JARVIS_CONFIGS_DIR }}/{{ container_id }}/vuetorrent'
-      remote_src: true
-      exclude: ['vuetorrent.zip']
-  when: not vuetorrent_check.stat.exists
+- name: Download and Install VueTorrent
+  command: |
+      pct exec {{ id }} -- bash -c "
+      rm -rf /opt/vuetorrent && \
+      mkdir -p /opt/vuetorrent && \
+      curl -L -o /tmp/vuetorrent.zip https://github.com/VueTorrent/VueTorrent/releases/latest/download/vuetorrent.zip && \
+      unzip -o /tmp/vuetorrent.zip -d /opt/vuetorrent && \
+      mv /opt/vuetorrent/*/* /opt/vuetorrent/ && \
+      rm -rf /tmp/vuetorrent.zip"
 
 - name: Deploy qBittorrent Container
   community.docker.docker_container:
@@ -37,15 +33,15 @@
           PGID: '0'
           TZ: '{{ env.JARVIS_TZ }}'
           WEBUI_PORT: '8080'
-          ALTERNATIVE_UI_PATH: /themes/vuetorrent
+          # ALTERNATIVE_UI_PATH: /themes/vuetorrent
       ports:
           - '6881:6881'
           - '6881:6881/udp'
-          - '8082:8080'
+          - '8000:8080'
       volumes:
           - '{{ instance.configs }}/{{ container_id }}/config:/config'
-          - '/media/wdhdd:/downloads'
-          - '{{ instance.configs }}/{{ container_id }}/vuetorrent:/themes/vuetorrent'
+          - '/media/wdhdd/torrents:/downloads'
+          - '/opt/vuetorrent:/themes/vuetorrent'
       labels:
           traefik.enable: 'true'
           traefik.http.routers.{{ container_id }}.rule: 'Host(`{{ container_id }}.{{ env.JARVIS_DOMAIN }}`)'

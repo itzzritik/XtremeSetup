@@ -1,7 +1,7 @@
 - vars:
       id: 252
       instance:
-          name: home
+          hostname: home
           memory: 4096
           cores: 2
           storage: local-lvm
@@ -9,49 +9,50 @@
           ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
           gateway: '{{ env.JARVIS_GATEWAY }}'
   block:
-      - name: Check if Instance exists
-        command: qm status {{ id }}
-        register: instance_status_check
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        uri:
+            url: 'http://{{ instance.ip }}:8123'
+            timeout: 5
+        register: instance_check
         failed_when: false
         changed_when: false
 
-      - name: Set Instance Exists Fact
-        set_fact:
-            instance_exists: '{{ instance_status_check.rc == 0 }}'
+      - set_fact:
+            instance_exists: '{{ instance_check.status | default(0) == 200 }}'
 
-      - name: Provision Instance
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
         block:
-            - name: Fetch latest Home Assistant OS version
+            - name: '{{ instance.hostname | upper }}: Fetch latest Home Assistant OS version'
               uri:
                   url: https://api.github.com/repos/home-assistant/operating-system/releases/latest
                   return_content: true
               register: haos_release_info
 
-            - name: Determine HAOS URL and Version
+            - name: '{{ instance.hostname | upper }}: Determine HAOS URL and Version'
               set_fact:
                   haos_version: '{{ haos_release_info.json.tag_name }}'
                   haos_download_url: "{{ haos_release_info.json.assets | selectattr('name', 'search', 'qcow2.xz') | map(attribute='browser_download_url') | first }}"
 
-            - name: Download HAOS Image
+            - name: '{{ instance.hostname | upper }}: Download HAOS Image'
               get_url:
                   url: '{{ haos_download_url }}'
                   dest: '/var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2.xz'
                   mode: '0644'
 
-            - name: Extract HAOS Image
+            - name: '{{ instance.hostname | upper }}: Extract HAOS Image'
               command:
                   cmd: 'unxz -k -f /var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2.xz'
                   creates: '/var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2'
 
-            - name: Create VM
+            - name: '{{ instance.hostname | upper }}: Create VM'
               command: >
                   qm create {{ id }}
-                  --name "{{ instance.name }}"
+                  --name "{{ instance.hostname }}"
                   --memory {{ instance.memory }}
                   --cores {{ instance.cores }}
                   --bios ovmf
                   --machine q35
-                  --net0 "virtio=02:6e:c2:4a:00:29,bridge={{ instance.bridge }}"
+                  --net0 "virtio,bridge={{ instance.bridge }}"
                   --ide2 "{{ instance.storage }}:cloudinit"
                   --ipconfig0 "ip={{ instance.ip }}/24,gw={{ instance.gateway }}"
                   --nameserver "{{ env.JARVIS_DNS_SERVERS | join(' ') }}"
@@ -62,16 +63,16 @@
                   --scsihw virtio-scsi-pci
                   --efidisk0 "{{ instance.storage }}:0,format=raw,efitype=4m,size=4M"
 
-            - name: Import Disk
+            - name: '{{ instance.hostname | upper }}: Import Disk'
               command: 'qm importdisk {{ id }} /var/lib/vz/template/iso/haos_ova-{{ haos_version }}.qcow2 {{ instance.storage }}'
 
-            - name: Attach Disk
+            - name: '{{ instance.hostname | upper }}: Attach Disk'
               command: 'qm set {{ id }} --scsi0 {{ instance.storage }}:vm-{{ id }}-disk-0,ssd=1,discard=on,size=32G --boot order=scsi0'
 
-            - name: Start VM
+            - name: '{{ instance.hostname | upper }}: Start VM'
               command: qm start {{ id }}
 
-            - name: Cleanup Downloaded Files
+            - name: '{{ instance.hostname | upper }}: Cleanup Downloaded Files'
               file:
                   path: '{{ item }}'
                   state: absent

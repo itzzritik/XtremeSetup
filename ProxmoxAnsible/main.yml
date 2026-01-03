@@ -22,27 +22,17 @@
         no_log: true
 
   tasks:
-      - name: Find System Tasks
-        ansible.builtin.find:
-            paths: '{{ playbook_dir }}/tasks/system'
-            patterns: '*.yml'
-        register: system_tasks
-        delegate_to: localhost
-        run_once: true
+      - name: System Update
+        include_tasks: tasks/system/update.yml
 
-      - name: Find Instance Tasks
-        ansible.builtin.find:
-            paths: '{{ playbook_dir }}/tasks/instances'
-            patterns: 'index.yml'
-            recurse: true
-            depth: 2
-        register: instance_tasks
-        delegate_to: localhost
-        run_once: true
+      - name: Automount Drives
+        include_tasks: tasks/system/automount.yml
 
-      - name: Include Found Tasks
-        include_tasks: '{{ task_file.path }}'
-        loop: '{{ system_tasks.files + instance_tasks.files }}'
-        loop_control:
-            loop_var: task_file
-            label: '{{ task_file.path | relpath(playbook_dir) }}'
+      - name: Install Home Assistant OS
+        include_tasks: tasks/instances/home_vm/index.yml
+
+      - name: Install Jellyfin
+        include_tasks: tasks/instances/jellyfin_lxc/index.yml
+
+      - name: Install Apps
+        include_tasks: tasks/instances/apps_lxc/index.yml

@@ -3,8 +3,8 @@
       mount_points:
           - uuid: '06BDD2E367CF2A57'
             path: '/mnt/ssd'
-            fstype: 'ext4'
-            opts: 'defaults,noatime,nodiratime,nofail,x-systemd.device-timeout=5s'
+            fstype: 'ntfs-3g'
+            opts: 'defaults,noatime,nodiratime,nofail,x-systemd.device-timeout=5s,pdc_permissions,big_writes'
           - uuid: '083AAA5A3AAA4492'
             path: '/mnt/wdhdd'
             fstype: 'ntfs-3g'
