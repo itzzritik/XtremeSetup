@@ -1,0 +1,120 @@
+- vars:
+      id: 250
+      instance:
+          hostname: home
+          memory: 4096
+          cores: 2
+          storage: local-lvm
+          bridge: vmbr0
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        uri:
+            url: 'http://{{ instance.ip }}:8123'
+            timeout: 5
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - set_fact:
+            instance_exists: '{{ instance_check.status | default(0) == 200 }}'
+
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
+        block:
+            - name: '{{ instance.hostname | upper }}: Stop and Destroy VM'
+              shell: qm stop {{ id }}; qm destroy {{ id }}
+              failed_when: false
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Create Temporary Install Directory'
+              tempfile:
+                  state: directory
+                  suffix: _haos_install
+              register: temp_install_dir
+
+            - name: '{{ instance.hostname | upper }}: Download and Patch HAOS Script'
+              shell: |
+                  curl -fsSL {{ env.JARVIS_COMMUNITY_SCRIPTS_URL }}/vm/haos-vm.sh -o haos-vm.sh
+
+                  # Replace whiptail confirmation with auto-yes
+                  sed -i 's/if whiptail --backtitle "Proxmox VE Helper Scripts" --title "Homeassistant OS VM" --yesno.*$/if true; then/' haos-vm.sh
+
+                  # Replace start_script function to always use default_settings
+                  sed -i 's/function start_script() {/function start_script() {\n  header_info\n  echo -e "Using Default Settings (Automated)"\n  default_settings\n  return\n  # Original code below:/' haos-vm.sh
+
+                  # Override default_settings values with our config
+                  sed -i 's/VMID=$(get_valid_nextid)/VMID="{{ id }}"/' haos-vm.sh
+                  sed -i 's/HN="haos-${BRANCH}"/HN="{{ instance.hostname }}"/' haos-vm.sh
+                  sed -i 's/CORE_COUNT="2"/CORE_COUNT="{{ instance.cores }}"/' haos-vm.sh
+                  sed -i 's/RAM_SIZE="4096"/RAM_SIZE="{{ instance.memory }}"/' haos-vm.sh
+                  sed -i 's/BRG="vmbr0"/BRG="{{ instance.bridge }}"/' haos-vm.sh
+
+                  # Bypass SSH check
+                  sed -i 's/ssh_check$/# ssh_check (disabled for automation)/' haos-vm.sh
+
+                  chmod +x haos-vm.sh
+              args:
+                  chdir: '{{ temp_install_dir.path }}'
+                  executable: /bin/bash
+
+            - name: '{{ instance.hostname | upper }}: Install HAOS using patched script'
+              shell: |
+                  source /etc/profile
+                  export TERM=xterm
+                  ./haos-vm.sh
+              args:
+                  chdir: '{{ temp_install_dir.path }}'
+                  executable: /bin/bash
+              register: haos_install
+
+            - name: '{{ instance.hostname | upper }}: Show HAOS Install Output'
+              debug:
+                  var: haos_install.stdout_lines
+
+            - name: '{{ instance.hostname | upper }}: Create HAOS Network Config'
+              shell: |
+                  mkdir -p {{ temp_install_dir.path }}/CONFIG/network
+                  cat > {{ temp_install_dir.path }}/CONFIG/network/my-network << 'EOF'
+                  [connection]
+                  id=my-network
+                  type=ethernet
+
+                  [ipv4]
+                  method=manual
+                  address={{ instance.ip }}/24
+                  gateway={{ instance.gateway }}
+                  dns={{ env.JARVIS_DNS_SERVERS | join(';') }};
+
+                  [ipv6]
+                  method=disabled
+                  EOF
+                  genisoimage -o {{ temp_install_dir.path }}/config.iso -V CONFIG -r {{ temp_install_dir.path }}/CONFIG
+              args:
+                  executable: /bin/bash
+
+            - name: '{{ instance.hostname | upper }}: Copy ISO to Proxmox Storage'
+              copy:
+                  src: '{{ temp_install_dir.path }}/config.iso'
+                  dest: '/var/lib/vz/template/iso/haos-config-{{ id }}.iso'
+                  remote_src: true
+
+            - name: '{{ instance.hostname | upper }}: Attach Network Config to VM'
+              command: qm set {{ id }} --ide1 local:iso/haos-config-{{ id }}.iso,media=cdrom
+
+            - name: '{{ instance.hostname | upper }}: Restart VM to Apply Network Config'
+              shell: qm stop {{ id }} --skiplock --timeout 10 || true; sleep 5; qm start {{ id }}
+              args:
+                  executable: /bin/bash
+
+            - name: '{{ instance.hostname | upper }}: Cleanup Temporary Directory'
+              file:
+                  path: '{{ temp_install_dir.path }}'
+                  state: absent
+
+        when: not instance_exists
+
+  rescue:
+      - debug:
+            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
+  become: true

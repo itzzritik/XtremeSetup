@@ -1,5 +1,5 @@
 - vars:
-      id: 250
+      id: 252
       instance:
           hostname: pihole
           memory: 1024
@@ -136,4 +136,7 @@
 
         when: not instance_exists
 
+  rescue:
+      - debug:
+            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
   become: true

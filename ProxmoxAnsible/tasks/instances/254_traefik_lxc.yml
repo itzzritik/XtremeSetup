@@ -1,5 +1,5 @@
 - vars:
-      id: 251
+      id: 254
       instance:
           hostname: traefik
           memory: 2048
@@ -13,6 +13,9 @@
           config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/traefik'
           cloudflared_config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/cloudflared'
       service_mappings:
+          homer:
+              root_domain: true
+              url: http://192.168.68.251:80
           traefik:
               subdomains: [proxy]
               url: api@internal
@@ -23,13 +26,13 @@
               insecure: true
           home:
               subdomains: [home]
-              url: http://192.168.68.252:8123
+              url: http://192.168.68.250:8123
           jellyfin:
               subdomains: [media]
-              url: http://192.168.68.254:8096
+              url: http://192.168.68.248:8096
           pihole:
               subdomains: [dns]
-              url: http://192.168.68.250:80
+              url: http://192.168.68.252:80
               middlewares: [pihole-redirect]
           qbittorrent:
               subdomains: [torrent]
@@ -205,7 +208,7 @@
                         routers:
                       {% for service_item in service_mappings | dict2items %}
                           {{ service_item.key }}:
-                            rule: "{% for subdomain in service_item.value.subdomains %}Host(`{{ subdomain }}.{{ env.JARVIS_DOMAIN }}`){% if not loop.last %} || {% endif %}{% endfor %}"
+                            rule: "{% if service_item.value.root_domain | default(false) %}Host(`{{ env.JARVIS_DOMAIN }}`){% else %}{% for subdomain in service_item.value.subdomains %}Host(`{{ subdomain }}.{{ env.JARVIS_DOMAIN }}`){% if not loop.last %} || {% endif %}{% endfor %}{% endif %}"
                             service: "{{ 'api@internal' if service_item.value.is_internal | default(false) else service_item.key }}"
                       {% if service_item.value.middlewares | default([]) | length > 0 %}
                             middlewares:
@@ -258,4 +261,7 @@
                   pct exec {{ id }} -- bash -c "cloudflared service install {{ env.JARVIS_CF_TUNNEL_TOKEN }}"
               when: env.JARVIS_CF_TUNNEL_TOKEN is defined and env.JARVIS_CF_TUNNEL_TOKEN | length > 0
 
+  rescue:
+      - debug:
+            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
   become: true

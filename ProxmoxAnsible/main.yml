@@ -22,26 +22,16 @@
         no_log: true
 
   tasks:
-      - name: System Update
-        include_tasks: tasks/system/update.yml
+      - name: Execute System Tasks
+        include_tasks: 'tasks/system/{{ item }}.yml'
+        loop: [update, automount]
 
-      - name: Automount Drives
-        include_tasks: tasks/system/automount.yml
-
-      - name: Run Home Assistant OS Installer
-        include_tasks: tasks/instances/home_vm.yml
-
-      - name: Run Jellyfin Installer
-        include_tasks: tasks/instances/jellyfin_lxc.yml
-
-      # - name: Run Apps Installer
-      #   include_tasks: tasks/instances/apps_lxc.yml
-
-      - name: Run Traefik Installer
-        include_tasks: tasks/instances/traefik_lxc.yml
-
-      - name: Run Pihole Installer
-        include_tasks: tasks/instances/pihole_lxc.yml
-
-      - name: Run Qbittorrent Installer
-        include_tasks: tasks/instances/qbittorrent_lxc.yml
+      - name: Deploy instances
+        include_tasks: '{{ instance_file }}'
+        loop: "{{ lookup('fileglob', playbook_dir + '/tasks/instances/*.yml', wantlist=True) | sort }}"
+        vars:
+            skip: [apps]
+        when: (skip | map('regex_replace', '^(.*)$', '_\\1_') | select('in', instance_file) | list | length) == 0
+        loop_control:
+            loop_var: instance_file
+            label: '{{ instance_file | basename }}'
