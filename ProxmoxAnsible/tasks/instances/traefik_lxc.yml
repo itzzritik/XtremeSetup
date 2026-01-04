@@ -12,6 +12,28 @@
       paths:
           config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/traefik'
           cloudflared_config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/cloudflared'
+      service_mappings:
+          traefik:
+              subdomains: [proxy]
+              url: api@internal
+              is_internal: true
+          proxmox:
+              subdomains: [pm]
+              url: https://192.168.68.200:8006
+              insecure: true
+          home:
+              subdomains: [home]
+              url: http://192.168.68.252:8123
+          jellyfin:
+              subdomains: [media]
+              url: http://192.168.68.254:8096
+          pihole:
+              subdomains: [dns]
+              url: http://192.168.68.250:80
+              middlewares: [pihole-redirect]
+          qbittorrent:
+              subdomains: [torrent]
+              url: http://192.168.68.249:80
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
         uri:
@@ -170,6 +192,10 @@
                   dest: '{{ paths.config }}/dynamic/rules.yml'
                   content: |
                       http:
+                        serversTransports:
+                          insecureTransport:
+                            insecureSkipVerify: true
+
                         middlewares:
                           pihole-redirect:
                             redirectRegex:
@@ -177,55 +203,30 @@
                               replacement: "https://pihole.{{ env.JARVIS_DOMAIN }}/admin/"
 
                         routers:
-                          traefik:
-                            rule: "Host(`traefik.{{ env.JARVIS_DOMAIN }}`)"
-                            service: "api@internal"
-                            tls:
-                              certResolver: letsencrypt
-
-                          home:
-                            rule: "Host(`home.{{ env.JARVIS_DOMAIN }}`)"
-                            service: "home"
-                            tls:
-                              certResolver: letsencrypt
-
-                          jellyfin:
-                            rule: "Host(`jellyfin.{{ env.JARVIS_DOMAIN }}`)"
-                            service: "jellyfin"
-                            tls:
-                              certResolver: letsencrypt
-
-                          pihole:
-                            rule: "Host(`pihole.{{ env.JARVIS_DOMAIN }}`)"
-                            service: "pihole"
+                      {% for service_item in service_mappings | dict2items %}
+                          {{ service_item.key }}:
+                            rule: "{% for subdomain in service_item.value.subdomains %}Host(`{{ subdomain }}.{{ env.JARVIS_DOMAIN }}`){% if not loop.last %} || {% endif %}{% endfor %}"
+                            service: "{{ 'api@internal' if service_item.value.is_internal | default(false) else service_item.key }}"
+                      {% if service_item.value.middlewares | default([]) | length > 0 %}
                             middlewares:
-                              - "pihole-redirect"
-                            tls:
-                              certResolver: letsencrypt
-
-                          qbittorrent:
-                            rule: "Host(`qbittorrent.{{ env.JARVIS_DOMAIN }}`)"
-                            service: "qbittorrent"
-                            tls:
-                              certResolver: letsencrypt
+                      {% for middleware in service_item.value.middlewares %}
+                              - "{{ middleware }}"
+                      {% endfor %}
+                      {% endif %}
+                      {% endfor %}
 
                         services:
-                          home:
+                      {% for service_item in service_mappings | dict2items %}
+                      {% if not service_item.value.is_internal | default(false) %}
+                          {{ service_item.key }}:
                             loadBalancer:
                               servers:
-                                - url: "http://192.168.68.252:8123"
-                          jellyfin:
-                            loadBalancer:
-                              servers:
-                                - url: "http://192.168.68.254:8096"
-                          pihole:
-                            loadBalancer:
-                              servers:
-                                - url: "http://192.168.68.250:80"
-                          qbittorrent:
-                            loadBalancer:
-                              servers:
-                                - url: "http://192.168.68.249:80"
+                                - url: "{{ service_item.value.url }}"
+                      {% if service_item.value.insecure | default(false) %}
+                              serversTransport: "insecureTransport"
+                      {% endif %}
+                      {% endif %}
+                      {% endfor %}
                   owner: '{{ instance.subuid }}'
                   group: '{{ instance.subuid }}'
                   mode: '0644'
@@ -236,29 +237,25 @@
                   echo '[Service]' > /etc/systemd/system/traefik.service.d/override.conf && \
                   echo 'Environment=\"CF_DNS_API_TOKEN={{ env.JARVIS_CF_DNS_API_TOKEN }}\"' >> /etc/systemd/system/traefik.service.d/override.conf"
 
-            - name: '{{ instance.hostname | upper }}: Convert Service to Simple Type (Fix for Community Script)'
-              # The community script might set Type=notify which expects sd_notify which might not work well in LXC without loopback or privs
-              # Just to be safe, we reload and restart.
-              # Community script usually makes it simple/notify.
-              # We will just reload and restart.
-              shell: |
-                  pct exec {{ id }} -- bash -c "systemctl daemon-reload && systemctl restart traefik"
+            - name: '{{ instance.hostname | upper }}: Restart Traefik Service'
+              shell: pct exec {{ id }} -- bash -c "systemctl daemon-reload && systemctl restart traefik"
 
       - name: '{{ instance.hostname | upper }}: Configure Cloudflared'
         block:
+            - name: '{{ instance.hostname | upper }}: Check if Cloudflared is installed'
+              shell: pct exec {{ id }} -- bash -c "cloudflared --version"
+              register: cloudflared_check
+              failed_when: false
+              changed_when: false
+
             - name: '{{ instance.hostname | upper }}: Install Cloudflared'
-              shell: |
-                  pct exec {{ id }} -- bash -c "wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && dpkg -i cloudflared-linux-amd64.deb && rm cloudflared-linux-amd64.deb"
-              args:
-                  executable: /bin/bash
-              register: cloudflared_install
+              shell: pct exec {{ id }} -- bash -c "wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && dpkg -i cloudflared-linux-amd64.deb && rm cloudflared-linux-amd64.deb"
+              when: cloudflared_check.rc != 0
 
             - name: '{{ instance.hostname | upper }}: Configure Cloudflared Service'
               shell: |
                   pct exec {{ id }} -- bash -c "cloudflared service uninstall || true"
                   pct exec {{ id }} -- bash -c "cloudflared service install {{ env.JARVIS_CF_TUNNEL_TOKEN }}"
-              args:
-                  executable: /bin/bash
               when: env.JARVIS_CF_TUNNEL_TOKEN is defined and env.JARVIS_CF_TUNNEL_TOKEN | length > 0
 
   become: true
