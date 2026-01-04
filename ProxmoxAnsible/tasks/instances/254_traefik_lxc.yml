@@ -13,13 +13,13 @@
           config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/traefik'
           cloudflared_config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/cloudflared'
       service_mappings:
-          homer:
-              root_domain: true
-              url: http://192.168.68.251:80
           traefik:
               subdomains: [proxy]
               url: api@internal
               is_internal: true
+          homer:
+              root_domain: true
+              url: http://192.168.68.247:80
           proxmox:
               subdomains: [pm]
               url: https://192.168.68.200:8006

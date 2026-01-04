@@ -1,0 +1,381 @@
+- vars:
+      id: 247
+      instance:
+          hostname: homer
+          memory: 512
+          swap: 256
+          cores: 1
+          storage: local-lvm
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+          subuid: '100000'
+      paths:
+          assets: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/assets'
+      services:
+          - name: Home Assistant
+            subtitle: Smart Home Automation
+            icon: fas fa-home
+            ip: '{{ env.JARVIS_NETWORK_PREFIX }}.250'
+            port: 8123
+            subdomain: home
+          - name: Jellyfin
+            subtitle: Media Server
+            icon: fas fa-film
+            ip: '{{ env.JARVIS_NETWORK_PREFIX }}.248'
+            port: 8096
+            subdomain: media
+          - name: qBittorrent
+            subtitle: Torrent Client
+            icon: fas fa-download
+            ip: '{{ env.JARVIS_NETWORK_PREFIX }}.249'
+            port: 80
+            subdomain: torrent
+          - name: Pi-hole
+            subtitle: Network DNS & Ad Blocker
+            icon: fas fa-shield-alt
+            ip: '{{ env.JARVIS_NETWORK_PREFIX }}.252'
+            port: 80
+            path: /admin
+            subdomain: pihole
+          - name: Homarr
+            subtitle: Dashboard
+            icon: fas fa-th-large
+            ip: '{{ env.JARVIS_NETWORK_PREFIX }}.251'
+            port: 7575
+            root_domain: true
+          - name: Traefik
+            subtitle: Reverse Proxy
+            icon: fas fa-network-wired
+            ip: '{{ env.JARVIS_NETWORK_PREFIX }}.254'
+            port: 8080
+            subdomain: proxy
+          - name: Proxmox
+            subtitle: Virtualization Platform
+            icon: fas fa-server
+            ip: '{{ env.JARVIS_NETWORK_PREFIX }}.200'
+            port: 8006
+            https: true
+            subdomain: pm
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        uri:
+            url: 'http://{{ instance.ip }}:8010'
+            timeout: 5
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - set_fact:
+            instance_exists: '{{ instance_check.status | default(0) == 200 }}'
+
+      - name: '{{ instance.hostname | upper }}: Create Config Directories on Host'
+        file:
+            path: '{{ item }}'
+            state: directory
+            mode: '0755'
+            owner: '{{ instance.subuid }}'
+            group: '{{ instance.subuid }}'
+            recurse: true
+        loop:
+            - '{{ paths.assets }}'
+            - '{{ paths.assets }}/icons'
+
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
+        block:
+            - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
+              shell: pct stop {{ id }}; pct destroy {{ id }}
+              failed_when: false
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Create Temporary Install Directory'
+              tempfile:
+                  state: directory
+                  suffix: _homer_install
+              register: temp_install_dir
+
+            - name: '{{ instance.hostname | upper }}: Create default.vars for Silent Install'
+              copy:
+                  dest: '{{ temp_install_dir.path }}/default.vars'
+                  content: |
+                      var_container_storage={{ instance.storage }}
+                      var_template_storage={{ instance.storage }}
+
+            - name: '{{ instance.hostname | upper }}: Install Homer using community script'
+              shell: |
+                  export var_os="debian"
+                  export var_version="12"
+                  export DEBIAN_FRONTEND=noninteractive
+                  export mode="default"
+                  export var_ctid="{{ id }}"
+                  export var_hostname="{{ instance.hostname }}"
+                  export var_cpu="{{ instance.cores }}"
+                  export var_ram="{{ instance.memory }}"
+                  export var_swap="{{ instance.swap }}"
+                  export var_disk="2"
+                  export var_net="{{ instance.ip }}/24"
+                  export var_gateway="{{ instance.gateway }}"
+                  export var_unprivileged="1"
+                  export TERM=xterm
+                  bash -c "$(curl -fsSL {{ env.JARVIS_COMMUNITY_SCRIPTS_URL }}/ct/homer.sh)"
+              args:
+                  chdir: '{{ temp_install_dir.path }}'
+                  executable: /bin/bash
+              register: homer_install
+
+            - name: '{{ instance.hostname | upper }}: Show Homer Install Output'
+              debug:
+                  var: homer_install.stdout_lines
+
+            - name: '{{ instance.hostname | upper }}: Cleanup Temporary Directory'
+              file:
+                  path: '{{ temp_install_dir.path }}'
+                  state: absent
+
+            - name: '{{ instance.hostname | upper }}: Stop LXC for Configuration'
+              command: pct stop {{ id }}
+              ignore_errors: true
+
+            - name: '{{ instance.hostname | upper }}: Configure LXC Mounts'
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ id }}.conf'
+                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
+                  block: |
+                      mp0: {{ paths.assets }},mp=/opt/homer/assets
+
+            - name: '{{ instance.hostname | upper }}: Start LXC'
+              command: pct start {{ id }}
+
+            - name: '{{ instance.hostname | upper }}: Wait for Homer to be ready'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: 8010
+                  delay: 5
+                  timeout: 120
+
+            - name: '{{ instance.hostname | upper }}: Configure Port Forwarding (80 -> 8010)'
+              shell: |
+                  pct exec {{ id }} -- bash -c "apt-get update && apt-get install -y iptables && \
+                  cat <<EOF > /etc/systemd/system/homer-port-forward.service
+                  [Unit]
+                  Description=Homer Port Forward 80 to 8010
+                  After=network.target
+
+                  [Service]
+                  Type=oneshot
+                  ExecStart=/usr/sbin/iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8010
+                  ExecStop=/usr/sbin/iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8010
+                  RemainAfterExit=yes
+
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+                  systemctl daemon-reload && \
+                  systemctl enable --now homer-port-forward.service"
+              args:
+                  executable: /bin/bash
+
+            - name: '{{ instance.hostname | upper }}: Wait for Homer on Port 80'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: 80
+                  delay: 2
+                  timeout: 30
+
+        when: not instance_exists
+
+      - name: '{{ instance.hostname | upper }}: Generate Homer Configuration'
+        block:
+            - name: '{{ instance.hostname | upper }}: Create config.yml'
+              copy:
+                  dest: '{{ paths.assets }}/config.yml'
+                  content: |
+                      title: "JARVIS Dashboard"
+                      subtitle: "{{ env.JARVIS_DOMAIN }}"
+                      documentTitle: "JARVIS"
+                      logo: "assets/icons/logo.svg"
+
+                      header: true
+                      footer: false
+
+                      columns: "auto"
+                      connectivityCheck: true
+
+                      defaults:
+                        layout: list
+                        colorTheme: auto
+
+                      stylesheet:
+                        - "assets/custom.css"
+
+                      colors:
+                        light:
+                          highlight-primary: "#3498db"
+                          highlight-secondary: "#2980b9"
+                          highlight-hover: "#5faee3"
+                          background: "#f5f5f5"
+                          card-background: "#ffffff"
+                          text: "#303030"
+                          text-header: "#ffffff"
+                          text-title: "#303030"
+                          text-subtitle: "#424242"
+                          card-shadow: rgba(0, 0, 0, 0.1)
+                          link: "#3498db"
+                          link-hover: "#2980b9"
+                        dark:
+                          highlight-primary: "#3498db"
+                          highlight-secondary: "#2980b9"
+                          highlight-hover: "#5faee3"
+                          background: "#131313"
+                          card-background: "#1e1e1e"
+                          text: "#eaeaea"
+                          text-header: "#ffffff"
+                          text-title: "#fafafa"
+                          text-subtitle: "#d0d0d0"
+                          card-shadow: rgba(0, 0, 0, 0.4)
+                          link: "#3498db"
+                          link-hover: "#5faee3"
+
+                      services:
+                        - name: "Services"
+                          icon: "fas fa-cloud"
+                          items:
+                      {% for svc in services %}
+                            - name: "{{ svc.name }}"
+                              subtitle: "{{ svc.subtitle }}"
+                              icon: "{{ svc.icon }}"
+                              tag: "{{ svc.name | lower | replace(' ', '-') }}"
+                              tagstyle: "display:none"
+                              url: "{{ 'https' if svc.https | default(false) else 'http' }}://{{ svc.ip }}:{{ svc.port }}{{ svc.path | default('') }}"
+                              target: "_blank"
+                      {% endfor %}
+                  owner: '{{ instance.subuid }}'
+                  group: '{{ instance.subuid }}'
+                  mode: '0644'
+
+            - name: '{{ instance.hostname | upper }}: Create URL mapping JSON for dynamic switching'
+              copy:
+                  dest: '{{ paths.assets }}/url-mappings.json'
+                  content: |
+                      {
+                      {% for svc in services %}
+                        "{{ svc.name | lower | replace(' ', '-') }}": {
+                          "ip": "{{ 'https' if svc.https | default(false) else 'http' }}://{{ svc.ip }}:{{ svc.port }}{{ svc.path | default('') }}",
+                          "domain": "https://{% if svc.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ svc.subdomain }}.{{ env.JARVIS_DOMAIN }}{% endif %}{{ svc.path | default('') }}"
+                        }{% if not loop.last %},{% endif %}
+
+                      {% endfor %}
+                      }
+                  owner: '{{ instance.subuid }}'
+                  group: '{{ instance.subuid }}'
+                  mode: '0644'
+
+            - name: '{{ instance.hostname | upper }}: Create custom.js for dynamic URL switching'
+              copy:
+                  dest: '{{ paths.assets }}/custom.js'
+                  content: |
+                      // Dynamic URL switching based on access method (IP vs Domain)
+                      (function() {
+                          const hostname = window.location.hostname;
+                          const isIP = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+
+                          fetch('assets/url-mappings.json')
+                              .then(response => response.json())
+                              .then(mappings => {
+                                  // Observe DOM changes since Homer uses Vue.js
+                                  const observer = new MutationObserver(function() {
+                                      document.querySelectorAll('.card.item a').forEach(function(link) {
+                                          const card = link.closest('.card');
+                                          if (!card) return;
+
+                                          const tagEl = card.querySelector('.tag');
+                                          if (!tagEl) return;
+
+                                          const tag = tagEl.textContent.trim().toLowerCase();
+                                          const mapping = mappings[tag];
+
+                                          if (mapping && !link.dataset.urlSet) {
+                                              link.href = isIP ? mapping.ip : mapping.domain;
+                                              link.dataset.urlSet = 'true';
+                                          }
+                                      });
+                                  });
+
+                                  observer.observe(document.body, {
+                                      childList: true,
+                                      subtree: true
+                                  });
+
+                                  // Initial run after Vue renders
+                                  setTimeout(function() {
+                                      observer.disconnect();
+                                      document.querySelectorAll('.card.item a').forEach(function(link) {
+                                          const card = link.closest('.card');
+                                          if (!card) return;
+
+                                          const tagEl = card.querySelector('.tag');
+                                          if (!tagEl) return;
+
+                                          const tag = tagEl.textContent.trim().toLowerCase();
+                                          const mapping = mappings[tag];
+
+                                          if (mapping) {
+                                              link.href = isIP ? mapping.ip : mapping.domain;
+                                          }
+                                      });
+                                  }, 1000);
+                              })
+                              .catch(err => console.error('Failed to load URL mappings:', err));
+                      })();
+                  owner: '{{ instance.subuid }}'
+                  group: '{{ instance.subuid }}'
+                  mode: '0644'
+
+            - name: '{{ instance.hostname | upper }}: Create custom.css'
+              copy:
+                  dest: '{{ paths.assets }}/custom.css'
+                  content: |
+                      /* Custom styles for JARVIS Homer Dashboard */
+                      .card {
+                          border-radius: 12px;
+                          transition: transform 0.2s ease, box-shadow 0.2s ease;
+                      }
+                      .card:hover {
+                          transform: translateY(-2px);
+                          box-shadow: 0 8px 25px rgba(52, 152, 219, 0.15);
+                      }
+                      .card .media-left .image i {
+                          font-size: 1.8rem;
+                      }
+                      /* Hide the tag used for URL mapping */
+                      .card .tag {
+                          display: none !important;
+                      }
+                  owner: '{{ instance.subuid }}'
+                  group: '{{ instance.subuid }}'
+                  mode: '0644'
+
+            - name: '{{ instance.hostname | upper }}: Create logo SVG'
+              copy:
+                  dest: '{{ paths.assets }}/icons/logo.svg'
+                  content: |
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="45" fill="#3498db"/>
+                        <text x="50" y="62" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="white" text-anchor="middle">J</text>
+                      </svg>
+                  owner: '{{ instance.subuid }}'
+                  group: '{{ instance.subuid }}'
+                  mode: '0644'
+
+            - name: '{{ instance.hostname | upper }}: Inject custom.js into Homer'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  if ! grep -q 'custom.js' /opt/homer/index.html; then
+                      sed -i 's|</body>|<script src=\"assets/custom.js\"></script></body>|' /opt/homer/index.html
+                  fi"
+              args:
+                  executable: /bin/bash
+
+  rescue:
+      - debug:
+            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
+  become: true

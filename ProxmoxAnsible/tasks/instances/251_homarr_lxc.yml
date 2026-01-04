@@ -1,7 +1,7 @@
 - vars:
       id: 251
       instance:
-          hostname: homer
+          hostname: homarr
           memory: 1024
           swap: 512
           cores: 2
@@ -46,7 +46,7 @@
             - name: '{{ instance.hostname | upper }}: Create Temporary Install Directory'
               tempfile:
                   state: directory
-                  suffix: _homer_install
+                  suffix: _homarr_install
               register: temp_install_dir
 
             - name: '{{ instance.hostname | upper }}: Create default.vars for Silent Install'
@@ -56,7 +56,7 @@
                       var_container_storage={{ instance.storage }}
                       var_template_storage={{ instance.storage }}
 
-            - name: '{{ instance.hostname | upper }}: Install Homer using community script'
+            - name: '{{ instance.hostname | upper }}: Install Homarr using community script'
               shell: |
                   export var_os="debian"
                   export var_version="13"
@@ -76,11 +76,11 @@
               args:
                   chdir: '{{ temp_install_dir.path }}'
                   executable: /bin/bash
-              register: homer_install
+              register: homarr_install
 
-            - name: '{{ instance.hostname | upper }}: Show Homer Install Output'
+            - name: '{{ instance.hostname | upper }}: Show Homarr Install Output'
               debug:
-                  var: homer_install.stdout_lines
+                  var: homarr_install.stdout_lines
 
             - name: '{{ instance.hostname | upper }}: Cleanup Temporary Directory'
               file:
@@ -102,7 +102,7 @@
             - name: '{{ instance.hostname | upper }}: Start LXC'
               command: pct start {{ id }}
 
-            - name: '{{ instance.hostname | upper }}: Wait for Homer to be ready'
+            - name: '{{ instance.hostname | upper }}: Wait for Homarr to be ready'
               wait_for:
                   host: '{{ instance.ip }}'
                   port: 7575
@@ -112,9 +112,9 @@
             - name: '{{ instance.hostname | upper }}: Configure Port Forwarding (80 -> 7575)'
               shell: |
                   pct exec {{ id }} -- bash -c "apt-get update && apt-get install -y iptables && \
-                  cat <<EOF > /etc/systemd/system/homer-port-forward.service
+                  cat <<EOF > /etc/systemd/system/homarr-port-forward.service
                   [Unit]
-                  Description=Homer Port Forward 80 to 7575
+                  Description=Homarr Port Forward 80 to 7575
                   After=network.target
 
                   [Service]
@@ -127,11 +127,11 @@
                   WantedBy=multi-user.target
                   EOF
                   systemctl daemon-reload && \
-                  systemctl enable --now homer-port-forward.service"
+                  systemctl enable --now homarr-port-forward.service"
               args:
                   executable: /bin/bash
 
-            - name: '{{ instance.hostname | upper }}: Wait for Homer on Port 80'
+            - name: '{{ instance.hostname | upper }}: Wait for Homarr on Port 80'
               wait_for:
                   host: '{{ instance.ip }}'
                   port: 80
