@@ -1,5 +1,5 @@
 - vars:
-      id: 249
+      id: '{{ env.JARVIS_SERVICES.qbittorrent.id }}'
       instance:
           hostname: qbittorrent
           memory: 2048
@@ -9,13 +9,14 @@
           ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
           gateway: '{{ env.JARVIS_GATEWAY }}'
           subuid: '100000'
+          internal_port: 8080
       paths:
           config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/config'
           data: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/data'
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
         uri:
-            url: 'http://{{ instance.ip }}/'
+            url: 'http://{{ instance.ip }}'
             timeout: 5
         register: instance_check
         failed_when: false
@@ -56,7 +57,7 @@
                       var_container_storage={{ instance.storage }}
                       var_template_storage={{ instance.storage }}
 
-            - name: '{{ instance.hostname | upper }}: Install qBittorrent using community script'
+            - name: '{{ instance.hostname | upper }}: Install using community script'
               shell: |
                   export var_os="ubuntu"
                   export var_version="24.04"
@@ -78,7 +79,7 @@
                   executable: /bin/bash
               register: qbittorrent_install
 
-            - name: '{{ instance.hostname | upper }}: Show qBittorrent Install Output'
+            - name: '{{ instance.hostname | upper }}: Show install output'
               debug:
                   var: qbittorrent_install.stdout_lines
 
@@ -104,10 +105,10 @@
             - name: '{{ instance.hostname | upper }}: Start LXC'
               command: pct start {{ id }}
 
-            - name: '{{ instance.hostname | upper }}: Wait for qBittorrent to be ready (Internal Port)'
+            - name: '{{ instance.hostname | upper }}: Wait for ready (internal port)'
               wait_for:
                   host: '{{ instance.ip }}'
-                  port: 8080
+                  port: '{{ instance.internal_port }}'
                   delay: 5
                   timeout: 120
 
@@ -124,7 +125,7 @@
               args:
                   executable: /bin/bash
 
-            - name: '{{ instance.hostname | upper }}: Generate qBittorrent Password Hash'
+            - name: '{{ instance.hostname | upper }}: Generate password hash'
               shell: |
                   python3 -c 'import base64, hashlib, os; password = os.environ.get("QB_PASSWORD", "").encode(); salt = os.urandom(16); key = hashlib.pbkdf2_hmac("sha512", password, salt, 100000); print("@ByteArray({}:{})".format(base64.b64encode(salt).decode(), base64.b64encode(key).decode()), end="")'
               environment:
@@ -132,11 +133,11 @@
               register: qbit_password_hash
               changed_when: false
 
-            - name: '{{ instance.hostname | upper }}: Stop qBittorrent for Config'
+            - name: '{{ instance.hostname | upper }}: Stop for config'
               command: pct exec {{ id }} -- systemctl stop qbittorrent-nox
               ignore_errors: true
 
-            - name: '{{ instance.hostname | upper }}: Ensure qBittorrent Config Exists'
+            - name: '{{ instance.hostname | upper }}: Ensure config exists'
               copy:
                   content: "[Preferences]\n"
                   dest: '{{ paths.config }}/qBittorrent.conf'
@@ -145,7 +146,7 @@
                   group: '{{ instance.subuid }}'
                   mode: '0644'
 
-            - name: '{{ instance.hostname | upper }}: Configure qBittorrent Settings'
+            - name: '{{ instance.hostname | upper }}: Configure settings'
               community.general.ini_file:
                   path: '{{ paths.config }}/qBittorrent.conf'
                   section: 'Preferences'
@@ -162,7 +163,7 @@
                   - { key: 'WebUI\Username', value: '{{ env.JARVIS_ADMIN_USERNAME }}' }
                   - { key: 'WebUI\Password_PBKDF2', value: '{{ qbit_password_hash.stdout }}' }
 
-            - name: '{{ instance.hostname | upper }}: Start qBittorrent'
+            - name: '{{ instance.hostname | upper }}: Start service'
               command: pct exec {{ id }} -- systemctl start qbittorrent-nox
 
             - name: '{{ instance.hostname | upper }}: Configure Port Forwarding (80 -> 8080)'
@@ -186,7 +187,7 @@
               args:
                   executable: /bin/bash
 
-            - name: '{{ instance.hostname | upper }}: Wait for qBittorrent on Port 80'
+            - name: '{{ instance.hostname | upper }}: Wait for ready (port 80)'
               wait_for:
                   host: '{{ instance.ip }}'
                   port: 80

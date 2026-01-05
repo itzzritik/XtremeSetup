@@ -30,7 +30,7 @@
         include_tasks: '{{ instance_file }}'
         loop: "{{ lookup('fileglob', playbook_dir + '/tasks/instances/*.yml', wantlist=True) | sort }}"
         vars:
-            skip: [apps, homarr]
+            skip: [apps]
         when: (skip | map('regex_replace', '^(.*)$', '_\\1_') | select('in', instance_file) | list | length) == 0
         loop_control:
             loop_var: instance_file

@@ -1,5 +1,5 @@
 - vars:
-      id: 254
+      id: '{{ env.JARVIS_SERVICES.traefik.id }}'
       instance:
           hostname: traefik
           memory: 2048
@@ -12,31 +12,6 @@
       paths:
           config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/traefik'
           cloudflared_config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/cloudflared'
-      service_mappings:
-          traefik:
-              subdomains: [proxy]
-              url: api@internal
-              is_internal: true
-          homer:
-              root_domain: true
-              url: http://192.168.68.247:80
-          proxmox:
-              subdomains: [pm]
-              url: https://192.168.68.200:8006
-              insecure: true
-          home:
-              subdomains: [home]
-              url: http://192.168.68.250:8123
-          jellyfin:
-              subdomains: [media]
-              url: http://192.168.68.248:8096
-          pihole:
-              subdomains: [dns]
-              url: http://192.168.68.252:80
-              middlewares: [pihole-redirect]
-          qbittorrent:
-              subdomains: [torrent]
-              url: http://192.168.68.249:80
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
         uri:
@@ -83,7 +58,7 @@
                       var_template_storage={{ instance.storage }}
                       var_sysctl_conf="net.ipv4.ip_forward=1"
 
-            - name: '{{ instance.hostname | upper }}: Install Traefik using community script'
+            - name: '{{ instance.hostname | upper }}: Install using community script'
               shell: |
                   export mode="default"
                   export var_ctid="{{ id }}"
@@ -101,7 +76,7 @@
                   executable: /bin/bash
               register: traefik_install
 
-            - name: '{{ instance.hostname | upper }}: Show Traefik Install Output'
+            - name: '{{ instance.hostname | upper }}: Show install output'
               debug:
                   var: traefik_install.stdout_lines
 
@@ -130,7 +105,7 @@
 
         when: not instance_exists
 
-      - name: '{{ instance.hostname | upper }}: Configure Traefik'
+      - name: '{{ instance.hostname | upper }}: Configure service'
         block:
             - name: '{{ instance.hostname | upper }}: Ensure acme.json exists'
               file:
@@ -142,7 +117,7 @@
                   owner: '{{ instance.subuid }}'
                   group: '{{ instance.subuid }}'
 
-            - name: '{{ instance.hostname | upper }}: Update Traefik Static Config (traefik.yml)'
+            - name: '{{ instance.hostname | upper }}: Update static config'
               copy:
                   dest: '{{ paths.config }}/traefik.yml'
                   content: |
@@ -190,7 +165,7 @@
                   group: '{{ instance.subuid }}'
                   mode: '0644'
 
-            - name: '{{ instance.hostname | upper }}: Update Traefik Dynamic Rules (rules.yml)'
+            - name: '{{ instance.hostname | upper }}: Update dynamic rules'
               copy:
                   dest: '{{ paths.config }}/dynamic/rules.yml'
                   content: |
@@ -206,26 +181,28 @@
                               replacement: "https://pihole.{{ env.JARVIS_DOMAIN }}/admin/"
 
                         routers:
-                      {% for service_item in service_mappings | dict2items %}
-                          {{ service_item.key }}:
-                            rule: "{% if service_item.value.root_domain | default(false) %}Host(`{{ env.JARVIS_DOMAIN }}`){% else %}{% for subdomain in service_item.value.subdomains %}Host(`{{ subdomain }}.{{ env.JARVIS_DOMAIN }}`){% if not loop.last %} || {% endif %}{% endfor %}{% endif %}"
-                            service: "{{ 'api@internal' if service_item.value.is_internal | default(false) else service_item.key }}"
-                      {% if service_item.value.middlewares | default([]) | length > 0 %}
+                      {% for svc_key, svc in env.JARVIS_SERVICES.items() %}
+                      {% if svc.subdomains is defined or svc.root_domain | default(false) %}
+                          {{ svc_key }}:
+                            rule: "{% if svc.root_domain | default(false) %}Host(`{{ env.JARVIS_DOMAIN }}`){% else %}{% for subdomain in svc.subdomains %}Host(`{{ subdomain }}.{{ env.JARVIS_DOMAIN }}`){% if not loop.last %} || {% endif %}{% endfor %}{% endif %}"
+                            service: "{{ 'api@internal' if svc.is_internal | default(false) else svc_key }}"
+                      {% if svc.middlewares | default([]) | length > 0 %}
                             middlewares:
-                      {% for middleware in service_item.value.middlewares %}
+                      {% for middleware in svc.middlewares %}
                               - "{{ middleware }}"
                       {% endfor %}
+                      {% endif %}
                       {% endif %}
                       {% endfor %}
 
                         services:
-                      {% for service_item in service_mappings | dict2items %}
-                      {% if not service_item.value.is_internal | default(false) %}
-                          {{ service_item.key }}:
+                      {% for svc_key, svc in env.JARVIS_SERVICES.items() %}
+                      {% if (svc.subdomains is defined or svc.root_domain | default(false)) and not svc.is_internal | default(false) %}
+                          {{ svc_key }}:
                             loadBalancer:
                               servers:
-                                - url: "{{ service_item.value.url }}"
-                      {% if service_item.value.insecure | default(false) %}
+                                - url: "{{ 'https' if svc.https | default(false) else 'http' }}://{{ env.JARVIS_NETWORK_PREFIX }}.{{ svc.id }}:{{ svc.port }}"
+                      {% if svc.insecure | default(false) %}
                               serversTransport: "insecureTransport"
                       {% endif %}
                       {% endif %}
@@ -240,10 +217,10 @@
                   echo '[Service]' > /etc/systemd/system/traefik.service.d/override.conf && \
                   echo 'Environment=\"CF_DNS_API_TOKEN={{ env.JARVIS_CF_DNS_API_TOKEN }}\"' >> /etc/systemd/system/traefik.service.d/override.conf"
 
-            - name: '{{ instance.hostname | upper }}: Restart Traefik Service'
+            - name: '{{ instance.hostname | upper }}: Restart service'
               shell: pct exec {{ id }} -- bash -c "systemctl daemon-reload && systemctl restart traefik"
 
-      - name: '{{ instance.hostname | upper }}: Configure Cloudflared'
+      - name: '{{ instance.hostname | upper }}: Configure tunnel'
         block:
             - name: '{{ instance.hostname | upper }}: Check if Cloudflared is installed'
               shell: pct exec {{ id }} -- bash -c "cloudflared --version"

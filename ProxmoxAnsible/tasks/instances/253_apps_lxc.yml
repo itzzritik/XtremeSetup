@@ -1,5 +1,5 @@
 - vars:
-      id: 253
+      id: '{{ env.JARVIS_SERVICES.apps.id }}'
       instance:
           hostname: apps
           memory: 8192
@@ -58,7 +58,7 @@
                       var_container_storage={{ instance.storage }}
                       var_template_storage={{ instance.storage }}
 
-            - name: '{{ instance.hostname | upper }}: Install Docker using community script'
+            - name: '{{ instance.hostname | upper }}: Install using community script'
               shell: |
                   export mode="default"
                   export var_ctid="{{ id }}"
@@ -78,7 +78,7 @@
                   executable: /bin/bash
               register: docker_install
 
-            - name: '{{ instance.hostname | upper }}: Show Docker Install Output'
+            - name: '{{ instance.hostname | upper }}: Show install output'
               debug:
                   var: docker_install.stdout_lines
 
@@ -111,7 +111,7 @@
         failed_when: false
         changed_when: start_lxc.rc == 0
 
-      - name: '{{ instance.hostname | upper }}: Wait for Docker Remote API'
+      - name: '{{ instance.hostname | upper }}: Wait for remote API'
         command: pct exec {{ id }} -- curl -s http://127.0.0.1:2375/version
         register: docker_ready
         until: docker_ready.rc == 0
@@ -119,7 +119,7 @@
         delay: 2
         changed_when: false
 
-      - name: '{{ instance.hostname | upper }}: Clean All Docker Containers'
+      - name: '{{ instance.hostname | upper }}: Clean all containers'
         command: pct exec {{ id }} -- bash -c "docker ps -aq | xargs -r docker rm -f"
         register: docker_clean
         changed_when: docker_clean.stdout != ""

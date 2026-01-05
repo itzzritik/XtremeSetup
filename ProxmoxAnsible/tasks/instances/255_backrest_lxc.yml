@@ -1,0 +1,240 @@
+- vars:
+      id: '{{ env.JARVIS_SERVICES.backrest.id }}'
+      instance:
+          hostname: backrest
+          memory: 512
+          swap: 256
+          cores: 1
+          storage: local-lvm
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+          subuid: '100000'
+          internal_port: 9898
+      paths:
+          config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/data'
+          configs_dir: '{{ env.JARVIS_CONFIGS_DIR }}'
+      r2:
+          endpoint: '{{ env.JARVIS_CF_R2_ENDPOINT }}/configs'
+          access_key: '{{ env.JARVIS_CF_R2_TOKENS.split(\":\")[0] }}'
+          secret_key: '{{ env.JARVIS_CF_R2_TOKENS.split(\":\")[1] }}'
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        uri:
+            url: 'http://{{ instance.ip }}'
+            timeout: 5
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - set_fact:
+            instance_exists: '{{ instance_check.status | default(0) == 200 }}'
+
+      - name: '{{ instance.hostname | upper }}: Create Config Directories on Host'
+        file:
+            path: '{{ item }}'
+            state: directory
+            mode: '0755'
+            owner: '{{ instance.subuid }}'
+            group: '{{ instance.subuid }}'
+            recurse: true
+        loop:
+            - '{{ paths.config }}'
+
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
+        block:
+            - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
+              shell: pct stop {{ id }}; pct destroy {{ id }}
+              failed_when: false
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Create Temporary Install Directory'
+              tempfile:
+                  state: directory
+                  suffix: _backrest_install
+              register: temp_install_dir
+
+            - name: '{{ instance.hostname | upper }}: Create default.vars for Silent Install'
+              copy:
+                  dest: '{{ temp_install_dir.path }}/default.vars'
+                  content: |
+                      var_container_storage={{ instance.storage }}
+                      var_template_storage={{ instance.storage }}
+
+            - name: '{{ instance.hostname | upper }}: Install using community script'
+              shell: |
+                  export var_os="debian"
+                  export var_version="12"
+                  export DEBIAN_FRONTEND=noninteractive
+                  export mode="default"
+                  export var_ctid="{{ id }}"
+                  export var_hostname="{{ instance.hostname }}"
+                  export var_cpu="{{ instance.cores }}"
+                  export var_ram="{{ instance.memory }}"
+                  export var_swap="{{ instance.swap }}"
+                  export var_disk="8"
+                  export var_net="{{ instance.ip }}/24"
+                  export var_gateway="{{ instance.gateway }}"
+                  export var_unprivileged="1"
+                  export TERM=xterm
+                  bash -c "$(curl -fsSL {{ env.JARVIS_COMMUNITY_SCRIPTS_URL }}/ct/backrest.sh)"
+              args:
+                  chdir: '{{ temp_install_dir.path }}'
+                  executable: /bin/bash
+              register: backrest_install
+
+            - name: '{{ instance.hostname | upper }}: Show install output'
+              debug:
+                  var: backrest_install.stdout_lines
+
+            - name: '{{ instance.hostname | upper }}: Cleanup Temporary Directory'
+              file:
+                  path: '{{ temp_install_dir.path }}'
+                  state: absent
+
+            - name: '{{ instance.hostname | upper }}: Stop LXC for Configuration'
+              command: pct stop {{ id }}
+              ignore_errors: true
+
+            - name: '{{ instance.hostname | upper }}: Configure LXC Mounts'
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ id }}.conf'
+                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
+                  block: |
+                      mp0: /mnt/wdhdd,mp=/media/wdhdd
+                      mp1: /mnt/ssd,mp=/media/ssd
+                      mp2: {{ paths.config }},mp=/opt/backrest/data
+                      mp3: {{ paths.configs_dir }},mp=/media/configs
+
+            - name: '{{ instance.hostname | upper }}: Start LXC'
+              command: pct start {{ id }}
+
+            - name: '{{ instance.hostname | upper }}: Wait for ready (internal port)'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: '{{ instance.internal_port }}'
+                  delay: 5
+                  timeout: 120
+
+            - name: '{{ instance.hostname | upper }}: Install iptables'
+              shell: pct exec {{ id }} -- apt-get update && pct exec {{ id }} -- apt-get install -y iptables
+
+            - name: '{{ instance.hostname | upper }}: Configure Port Forwarding (80 -> {{ instance.internal_port }})'
+              shell: |
+                  pct exec {{ id }} -- bash -c "cat <<EOF > /etc/systemd/system/backrest-port-forward.service
+                  [Unit]
+                  Description=Backrest Port Forward 80 to {{ instance.internal_port }}
+                  After=network.target
+
+                  [Service]
+                  Type=oneshot
+                  ExecStart=/usr/sbin/iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port {{ instance.internal_port }}
+                  ExecStop=/usr/sbin/iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT --to-port {{ instance.internal_port }}
+                  RemainAfterExit=yes
+
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+                  systemctl daemon-reload && \
+                  systemctl enable --now backrest-port-forward.service"
+              args:
+                  executable: /bin/bash
+
+            - name: '{{ instance.hostname | upper }}: Wait for ready (port 80)'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: 80
+                  delay: 2
+                  timeout: 30
+
+            - name: '{{ instance.hostname | upper }}: Provision R2 configuration'
+              shell: |
+                  pct exec {{ id }} -- bash -c 'cat > /opt/backrest/config/config.json << EOF
+                  {
+                    "repos": [
+                      {
+                        "id": "r2-backup",
+                        "uri": "s3:{{ r2.endpoint }}",
+                        "env": ["AWS_ACCESS_KEY_ID={{ r2.access_key }}", "AWS_SECRET_ACCESS_KEY={{ r2.secret_key }}"],
+                        "prunePolicy": {
+                          "maxUnusedPercent": 25
+                        },
+                        "flags": ["--verbose"]
+                      }
+                    ],
+                    "plans": [
+                      {
+                        "id": "jarvis-configs",
+                        "repo": "r2-backup",
+                        "paths": ["/media/configs"],
+                        "excludes": ["**/cache/**", "**/.cache/**", "**/logs/**"],
+                        "schedule": {
+                          "cron": "0 2 */2 * *",
+                          "clock": "CLOCK_LOCAL"
+                        },
+                        "retention": {
+                          "policyKeepLastN": 5,
+                          "policyKeepDaily": 7,
+                          "policyKeepWeekly": 4,
+                          "policyKeepMonthly": 6
+                        }
+                      }
+                    ]
+                  }
+                  EOF'
+              args:
+                  executable: /bin/bash
+
+            - name: '{{ instance.hostname | upper }}: Restart to apply config'
+              shell: pct exec {{ id }} -- systemctl restart backrest
+
+        when: not instance_exists
+
+      - name: '{{ instance.hostname | upper }}: Start for restore'
+        command: pct start {{ id }}
+        failed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Stop all other LXCs for restore'
+        shell: |
+            for lxc in $(pct list | awk 'NR>1 && $2=="running" && $1!="{{ id }}" {print $1}'); do
+                pct stop $lxc &
+            done
+            wait
+        args:
+            executable: /bin/bash
+        failed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Wait for ready'
+        wait_for:
+            host: '{{ instance.ip }}'
+            port: '{{ instance.internal_port }}'
+            delay: 2
+            timeout: 60
+
+      - name: '{{ instance.hostname | upper }}: Restore missing service folders from R2'
+        shell: |
+            pct exec {{ id }} -- bash -c '
+            export AWS_ACCESS_KEY_ID="{{ r2.access_key }}" AWS_SECRET_ACCESS_KEY="{{ r2.secret_key }}"
+            R="s3:{{ r2.endpoint }}"
+            restic -r "$R" snapshots --json 2>/dev/null | grep -q "time" || { echo "No snapshots"; exit 0; }
+            for f in $(restic -r "$R" ls latest /media/configs 2>/dev/null | grep "^/media/configs/[^/]*$" | xargs -I{} basename {}); do
+                [ -d "/media/configs/$f" ] && [ "$(ls -A /media/configs/$f 2>/dev/null)" ] && echo "SKIP: $f" && continue
+                echo "RESTORE: $f" && restic -r "$R" restore latest --target / --include "/media/configs/$f"
+            done
+            '
+        register: restore_result
+        failed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Restore result'
+        debug:
+            msg: '{{ restore_result.stdout | default("Restore skipped") }}'
+
+      - name: '{{ instance.hostname | upper }}: Start all LXCs after restore'
+        shell: pct start {{ item }}
+        loop: '{{ running_lxcs.stdout_lines | default([]) }}'
+        when: running_lxcs.stdout_lines | default([]) | length > 0
+        failed_when: false
+
+  rescue:
+      - debug:
+            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
+  become: true

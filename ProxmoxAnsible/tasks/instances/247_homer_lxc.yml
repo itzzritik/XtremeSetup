@@ -1,5 +1,5 @@
 - vars:
-      id: 247
+      id: '{{ env.JARVIS_SERVICES.homer.id }}'
       instance:
           hostname: homer
           memory: 512
@@ -9,57 +9,13 @@
           ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
           gateway: '{{ env.JARVIS_GATEWAY }}'
           subuid: '100000'
+          internal_port: 8010
       paths:
           assets: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/assets'
-      services:
-          - name: Home Assistant
-            subtitle: Smart Home Automation
-            icon: fas fa-home
-            ip: '{{ env.JARVIS_NETWORK_PREFIX }}.250'
-            port: 8123
-            subdomain: home
-          - name: Jellyfin
-            subtitle: Media Server
-            icon: fas fa-film
-            ip: '{{ env.JARVIS_NETWORK_PREFIX }}.248'
-            port: 8096
-            subdomain: media
-          - name: qBittorrent
-            subtitle: Torrent Client
-            icon: fas fa-download
-            ip: '{{ env.JARVIS_NETWORK_PREFIX }}.249'
-            port: 80
-            subdomain: torrent
-          - name: Pi-hole
-            subtitle: Network DNS & Ad Blocker
-            icon: fas fa-shield-alt
-            ip: '{{ env.JARVIS_NETWORK_PREFIX }}.252'
-            port: 80
-            path: /admin
-            subdomain: pihole
-          - name: Homarr
-            subtitle: Dashboard
-            icon: fas fa-th-large
-            ip: '{{ env.JARVIS_NETWORK_PREFIX }}.251'
-            port: 7575
-            root_domain: true
-          - name: Traefik
-            subtitle: Reverse Proxy
-            icon: fas fa-network-wired
-            ip: '{{ env.JARVIS_NETWORK_PREFIX }}.254'
-            port: 8080
-            subdomain: proxy
-          - name: Proxmox
-            subtitle: Virtualization Platform
-            icon: fas fa-server
-            ip: '{{ env.JARVIS_NETWORK_PREFIX }}.200'
-            port: 8006
-            https: true
-            subdomain: pm
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
         uri:
-            url: 'http://{{ instance.ip }}:8010'
+            url: 'http://{{ instance.ip }}:{{ instance.internal_port }}'
             timeout: 5
         register: instance_check
         failed_when: false
@@ -100,7 +56,7 @@
                       var_container_storage={{ instance.storage }}
                       var_template_storage={{ instance.storage }}
 
-            - name: '{{ instance.hostname | upper }}: Install Homer using community script'
+            - name: '{{ instance.hostname | upper }}: Install using community script'
               shell: |
                   export var_os="debian"
                   export var_version="12"
@@ -122,7 +78,7 @@
                   executable: /bin/bash
               register: homer_install
 
-            - name: '{{ instance.hostname | upper }}: Show Homer Install Output'
+            - name: '{{ instance.hostname | upper }}: Show install output'
               debug:
                   var: homer_install.stdout_lines
 
@@ -145,25 +101,25 @@
             - name: '{{ instance.hostname | upper }}: Start LXC'
               command: pct start {{ id }}
 
-            - name: '{{ instance.hostname | upper }}: Wait for Homer to be ready'
+            - name: '{{ instance.hostname | upper }}: Wait for ready'
               wait_for:
                   host: '{{ instance.ip }}'
-                  port: 8010
+                  port: '{{ instance.internal_port }}'
                   delay: 5
                   timeout: 120
 
-            - name: '{{ instance.hostname | upper }}: Configure Port Forwarding (80 -> 8010)'
+            - name: '{{ instance.hostname | upper }}: Configure Port Forwarding (80 -> {{ instance.internal_port }})'
               shell: |
                   pct exec {{ id }} -- bash -c "apt-get update && apt-get install -y iptables && \
                   cat <<EOF > /etc/systemd/system/homer-port-forward.service
                   [Unit]
-                  Description=Homer Port Forward 80 to 8010
+                  Description=Homer Port Forward 80 to {{ instance.internal_port }}
                   After=network.target
 
                   [Service]
                   Type=oneshot
-                  ExecStart=/usr/sbin/iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8010
-                  ExecStop=/usr/sbin/iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8010
+                  ExecStart=/usr/sbin/iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port {{ instance.internal_port }}
+                  ExecStop=/usr/sbin/iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT --to-port {{ instance.internal_port }}
                   RemainAfterExit=yes
 
                   [Install]
@@ -174,7 +130,7 @@
               args:
                   executable: /bin/bash
 
-            - name: '{{ instance.hostname | upper }}: Wait for Homer on Port 80'
+            - name: '{{ instance.hostname | upper }}: Wait for ready (port 80)'
               wait_for:
                   host: '{{ instance.ip }}'
                   port: 80
@@ -183,15 +139,15 @@
 
         when: not instance_exists
 
-      - name: '{{ instance.hostname | upper }}: Generate Homer Configuration'
+      - name: '{{ instance.hostname | upper }}: Generate configuration'
         block:
             - name: '{{ instance.hostname | upper }}: Create config.yml'
               copy:
                   dest: '{{ paths.assets }}/config.yml'
                   content: |
-                      title: "JARVIS Dashboard"
-                      subtitle: "{{ env.JARVIS_DOMAIN }}"
-                      documentTitle: "JARVIS"
+                      title: "Jarvis"
+                      subtitle: "Home Dashboard"
+                      documentTitle: "Jarvis"
                       logo: "assets/icons/logo.svg"
 
                       header: true
@@ -209,123 +165,47 @@
 
                       colors:
                         light:
-                          highlight-primary: "#3498db"
-                          highlight-secondary: "#2980b9"
-                          highlight-hover: "#5faee3"
-                          background: "#f5f5f5"
+                          highlight-primary: "#6366f1"
+                          highlight-secondary: "#4f46e5"
+                          highlight-hover: "#818cf8"
+                          background: "#f8fafc"
                           card-background: "#ffffff"
-                          text: "#303030"
+                          text: "#1e293b"
                           text-header: "#ffffff"
-                          text-title: "#303030"
-                          text-subtitle: "#424242"
-                          card-shadow: rgba(0, 0, 0, 0.1)
-                          link: "#3498db"
-                          link-hover: "#2980b9"
+                          text-title: "#0f172a"
+                          text-subtitle: "#64748b"
+                          card-shadow: rgba(0, 0, 0, 0.08)
+                          link: "#6366f1"
+                          link-hover: "#4f46e5"
                         dark:
-                          highlight-primary: "#3498db"
-                          highlight-secondary: "#2980b9"
-                          highlight-hover: "#5faee3"
-                          background: "#131313"
-                          card-background: "#1e1e1e"
-                          text: "#eaeaea"
+                          highlight-primary: "#6366f1"
+                          highlight-secondary: "#4f46e5"
+                          highlight-hover: "#818cf8"
+                          background: "#0f0f0f"
+                          card-background: "#1a1a1a"
+                          text: "#e2e8f0"
                           text-header: "#ffffff"
-                          text-title: "#fafafa"
-                          text-subtitle: "#d0d0d0"
+                          text-title: "#f8fafc"
+                          text-subtitle: "#94a3b8"
                           card-shadow: rgba(0, 0, 0, 0.4)
-                          link: "#3498db"
-                          link-hover: "#5faee3"
+                          link: "#818cf8"
+                          link-hover: "#a5b4fc"
 
                       services:
                         - name: "Services"
-                          icon: "fas fa-cloud"
+                          icon: "fas fa-server"
                           items:
-                      {% for svc in services %}
+                      {% for svc_key, svc in env.JARVIS_SERVICES.items() %}
+                      {% if svc_key != 'homer' and svc_key != 'apps' %}
                             - name: "{{ svc.name }}"
                               subtitle: "{{ svc.subtitle }}"
-                              icon: "{{ svc.icon }}"
-                              tag: "{{ svc.name | lower | replace(' ', '-') }}"
-                              tagstyle: "display:none"
-                              url: "{{ 'https' if svc.https | default(false) else 'http' }}://{{ svc.ip }}:{{ svc.port }}{{ svc.path | default('') }}"
+                              logo: "{{ svc.logo }}"
+                              url: "https://{% if svc.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ svc.subdomains[0] | default(svc_key) }}.{{ env.JARVIS_DOMAIN }}{% endif %}{{ svc.path | default('') }}"
+                              endpoint: "https://{% if svc.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ svc.subdomains[0] | default(svc_key) }}.{{ env.JARVIS_DOMAIN }}{% endif %}"
                               target: "_blank"
+                              tag: "open {{ svc_key }}"
+                      {% endif %}
                       {% endfor %}
-                  owner: '{{ instance.subuid }}'
-                  group: '{{ instance.subuid }}'
-                  mode: '0644'
-
-            - name: '{{ instance.hostname | upper }}: Create URL mapping JSON for dynamic switching'
-              copy:
-                  dest: '{{ paths.assets }}/url-mappings.json'
-                  content: |
-                      {
-                      {% for svc in services %}
-                        "{{ svc.name | lower | replace(' ', '-') }}": {
-                          "ip": "{{ 'https' if svc.https | default(false) else 'http' }}://{{ svc.ip }}:{{ svc.port }}{{ svc.path | default('') }}",
-                          "domain": "https://{% if svc.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ svc.subdomain }}.{{ env.JARVIS_DOMAIN }}{% endif %}{{ svc.path | default('') }}"
-                        }{% if not loop.last %},{% endif %}
-
-                      {% endfor %}
-                      }
-                  owner: '{{ instance.subuid }}'
-                  group: '{{ instance.subuid }}'
-                  mode: '0644'
-
-            - name: '{{ instance.hostname | upper }}: Create custom.js for dynamic URL switching'
-              copy:
-                  dest: '{{ paths.assets }}/custom.js'
-                  content: |
-                      // Dynamic URL switching based on access method (IP vs Domain)
-                      (function() {
-                          const hostname = window.location.hostname;
-                          const isIP = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
-
-                          fetch('assets/url-mappings.json')
-                              .then(response => response.json())
-                              .then(mappings => {
-                                  // Observe DOM changes since Homer uses Vue.js
-                                  const observer = new MutationObserver(function() {
-                                      document.querySelectorAll('.card.item a').forEach(function(link) {
-                                          const card = link.closest('.card');
-                                          if (!card) return;
-
-                                          const tagEl = card.querySelector('.tag');
-                                          if (!tagEl) return;
-
-                                          const tag = tagEl.textContent.trim().toLowerCase();
-                                          const mapping = mappings[tag];
-
-                                          if (mapping && !link.dataset.urlSet) {
-                                              link.href = isIP ? mapping.ip : mapping.domain;
-                                              link.dataset.urlSet = 'true';
-                                          }
-                                      });
-                                  });
-
-                                  observer.observe(document.body, {
-                                      childList: true,
-                                      subtree: true
-                                  });
-
-                                  // Initial run after Vue renders
-                                  setTimeout(function() {
-                                      observer.disconnect();
-                                      document.querySelectorAll('.card.item a').forEach(function(link) {
-                                          const card = link.closest('.card');
-                                          if (!card) return;
-
-                                          const tagEl = card.querySelector('.tag');
-                                          if (!tagEl) return;
-
-                                          const tag = tagEl.textContent.trim().toLowerCase();
-                                          const mapping = mappings[tag];
-
-                                          if (mapping) {
-                                              link.href = isIP ? mapping.ip : mapping.domain;
-                                          }
-                                      });
-                                  }, 1000);
-                              })
-                              .catch(err => console.error('Failed to load URL mappings:', err));
-                      })();
                   owner: '{{ instance.subuid }}'
                   group: '{{ instance.subuid }}'
                   mode: '0644'
@@ -334,21 +214,99 @@
               copy:
                   dest: '{{ paths.assets }}/custom.css'
                   content: |
-                      /* Custom styles for JARVIS Homer Dashboard */
+                      /* Jarvis Dashboard - Clean Styles */
                       .card {
                           border-radius: 12px;
                           transition: transform 0.2s ease, box-shadow 0.2s ease;
                       }
                       .card:hover {
                           transform: translateY(-2px);
-                          box-shadow: 0 8px 25px rgba(52, 152, 219, 0.15);
+                          box-shadow: 0 8px 25px rgba(99, 102, 241, 0.2);
                       }
-                      .card .media-left .image i {
-                          font-size: 1.8rem;
+                      .card .media-left .image img {
+                          width: 48px;
+                          height: 48px;
+                          border-radius: 8px;
+                          object-fit: contain;
                       }
-                      /* Hide the tag used for URL mapping */
-                      .card .tag {
-                          display: none !important;
+                      .card .status.online {
+                          background: #22c55e;
+                      }
+                      .card .status.offline {
+                          background: #ef4444;
+                      }
+
+                      /* Floating Action Button for URL Switching */
+                      .url-switcher-fab {
+                          position: fixed;
+                          bottom: 24px;
+                          right: 24px;
+                          width: 56px;
+                          height: 56px;
+                          border-radius: 50%;
+                          border: none;
+                          cursor: pointer;
+                          display: flex;
+                          align-items: center;
+                          justify-content: center;
+                          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                          transition: all 0.3s ease;
+                          z-index: 9999;
+                          background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+                      }
+                      .url-switcher-fab:hover:not(:disabled) {
+                          transform: scale(1.1);
+                          box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+                      }
+                      .url-switcher-fab:disabled {
+                          background: #4b5563;
+                          cursor: not-allowed;
+                          opacity: 0.6;
+                      }
+                      .url-switcher-fab svg {
+                          width: 24px;
+                          height: 24px;
+                          fill: white;
+                      }
+                      .url-switcher-fab .spinner {
+                          width: 24px;
+                          height: 24px;
+                          border: 3px solid rgba(255, 255, 255, 0.3);
+                          border-top-color: white;
+                          border-radius: 50%;
+                          animation: spin 1s linear infinite;
+                      }
+                      @keyframes spin {
+                          to { transform: rotate(360deg); }
+                      }
+                      .url-switcher-tooltip {
+                          position: fixed;
+                          bottom: 90px;
+                          right: 24px;
+                          background: rgba(0, 0, 0, 0.85);
+                          color: white;
+                          padding: 8px 16px;
+                          border-radius: 8px;
+                          font-size: 14px;
+                          white-space: nowrap;
+                          z-index: 9999;
+                          opacity: 0;
+                          transform: translateY(10px);
+                          transition: all 0.3s ease;
+                          pointer-events: none;
+                      }
+                      .url-switcher-tooltip.visible {
+                          opacity: 1;
+                          transform: translateY(0);
+                      }
+                      .url-switcher-tooltip::after {
+                          content: '';
+                          position: absolute;
+                          bottom: -6px;
+                          right: 20px;
+                          border-left: 6px solid transparent;
+                          border-right: 6px solid transparent;
+                          border-top: 6px solid rgba(0, 0, 0, 0.85);
                       }
                   owner: '{{ instance.subuid }}'
                   group: '{{ instance.subuid }}'
@@ -366,14 +324,301 @@
                   group: '{{ instance.subuid }}'
                   mode: '0644'
 
-            - name: '{{ instance.hostname | upper }}: Inject custom.js into Homer'
+            - name: '{{ instance.hostname | upper }}: Create favicon'
+              copy:
+                  dest: '{{ paths.assets }}/favicon.svg'
+                  content: |
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="45" fill="#6366f1"/>
+                        <text x="50" y="62" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="white" text-anchor="middle">J</text>
+                      </svg>
+                  owner: '{{ instance.subuid }}'
+                  group: '{{ instance.subuid }}'
+                  mode: '0644'
+
+            - name: '{{ instance.hostname | upper }}: Create manifest.json'
+              copy:
+                  dest: '{{ paths.assets }}/manifest.json'
+                  content: |
+                      {
+                        "name": "Jarvis Dashboard",
+                        "short_name": "Jarvis",
+                        "description": "Jarvis Home Dashboard",
+                        "start_url": "/",
+                        "display": "standalone",
+                        "background_color": "#131313",
+                        "theme_color": "#3498db",
+                        "icons": [
+                          {
+                            "src": "icons/logo.svg",
+                            "sizes": "any",
+                            "type": "image/svg+xml"
+                          }
+                        ]
+                      }
+                  owner: '{{ instance.subuid }}'
+                  group: '{{ instance.subuid }}'
+                  mode: '0644'
+
+            - name: '{{ instance.hostname | upper }}: Create URL switcher script'
+              copy:
+                  dest: '{{ paths.assets }}/url-switcher.js'
+                  content: |
+                      /**
+                       * Jarvis URL Switcher
+                       * - Dynamically rewrites service links based on access mode (IP vs Domain)
+                       * - Provides a FAB to switch between IP and Domain access
+                       */
+                      (function() {
+                        'use strict';
+                        
+                        // Service mappings generated from Ansible
+                        const SERVICES = {
+                      {% for svc_key, svc in env.JARVIS_SERVICES.items() %}
+                      {% if svc_key != 'homer' and svc_key != 'apps' %}
+                      {% set proto = 'https' if svc.https | default(false) else 'http' %}
+                      {% set port_suffix = '' if (svc.port == 80 and proto == 'http') or (svc.port == 443 and proto == 'https') else ':' + svc.port|string %}
+                          '{{ svc_key }}': {
+                            domainUrl: 'https://{% if svc.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ svc.subdomains[0] | default(svc_key) }}.{{ env.JARVIS_DOMAIN }}{% endif %}{{ svc.path | default('') }}',
+                            ipUrl: '{{ proto }}://{{ env.JARVIS_NETWORK_PREFIX }}.{{ svc.id }}{{ port_suffix }}{{ svc.path | default('') }}',
+                            tag: 'svc-{{ svc_key }}'
+                          },
+                      {% endif %}
+                      {% endfor %}
+                        };
+
+                        // Homer URLs for switching
+                        const HOMER_DOMAIN_URL = 'https://{{ env.JARVIS_DOMAIN }}';
+                        const HOMER_IP_URL = 'http://{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.homer.id }}';
+
+                        // Detect current access mode
+                        const hostname = window.location.hostname;
+                        const isIP = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+                        const currentMode = isIP ? 'ip' : 'domain';
+                        
+                        console.log('[URL Switcher] Mode:', currentMode, '| Hostname:', hostname);
+
+                        /**
+                         * Rewrite all service links based on current access mode
+                         */
+                        function rewriteLinks() {
+                          let updated = 0;
+                          
+                          // Method 1: Find links by tag attribute in card elements
+                          document.querySelectorAll('.card a[href]').forEach(link => {
+                            const href = link.getAttribute('href');
+                            
+                            for (const [key, svc] of Object.entries(SERVICES)) {
+                              const targetUrl = currentMode === 'ip' ? svc.ipUrl : svc.domainUrl;
+                              const otherUrl = currentMode === 'ip' ? svc.domainUrl : svc.ipUrl;
+                              
+                              // Check if this link matches either URL pattern
+                              if (href === svc.domainUrl || href === svc.ipUrl || 
+                                  href === svc.domainUrl + '/' || href === svc.ipUrl + '/') {
+                                if (link.href !== targetUrl && link.href !== targetUrl + '/') {
+                                  link.setAttribute('href', targetUrl);
+                                  updated++;
+                                }
+                                break;
+                              }
+                            }
+                          });
+
+                          // Method 2: Also check by matching domain patterns in href
+                          document.querySelectorAll('a[href]').forEach(link => {
+                            const href = link.getAttribute('href');
+                            if (!href) return;
+
+                            for (const [key, svc] of Object.entries(SERVICES)) {
+                              const targetUrl = currentMode === 'ip' ? svc.ipUrl : svc.domainUrl;
+                              
+                              // Normalize URLs for comparison (remove trailing slash)
+                              const normalizedHref = href.replace(/\/$/, '');
+                              const normalizedDomain = svc.domainUrl.replace(/\/$/, '');
+                              const normalizedIp = svc.ipUrl.replace(/\/$/, '');
+                              
+                              if (normalizedHref === normalizedDomain || normalizedHref === normalizedIp) {
+                                if (link.getAttribute('href') !== targetUrl) {
+                                  link.setAttribute('href', targetUrl);
+                                  updated++;
+                                }
+                                break;
+                              }
+                            }
+                          });
+
+                          if (updated > 0) {
+                            console.log('[URL Switcher] Updated', updated, 'links to', currentMode, 'mode');
+                          }
+                        }
+
+                        /**
+                         * Check if a URL is reachable
+                         */
+                        async function checkReachable(url) {
+                          try {
+                            const controller = new AbortController();
+                            const timeoutId = setTimeout(() => controller.abort(), 3000);
+                            
+                            // Try to fetch with no-cors mode (won't give us response details but will tell us if server responds)
+                            await fetch(url, { 
+                              method: 'HEAD', 
+                              mode: 'no-cors',
+                              signal: controller.signal
+                            });
+                            
+                            clearTimeout(timeoutId);
+                            return true;
+                          } catch (e) {
+                            console.log('[URL Switcher] Reachability check failed:', e.message);
+                            return false;
+                          }
+                        }
+
+                        /**
+                         * Create the floating action button
+                         */
+                        function createFAB() {
+                          // Create tooltip
+                          const tooltip = document.createElement('div');
+                          tooltip.className = 'url-switcher-tooltip';
+                          tooltip.textContent = currentMode === 'ip' ? 'Switch to Domain' : 'Switch to Local IP';
+                          document.body.appendChild(tooltip);
+
+                          // Create FAB
+                          const fab = document.createElement('button');
+                          fab.className = 'url-switcher-fab';
+                          fab.setAttribute('aria-label', tooltip.textContent);
+                          fab.innerHTML = currentMode === 'ip' 
+                            ? '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>'
+                            : '<svg viewBox="0 0 24 24"><path d="M15 7v12.97l-4.21-4.21-1.41 1.41 6.66 6.66V2.66L9.38 9.32l1.41 1.41L15 7zM3 17h6v2H3v-2zm0-6h10v2H3v-2zm0-6h10v2H3V5z"/><path d="M17 3v2h2v2h-2v2h2v2h-2v2h2v2h-2v2h2v2h2V3z"/></svg>';
+                          
+                          document.body.appendChild(fab);
+
+                          // Show tooltip on hover
+                          fab.addEventListener('mouseenter', () => {
+                            tooltip.classList.add('visible');
+                          });
+                          fab.addEventListener('mouseleave', () => {
+                            tooltip.classList.remove('visible');
+                          });
+
+                          // Check reachability and handle click
+                          let isChecking = false;
+                          let isReachable = null;
+
+                          async function checkAndUpdateState() {
+                            if (isChecking) return;
+                            isChecking = true;
+                            
+                            fab.innerHTML = '<div class="spinner"></div>';
+                            
+                            const targetUrl = currentMode === 'ip' ? HOMER_DOMAIN_URL : HOMER_IP_URL;
+                            isReachable = await checkReachable(targetUrl);
+                            
+                            if (isReachable) {
+                              fab.disabled = false;
+                              fab.innerHTML = currentMode === 'ip' 
+                                ? '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>'
+                                : '<svg viewBox="0 0 24 24"><path d="M15 7v12.97l-4.21-4.21-1.41 1.41 6.66 6.66V2.66L9.38 9.32l1.41 1.41L15 7zM3 17h6v2H3v-2zm0-6h10v2H3v-2zm0-6h10v2H3V5z"/><path d="M17 3v2h2v2h-2v2h2v2h-2v2h2v2h-2v2h2v2h2V3z"/></svg>';
+                              tooltip.textContent = currentMode === 'ip' ? 'Switch to Domain' : 'Switch to Local IP';
+                            } else {
+                              fab.disabled = true;
+                              fab.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
+                              tooltip.textContent = currentMode === 'ip' ? 'Domain Unreachable' : 'Local IP Unreachable';
+                            }
+                            
+                            isChecking = false;
+                          }
+
+                          fab.addEventListener('click', async () => {
+                            if (fab.disabled || isChecking) return;
+                            
+                            if (isReachable === null) {
+                              await checkAndUpdateState();
+                              return;
+                            }
+                            
+                            if (isReachable) {
+                              const targetUrl = currentMode === 'ip' ? HOMER_DOMAIN_URL : HOMER_IP_URL;
+                              window.location.href = targetUrl;
+                            }
+                          });
+
+                          // Initial reachability check after page loads
+                          setTimeout(checkAndUpdateState, 1000);
+                          
+                          // Re-check every 30 seconds
+                          setInterval(checkAndUpdateState, 30000);
+                        }
+
+                        // Initialize when DOM is ready
+                        function init() {
+                          console.log('[URL Switcher] Initializing...');
+                          
+                          // Rewrite links multiple times to catch Vue.js dynamic rendering
+                          rewriteLinks();
+                          setTimeout(rewriteLinks, 100);
+                          setTimeout(rewriteLinks, 500);
+                          setTimeout(rewriteLinks, 1500);
+                          setTimeout(rewriteLinks, 3000);
+                          
+                          // Watch for DOM changes (Vue.js dynamic content)
+                          const observer = new MutationObserver(() => {
+                            rewriteLinks();
+                          });
+                          observer.observe(document.body, { childList: true, subtree: true });
+                          
+                          // Create the FAB
+                          createFAB();
+                        }
+
+                        if (document.readyState === 'loading') {
+                          document.addEventListener('DOMContentLoaded', init);
+                        } else {
+                          init();
+                        }
+                      })();
+                  owner: '{{ instance.subuid }}'
+                  group: '{{ instance.subuid }}'
+                  mode: '0644'
+
+            - name: '{{ instance.hostname | upper }}: Inject scripts and favicon'
               shell: |
-                  pct exec {{ id }} -- bash -c "
-                  if ! grep -q 'custom.js' /opt/homer/index.html; then
-                      sed -i 's|</body>|<script src=\"assets/custom.js\"></script></body>|' /opt/homer/index.html
-                  fi"
+                  pct exec {{ id }} -- bash -c '
+                  cd /opt/homer
+
+                  # 1. CLEANUP - Remove old scripts
+                  rm -f assets/custom.js assets/url-switch.js
+                  sed -i "/custom.js/d" index.html
+                  sed -i "/url-switch/d" index.html
+                  sed -i "/url-switcher/d" index.html
+                  sed -i "/rel=\"icon\"/d" index.html
+                  sed -i "/rel=\"shortcut icon\"/d" index.html
+
+                  # 2. INJECT new scripts
+                  TIMESTAMP=$(date +%s)
+
+                  # Inject url-switcher script before closing body
+                  if ! grep -q "url-switcher.js" index.html; then
+                    sed -i "s|</body>|<script src=\"assets/url-switcher.js?v=$TIMESTAMP\"></script></body>|" index.html
+                    echo "Injected URL Switcher Script"
+                  fi
+
+                  # Inject favicon before closing head
+                  if ! grep -q "favicon.svg" index.html; then
+                    sed -i "s|</head>|<link rel=\"icon\" type=\"image/svg+xml\" href=\"assets/favicon.svg\"></head>|" index.html
+                    echo "Injected Favicon"
+                  fi
+                  '
               args:
                   executable: /bin/bash
+              register: inject_result
+              changed_when: "'Injected' in inject_result.stdout"
+
+            - name: '{{ instance.hostname | upper }}: Verification Output'
+              debug:
+                  msg: '{{ inject_result.stdout_lines }}'
 
   rescue:
       - debug:

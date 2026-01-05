@@ -1,5 +1,5 @@
 - vars:
-      id: 250
+      id: '{{ env.JARVIS_SERVICES.home.id }}'
       instance:
           hostname: home
           memory: 4096
@@ -11,7 +11,7 @@
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
         uri:
-            url: 'http://{{ instance.ip }}:8123'
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES.home.port }}'
             timeout: 5
         register: instance_check
         failed_when: false
@@ -33,7 +33,7 @@
                   suffix: _haos_install
               register: temp_install_dir
 
-            - name: '{{ instance.hostname | upper }}: Download and Patch HAOS Script'
+            - name: '{{ instance.hostname | upper }}: Download and patch script'
               shell: |
                   curl -fsSL {{ env.JARVIS_COMMUNITY_SCRIPTS_URL }}/vm/haos-vm.sh -o haos-vm.sh
 
@@ -58,7 +58,7 @@
                   chdir: '{{ temp_install_dir.path }}'
                   executable: /bin/bash
 
-            - name: '{{ instance.hostname | upper }}: Install HAOS using patched script'
+            - name: '{{ instance.hostname | upper }}: Install using patched script'
               shell: |
                   source /etc/profile
                   export TERM=xterm
@@ -68,11 +68,11 @@
                   executable: /bin/bash
               register: haos_install
 
-            - name: '{{ instance.hostname | upper }}: Show HAOS Install Output'
+            - name: '{{ instance.hostname | upper }}: Show install output'
               debug:
                   var: haos_install.stdout_lines
 
-            - name: '{{ instance.hostname | upper }}: Create HAOS Network Config'
+            - name: '{{ instance.hostname | upper }}: Create network config'
               shell: |
                   mkdir -p {{ temp_install_dir.path }}/CONFIG/network
                   cat > {{ temp_install_dir.path }}/CONFIG/network/my-network << 'EOF'

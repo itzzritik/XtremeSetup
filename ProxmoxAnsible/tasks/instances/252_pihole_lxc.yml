@@ -1,5 +1,5 @@
 - vars:
-      id: 252
+      id: '{{ env.JARVIS_SERVICES.pihole.id }}'
       instance:
           hostname: pihole
           memory: 1024
@@ -56,7 +56,7 @@
                       var_container_storage={{ instance.storage }}
                       var_template_storage={{ instance.storage }}
 
-            - name: '{{ instance.hostname | upper }}: Install Pihole using community script'
+            - name: '{{ instance.hostname | upper }}: Install using community script'
               shell: |
                   export mode="default"
                   export var_ctid="{{ id }}"
@@ -74,7 +74,7 @@
                   executable: /bin/bash
               register: pihole_install
 
-            - name: '{{ instance.hostname | upper }}: Show Pihole Install Output'
+            - name: '{{ instance.hostname | upper }}: Show install output'
               debug:
                   var: pihole_install.stdout_lines
 
@@ -101,7 +101,7 @@
             - name: '{{ instance.hostname | upper }}: Start LXC'
               command: pct start {{ id }}
 
-            - name: '{{ instance.hostname | upper }}: Wait for Pi-hole to be ready'
+            - name: '{{ instance.hostname | upper }}: Wait for ready'
               wait_for:
                   host: '{{ instance.ip }}'
                   port: 80

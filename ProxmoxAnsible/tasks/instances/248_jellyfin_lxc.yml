@@ -1,5 +1,5 @@
 - vars:
-      id: 248
+      id: '{{ env.JARVIS_SERVICES.jellyfin.id }}'
       instance:
           hostname: jellyfin
           memory: 6144
@@ -14,7 +14,7 @@
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
         uri:
-            url: 'http://{{ instance.ip }}:8096'
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES.jellyfin.port }}'
             timeout: 5
         register: instance_check
         failed_when: false
@@ -53,7 +53,7 @@
                       var_container_storage={{ instance.storage }}
                       var_template_storage={{ instance.storage }}
 
-            - name: '{{ instance.hostname | upper }}: Install Jellyfin using community script'
+            - name: '{{ instance.hostname | upper }}: Install using community script'
               shell: |
                   export mode="default"
                   export var_ctid="{{ id }}"
@@ -72,7 +72,7 @@
                   executable: /bin/bash
               register: jellyfin_install
 
-            - name: '{{ instance.hostname | upper }}: Show Jellyfin Install Output'
+            - name: '{{ instance.hostname | upper }}: Show install output'
               debug:
                   var: jellyfin_install.stdout_lines
 
