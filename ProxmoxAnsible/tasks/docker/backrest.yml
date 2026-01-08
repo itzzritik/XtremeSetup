@@ -1,16 +1,12 @@
 - block:
-      - name: 'BACKREST: Set Variables'
-        set_fact:
-            mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      - set_fact:
             app_name: backrest
+            mapped_uid: '{{ instance.subuid | int + 1000 }}'
+            path:
+                data: '{{ env.JARVIS_CONFIGS_DIR }}/backrest/data'
+                config: '{{ env.JARVIS_CONFIGS_DIR }}/backrest/config'
 
-      - name: 'BACKREST: Set Paths'
-        set_fact:
-            backrest:
-                data: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}/data'
-                config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}/config'
-
-      - name: 'BACKREST: Configure Directories'
+      - name: '{{ app_name | upper }}: Configure Directories'
         file:
             path: '{{ item }}'
             state: directory
@@ -19,10 +15,10 @@
             group: '{{ mapped_uid }}'
             recurse: true
         loop:
-            - '{{ backrest.data }}'
-            - '{{ backrest.config }}'
+            - '{{ path.data }}'
+            - '{{ path.config }}'
 
-      - name: 'BACKREST: Generate Bcrypt Hash'
+      - name: '{{ app_name | upper }}: Generate Bcrypt Hash'
         command: >
             {{ ansible_playbook_python }} -c 'import bcrypt; import base64; import os; password = os.environ["PASS"].encode("utf-8"); salt = bcrypt.gensalt(rounds=10); hashed = bcrypt.hashpw(password, salt); print(base64.b64encode(hashed).decode("utf-8"));'
         environment:
@@ -32,9 +28,9 @@
         changed_when: false
         become: false
 
-      - name: 'BACKREST: Create config.json'
+      - name: '{{ app_name | upper }}: Create config.json'
         copy:
-            dest: '{{ backrest.config }}/config.json'
+            dest: '{{ path.config }}/config.json'
             content: |
                 {
                   "version": 6,
@@ -83,9 +79,9 @@
             group: '{{ mapped_uid }}'
             mode: '0644'
 
-      - name: 'BACKREST: Create docker-compose.yml'
+      - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
-            dest: '{{ backrest.config }}/../docker-compose.yml'
+            dest: '{{ path.config }}/../docker-compose.yml'
             content: |
                 services:
                   {{ app_name }}:
@@ -104,23 +100,23 @@
             group: '{{ mapped_uid }}'
             mode: '0644'
 
-      - name: 'BACKREST: Cleanup Existing Container'
+      - name: '{{ app_name | upper }}: Cleanup Existing Container'
         command: pct exec {{ id }} -- bash -c "docker stop {{ app_name }} 2>/dev/null || true; docker rm {{ app_name }} 2>/dev/null || true"
         changed_when: false
 
-      - name: 'BACKREST: Start Docker Compose'
+      - name: '{{ app_name | upper }}: Start Docker Compose'
         command: pct exec {{ id }} -- bash -c "cd {{ instance.configs }}/{{ app_name }} && docker compose up -d"
         register: backrest_compose
         changed_when: "'Created' in backrest_compose.stderr or 'Recreated' in backrest_compose.stderr"
 
-      - name: 'BACKREST: Wait for Service Ready'
+      - name: '{{ app_name | upper }}: Wait for Service Ready'
         wait_for:
             host: '{{ instance.ip }}'
             port: '{{ env.JARVIS_SERVICES[app_name].port }}'
             delay: 5
             timeout: 30
 
-      - name: 'BACKREST: Generate Smart Restore Script'
+      - name: '{{ app_name | upper }}: Generate Smart Restore Script'
         template:
             src: smart-restore.sh.j2
             dest: /tmp/smart-restore.sh
@@ -128,7 +124,7 @@
         delegate_to: localhost
         become: false
 
-      - name: 'BACKREST: Execute Smart Restore'
+      - name: '{{ app_name | upper }}: Execute Smart Restore'
         script: /tmp/smart-restore.sh
         args:
             executable: /bin/bash

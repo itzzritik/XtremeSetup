@@ -1,0 +1,103 @@
+#main-section {
+	padding: 0 1rem;
+}
+
+.card {
+	border-radius: 12px;
+	transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 8px 25px rgba(99, 102, 241, 0.2);
+}
+
+.media-left {
+	margin-inline-end: 1rem;
+}
+
+.card .media-left .image img {
+	width: 48px;
+	height: 48px;
+	border-radius: 8px;
+	object-fit: contain;
+}
+
+.card .status.online {
+	background: #22c55e;
+}
+
+.card .status.offline {
+	background: #ef4444;
+}
+
+.url-switcher-fab {
+	position: fixed;
+	bottom: 24px;
+	right: 24px;
+	width: 56px;
+	height: 56px;
+	border-radius: 50%;
+	border: none;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+	transition: all 0.3s;
+	z-index: 9999;
+	background: linear-gradient(135deg, #6366f1, #4f46e5);
+}
+
+.url-switcher-fab:hover:not(:disabled) {
+	transform: scale(1.1);
+	box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+}
+
+.url-switcher-fab:disabled {
+	background: #4b5563;
+	cursor: not-allowed;
+	opacity: 0.6;
+}
+
+.url-switcher-fab i {
+	color: #fff;
+	font-size: 24px;
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.url-switcher-tooltip {
+	position: fixed;
+	bottom: 90px;
+	right: 24px;
+	background: rgba(0, 0, 0, 0.85);
+	color: #fff;
+	padding: 8px 16px;
+	border-radius: 8px;
+	font-size: 14px;
+	white-space: nowrap;
+	z-index: 9999;
+	opacity: 0;
+	transform: translateY(10px);
+	transition: all 0.3s;
+	pointer-events: none;
+}
+
+.url-switcher-tooltip.visible {
+	opacity: 1;
+	transform: translateY(0);
+}
+
+.url-switcher-tooltip::after {
+	content: '';
+	position: absolute;
+	bottom: -6px;
+	right: 20px;
+	border: 6px solid transparent;
+	border-top-color: rgba(0, 0, 0, 0.85);
+}

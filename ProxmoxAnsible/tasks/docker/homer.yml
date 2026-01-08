@@ -1,16 +1,17 @@
 - block:
-      - name: 'HOMER: Set Variables'
-        set_fact:
+      - set_fact:
             app_name: homer
             mapped_uid: '{{ instance.subuid | int + 1000 }}'
             cache_buster: '{{ 999999 | random | to_uuid | hash("md5") | truncate(8, True, "") }}'
+            path:
+                assets: '{{ env.JARVIS_CONFIGS_DIR }}/homer/assets'
 
-      - name: 'HOMER: Set Paths'
-        set_fact:
-            homer:
-                assets: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}/assets'
+      - name: '{{ app_name | upper }}: Clean assets directory'
+        file:
+            path: '{{ path.assets }}'
+            state: absent
 
-      - name: 'HOMER: Configure Directories'
+      - name: '{{ app_name | upper }}: Configure Directories'
         file:
             path: '{{ item }}'
             state: directory
@@ -19,14 +20,14 @@
             group: '{{ mapped_uid }}'
             recurse: true
         loop:
-            - '{{ homer.assets }}'
-            - '{{ homer.assets }}/icons'
+            - '{{ path.assets }}'
+            - '{{ path.assets }}/icons'
 
-      - name: 'HOMER: Generate configuration'
+      - name: '{{ app_name | upper }}: Generate configuration'
         block:
-            - name: 'HOMER: Create config.yml'
+            - name: '{{ app_name | upper }}: Create config.yml'
               copy:
-                  dest: '{{ homer.assets }}/config.yml'
+                  dest: '{{ path.assets }}/config.yml'
                   content: |
                       title: "Jarvis"
                       subtitle: "Home Dashboard"
@@ -68,16 +69,22 @@
                           card-shadow: rgba(0, 0, 0, 0.4)
                           link: "#818cf8"
                           link-hover: "#a5b4fc"
+                      urlSwitcher:
+                        homerDomainUrl: "https://{{ env.JARVIS_DOMAIN }}"
+                        homerIpUrl: "http://{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.homer.id }}:{{ env.JARVIS_SERVICES.homer.port }}"
                       services:
                         - name: "Services"
                           icon: "fas fa-server"
                           items:
                       {% for k,s in env.JARVIS_SERVICES.items() if k not in ['homer','docker'] %}
+                      {% set protocol = 'https' if s.https|default(false) else 'http' %}
+                      {% set portSuffix = '' if (s.port==80 and protocol=='http') or (s.port==443 and protocol=='https') else ':'+s.port|string %}
                             - name: "{{ s.name }}"
                               subtitle: "{{ s.subtitle }}"
                               logo: "{{ s.logo }}"
                               url: "https://{% if s.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ s.subdomains[0] | default(k) }}.{{ env.JARVIS_DOMAIN }}{% endif %}{{ s.path | default('') }}"
                               endpoint: "https://{% if s.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ s.subdomains[0] | default(k) }}.{{ env.JARVIS_DOMAIN }}{% endif %}"
+                              ip: "{{ protocol }}://{{ env.JARVIS_NETWORK_PREFIX }}.{{ s.id }}{{ portSuffix }}{{ s.path|default('') }}"
                               target: "_blank"
                               tag: "open {{ k }}"
                       {% endfor %}
@@ -85,18 +92,17 @@
                   group: '{{ mapped_uid }}'
                   mode: '0644'
 
-            - name: 'HOMER: Create custom.css'
+            - name: '{{ app_name | upper }}: Create custom.css'
               copy:
-                  dest: '{{ homer.assets }}/custom-{{ cache_buster }}.css'
-                  content: |
-                      .card{border-radius:12px;transition:transform .2s,box-shadow .2s}.card:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(99,102,241,.2)}.card .media-left .image img{width:48px;height:48px;border-radius:8px;object-fit:contain}.card .status.online{background:#22c55e}.card .status.offline{background:#ef4444}.url-switcher-fab{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,.3);transition:all .3s;z-index:9999;background:linear-gradient(135deg,#6366f1,#4f46e5)}.url-switcher-fab:hover:not(:disabled){transform:scale(1.1);box-shadow:0 6px 20px rgba(99,102,241,.5)}.url-switcher-fab:disabled{background:#4b5563;cursor:not-allowed;opacity:.6}.url-switcher-fab svg{width:24px;height:24px;fill:#fff}.url-switcher-fab .spinner{width:24px;height:24px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.url-switcher-tooltip{position:fixed;bottom:90px;right:24px;background:rgba(0,0,0,.85);color:#fff;padding:8px 16px;border-radius:8px;font-size:14px;white-space:nowrap;z-index:9999;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none}.url-switcher-tooltip.visible{opacity:1;transform:translateY(0)}.url-switcher-tooltip::after{content:'';position:absolute;bottom:-6px;right:20px;border:6px solid transparent;border-top-color:rgba(0,0,0,.85)}
+                  src: ../utils/homer/custom.css
+                  dest: '{{ path.assets }}/custom-{{ cache_buster }}.css'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
                   mode: '0644'
 
-            - name: 'HOMER: Create assets'
+            - name: '{{ app_name | upper }}: Create assets'
               copy:
-                  dest: '{{ homer.assets }}/{{ item.file }}'
+                  dest: '{{ path.assets }}/{{ item.file }}'
                   content: '{{ item.content }}'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
@@ -107,58 +113,35 @@
                   - file: favicon.svg
                     content: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="#6366f1"/><text x="50" y="62" font-family="Arial" font-size="32" font-weight="bold" fill="white" text-anchor="middle">J</text></svg>'
                   - file: manifest.json
-                    content: '{"name":"Jarvis Dashboard","short_name":"Jarvis","description":"Jarvis Home Dashboard","start_url":"/","display":"standalone","background_color":"#131313","theme_color":"#3498db","icons":[{"src":"icons/logo.svg","sizes":"any","type":"image/svg+xml"}]}'
+                    content: |
+                        {
+                          "name": "Jarvis Dashboard",
+                          "short_name": "Jarvis",
+                          "description": "Jarvis Home Dashboard",
+                          "start_url": "/",
+                          "display": "standalone",
+                          "background_color": "#131313",
+                          "theme_color": "#3498db",
+                          "icons": [
+                            {
+                              "src": "icons/logo.svg",
+                              "sizes": "any",
+                              "type": "image/svg+xml"
+                            }
+                          ]
+                        }
 
-            - name: 'HOMER: Create URL switcher script'
+            - name: '{{ app_name | upper }}: Create URL switcher script'
               copy:
-                  dest: '{{ homer.assets }}/url-switcher-{{ cache_buster }}.js'
-                  content: |
-                      (function(){'use strict';
-                      const S={
-                      {% for k,s in env.JARVIS_SERVICES.items() if k not in ['homer','docker'] %}
-                      {% set proto='https' if s.https|default(false) else 'http' %}
-                      {% set p='' if (s.port==80 and proto=='http') or (s.port==443 and proto=='https') else ':'+s.port|string %}
-                      '{{k}}':{d:'https://{% if s.root_domain|default(false) %}{{env.JARVIS_DOMAIN}}{% else %}{{s.subdomains[0]|default(k)}}.{{env.JARVIS_DOMAIN}}{% endif %}{{s.path|default('')}}',i:'{{proto}}://{{env.JARVIS_NETWORK_PREFIX}}.{{s.id}}{{p}}{{s.path|default('')}}'},
-                      {% endfor %}
-                      },HD='https://{{env.JARVIS_DOMAIN}}',HI='http://{{env.JARVIS_NETWORK_PREFIX}}.{{env.JARVIS_SERVICES.homer.id}}:{{env.JARVIS_SERVICES.homer.port}}',
-                      isIP=/^(\d{1,3}\.){3}\d{1,3}$/.test(window.location.hostname),mode=isIP?'ip':'domain',
-                      update=()=>{
-                        document.querySelectorAll('a[href]').forEach(l=>{
-                          const h=l.getAttribute('href');if(!h)return;
-                          for(const s of Object.values(S)){
-                             const t=mode==='ip'?s.i:s.d,n=h.replace(/\/$/,''),d=s.d.replace(/\/$/,''),i=s.i.replace(/\/$/,'');
-                             if(n===d||n===i){if(l.href!==t)l.href=t;break}
-                          }
-                        });
-                      },
-                      check=async(u)=>{try{const c=new AbortController();setTimeout(()=>c.abort(),3000);await fetch(u,{method:'HEAD',mode:'no-cors',signal:c.signal});return true}catch{return false}},
-                      fab=()=>{
-                        const t=document.createElement('div'),b=document.createElement('button');
-                        t.className='url-switcher-tooltip';t.textContent=mode==='ip'?'Switch to Domain':'Switch to IP';document.body.append(t);
-                        b.className='url-switcher-fab';b.innerHTML=mode==='ip'?'<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>':'<svg viewBox="0 0 24 24"><path d="M15 7v12.97l-4.21-4.21-1.41 1.41 6.66 6.66V2.66L9.38 9.32l1.41 1.41L15 7zM3 17h6v2H3v-2zm0-6h10v2H3v-2zm0-6h10v2H3V5z"/><path d="M17 3v2h2v2h-2v2h2v2h-2v2h2v2h-2v2h2v2h-2v2h2v2h-2v2h2v2h2V3z"/></svg>';
-                        document.body.append(b);
-                        b.onmouseenter=()=>t.classList.add('visible');b.onmouseleave=()=>t.classList.remove('visible');
-                        let c=false,r=null;
-                        const run=async()=>{
-                          if(c)return;c=true;b.innerHTML='<div class="spinner"></div>';
-                          const tgt=mode==='ip'?HD:HI;r=await check(tgt);
-                          if(r){b.disabled=false;b.innerHTML=mode==='ip'?'<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>':'<svg viewBox="0 0 24 24"><path d="M15 7v12.97l-4.21-4.21-1.41 1.41 6.66 6.66V2.66L9.38 9.32l1.41 1.41L15 7zM3 17h6v2H3v-2zm0-6h10v2H3v-2zm0-6h10v2H3v-2zm0-6h10v2H3V5z"/><path d="M17 3v2h2v2h-2v2h2v2h-2v2h2v2h-2v2h2v2h-2v2h2v2h2V3z"/></svg>';t.textContent=mode==='ip'?'Switch to Domain':'Switch to IP';}
-                          else{b.disabled=true;b.innerHTML='<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';t.textContent='Unreachable';}
-                          c=false;
-                        };
-                        b.onclick=async()=>{if(!b.disabled&&!c){if(r===null)await run();else window.location.href=mode==='ip'?HD:HI;}};
-                        setTimeout(run,1000);setInterval(run,30000);
-                      };
-                      if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=> {update();fab();setTimeout(update,500);});else{update();fab();}
-                      const o=new MutationObserver(update);o.observe(document.body,{childList:true,subtree:true});
-                      })();
+                  src: ../utils/homer/url-switcher.js
+                  dest: '{{ path.assets }}/url-switcher-{{ cache_buster }}.js'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
                   mode: '0644'
 
-            - name: 'HOMER: Create custom index.html with script import'
+            - name: '{{ app_name | upper }}: Create custom index.html with script import'
               copy:
-                  dest: '{{ homer.assets }}/../index.html'
+                  dest: '{{ path.assets }}/../index.html'
                   content: |
                       <!DOCTYPE html>
                       <html>
@@ -183,9 +166,9 @@
                   group: '{{ mapped_uid }}'
                   mode: '0644'
 
-      - name: 'HOMER: Create docker-compose.yml'
+      - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
-            dest: '{{ homer.assets }}/../docker-compose.yml'
+            dest: '{{ path.assets }}/../docker-compose.yml'
             content: |
                 services:
                   {{ app_name }}:
@@ -203,11 +186,11 @@
             group: '{{ mapped_uid }}'
             mode: '0644'
 
-      - name: 'HOMER: Cleanup Existing Container'
+      - name: '{{ app_name | upper }}: Cleanup Existing Container'
         command: pct exec {{ id }} -- bash -c "docker stop {{ app_name }} 2>/dev/null || true; docker rm {{ app_name }} 2>/dev/null || true"
         changed_when: false
 
-      - name: 'HOMER: Start Docker Compose'
+      - name: '{{ app_name | upper }}: Start Docker Compose'
         command: pct exec {{ id }} -- bash -c "cd {{ instance.configs }}/{{ app_name }} && docker compose up -d"
         register: homer_compose
         changed_when: "'Created' in homer_compose.stderr or 'Recreated' in homer_compose.stderr"

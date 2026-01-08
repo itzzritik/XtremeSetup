@@ -1,16 +1,12 @@
 - block:
-      - name: 'CODE: Set Variables'
-        set_fact:
-            mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      - set_fact:
             app_name: code
+            mapped_uid: '{{ instance.subuid | int + 1000 }}'
+            path:
+                config: '{{ env.JARVIS_CONFIGS_DIR }}/code'
+                user_data: '{{ env.JARVIS_CONFIGS_DIR }}/code/data'
 
-      - name: 'CODE: Set Paths'
-        set_fact:
-            code:
-                config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
-                user_data: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}/data'
-
-      - name: 'CODE: Configure Directories'
+      - name: '{{ app_name | upper }}: Configure Directories'
         file:
             path: '{{ item }}'
             state: directory
@@ -19,13 +15,13 @@
             group: '{{ mapped_uid }}'
             recurse: true
         loop:
-            - '{{ code.config }}'
-            - '{{ code.config }}/data'
-            - '{{ code.config }}/data/User'
+            - '{{ path.config }}'
+            - '{{ path.config }}/data'
+            - '{{ path.config }}/data/User'
 
-      - name: 'CODE: Create settings.json'
+      - name: '{{ app_name | upper }}: Create settings.json'
         copy:
-            dest: '{{ code.config }}/data/User/settings.json'
+            dest: '{{ path.config }}/data/User/settings.json'
             content: |
                 {
                     "workbench.colorTheme": "Material Theme Ocean High Contrast",
@@ -35,14 +31,14 @@
             group: '{{ mapped_uid }}'
             mode: '0644'
 
-      - name: 'CODE: Generate Hashed Password'
+      - name: '{{ app_name | upper }}: Generate Hashed Password'
         shell: pct exec {{ id }} -- docker run --rm alpine sh -c "apk add -q argon2 >/dev/null && echo -n '{{ env.JARVIS_ADMIN_PASSWORD }}' | argon2 \$(head -c 16 /dev/urandom | base64) -e | tail -1"
         register: hashed_password
         changed_when: false
 
-      - name: 'CODE: Create docker-compose.yml'
+      - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
-            dest: '{{ code.config }}/docker-compose.yml'
+            dest: '{{ path.config }}/docker-compose.yml'
             content: |
                 services:
                   {{ app_name }}:
@@ -58,34 +54,34 @@
                     ports:
                       - "{{ env.JARVIS_SERVICES[app_name].port }}:8443"
                     volumes:
-                      - {{ code.config }}:/config
+                      - {{ path.config }}:/config
                       - /:/docker
                       - {{ instance.configs }}:/AppConfigs
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
             mode: '0644'
 
-      - name: 'CODE: Force Directory Ownership'
-        command: chown -R {{ mapped_uid }}:{{ mapped_uid }} {{ code.config }}
+      - name: '{{ app_name | upper }}: Force Directory Ownership'
+        command: chown -R {{ mapped_uid }}:{{ mapped_uid }} {{ path.config }}
         changed_when: false
 
-      - name: 'CODE: Cleanup Existing Container'
+      - name: '{{ app_name | upper }}: Cleanup Existing Container'
         command: pct exec {{ id }} -- bash -c "docker rm -f {{ app_name }} 2>/dev/null || true"
         changed_when: false
 
-      - name: 'CODE: Start Docker Compose'
+      - name: '{{ app_name | upper }}: Start Docker Compose'
         command: pct exec {{ id }} -- bash -c "cd {{ instance.configs }}/{{ app_name }} && docker compose up -d"
         register: code_compose
         changed_when: "'Created' in code_compose.stderr or 'Recreated' in code_compose.stderr"
 
-      - name: 'CODE: Wait for Service Ready'
+      - name: '{{ app_name | upper }}: Wait for Service Ready'
         wait_for:
             host: '{{ instance.ip }}'
             port: '{{ env.JARVIS_SERVICES[app_name].port }}'
             delay: 5
             timeout: 300
 
-      - name: 'CODE: Install Extensions'
+      - name: '{{ app_name | upper }}: Install Extensions'
         command: >
             pct exec {{ id }} -- docker exec {{ app_name }} /app/code-server/bin/code-server --install-extension {{ item }} --force
         register: ext_install
