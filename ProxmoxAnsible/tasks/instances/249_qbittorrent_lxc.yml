@@ -105,7 +105,7 @@
             - name: '{{ instance.hostname | upper }}: Start LXC'
               command: pct start {{ id }}
 
-            - name: '{{ instance.hostname | upper }}: Wait for ready (internal port)'
+            - name: '{{ instance.hostname | upper }}: Wait for ready (port {{ instance.internal_port }})'
               wait_for:
                   host: '{{ instance.ip }}'
                   port: '{{ instance.internal_port }}'

@@ -10,7 +10,7 @@
           gateway: '{{ env.JARVIS_GATEWAY }}'
           subuid: '100000'
       paths:
-          config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/traefik'
+          config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}'
           cloudflared_config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/cloudflared'
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'

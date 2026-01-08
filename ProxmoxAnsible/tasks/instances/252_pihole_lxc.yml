@@ -101,7 +101,7 @@
             - name: '{{ instance.hostname | upper }}: Start LXC'
               command: pct start {{ id }}
 
-            - name: '{{ instance.hostname | upper }}: Wait for ready'
+            - name: '{{ instance.hostname | upper }}: Wait for ready (port 80)'
               wait_for:
                   host: '{{ instance.ip }}'
                   port: 80
