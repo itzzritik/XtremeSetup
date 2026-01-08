@@ -49,7 +49,7 @@
                       - TZ={{ env.JARVIS_TZ }}
                       - PUID=1000
                       - PGID=1000
-                      - PWA_APPNAME=code
+                      - PWA_APPNAME=Jarvis Code
                       - DEFAULT_WORKSPACE=/AppConfigs
                       - HASHED_PASSWORD={{ hashed_password.stdout | trim | replace('$', '$$') }}
                     ports:
@@ -83,18 +83,23 @@
             timeout: 300
 
       - name: '{{ app_name | upper }}: Install Extensions'
-        command: >
-            pct exec {{ id }} -- docker exec {{ app_name }} /app/code-server/bin/code-server 
-            --extensions-dir /config/extensions 
-            --user-data-dir /config/data 
-            --install-extension {{ item }} --force
-        register: ext_install
-        changed_when: "'is already installed' not in ext_install.stdout"
-        loop:
-            - redhat.vscode-yaml
-            - foxundermoon.shell-format
-            - vira.vsc-vira-theme
+        command: pct exec {{ id }} -- docker exec {{ app_name }} /app/code-server/bin/code-server --extensions-dir /config/extensions --user-data-dir /config/data {{ extensions | map('regex_replace', '^', '--install-extension ') | join(' ') }} --force
+        vars:
+            extensions:
+                - redhat.vscode-yaml
+                - foxundermoon.shell-format
+                - vira.vsc-vira-theme
         ignore_errors: true
+
+      - name: '{{ app_name | upper }}: Customize Login Message'
+        shell: |
+            pct exec {{ id }} -- docker exec {{ app_name }} sed -i 's|"LOGIN_BELOW": ".*"|"LOGIN_BELOW": "Please enter your password to access your development environment"|; s|"LOGIN_USING_HASHED_PASSWORD": ".*"|"LOGIN_USING_HASHED_PASSWORD": ""|' /app/code-server/out/node/i18n/locales/en.json
+        changed_when: false
+        ignore_errors: true
+
+      - name: '{{ app_name | upper }}: Restart Container'
+        command: pct exec {{ id }} -- docker restart {{ app_name }}
+        changed_when: false
 
   rescue:
       - debug:
