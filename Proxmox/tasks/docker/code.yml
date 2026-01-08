@@ -93,7 +93,7 @@
 
       - name: '{{ app_name | upper }}: Customize Login Message'
         shell: |
-            pct exec {{ id }} -- docker exec {{ app_name }} sed -i 's|"LOGIN_BELOW": ".*"|"LOGIN_BELOW": "Please enter your password to access your development environment"|; s|"LOGIN_USING_HASHED_PASSWORD": ".*"|"LOGIN_USING_HASHED_PASSWORD": ""|' /app/code-server/out/node/i18n/locales/en.json
+            pct exec {{ id }} -- docker exec {{ app_name }} sed -i 's|"LOGIN_BELOW": ".*"|"LOGIN_BELOW": "Please enter your password to access the development environment"|; s|"LOGIN_USING_HASHED_PASSWORD": ".*"|"LOGIN_USING_HASHED_PASSWORD": ""|' /app/code-server/out/node/i18n/locales/en.json
         changed_when: false
         ignore_errors: true
 
