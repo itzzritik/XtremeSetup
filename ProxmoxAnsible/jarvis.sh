@@ -13,7 +13,7 @@ if [[ -f "$SCRIPT_DIR/main.yml" ]]; then
 else
     trap 'rm -rf "$WORK_DIR"' EXIT
     mkdir -p "$WORK_DIR"
-    curl -Ls "$REPO" | tar -xz -C "$WORK_DIR" --strip-components=2 "*/ProxmoxAnsible"
+    curl -Ls "$REPO" | tar -xz -C "$WORK_DIR" --strip-components=2 "*/Proxmox"
     cd "$WORK_DIR"
     ansible-playbook main.yml
 fi
