@@ -2,6 +2,12 @@
 	padding: 0 1rem;
 }
 
+.columns.layout-vertical .column {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
 .card {
 	border-radius: 12px;
 	transition: transform 0.2s, box-shadow 0.2s;
@@ -23,12 +29,17 @@
 	object-fit: contain;
 }
 
-.card .status.online {
-	background: #22c55e;
+.tag,
+.tag.status-checking {
+	background-color: #6b7280;
 }
 
-.card .status.offline {
-	background: #ef4444;
+.tag.status-online {
+	background-color: #10b981;
+}
+
+.tag.status-offline {
+	background-color: #ef4444;
 }
 
 .url-switcher-fab {
@@ -63,12 +74,6 @@
 .url-switcher-fab i {
 	color: #fff;
 	font-size: 24px;
-}
-
-@keyframes spin {
-	to {
-		transform: rotate(360deg);
-	}
 }
 
 .url-switcher-tooltip {

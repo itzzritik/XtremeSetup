@@ -49,6 +49,7 @@
                       - TZ={{ env.JARVIS_TZ }}
                       - PUID=1000
                       - PGID=1000
+                      - PWA_APPNAME=code
                       - DEFAULT_WORKSPACE=/AppConfigs
                       - HASHED_PASSWORD={{ hashed_password.stdout | trim | replace('$', '$$') }}
                     ports:
@@ -83,7 +84,10 @@
 
       - name: '{{ app_name | upper }}: Install Extensions'
         command: >
-            pct exec {{ id }} -- docker exec {{ app_name }} /app/code-server/bin/code-server --install-extension {{ item }} --force
+            pct exec {{ id }} -- docker exec {{ app_name }} /app/code-server/bin/code-server 
+            --extensions-dir /config/extensions 
+            --user-data-dir /config/data 
+            --install-extension {{ item }} --force
         register: ext_install
         changed_when: "'is already installed' not in ext_install.stdout"
         loop:

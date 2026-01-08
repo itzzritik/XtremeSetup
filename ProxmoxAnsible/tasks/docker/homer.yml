@@ -76,12 +76,19 @@
                         - name: "Services"
                           icon: "fas fa-server"
                           items:
-                      {% for k,s in env.JARVIS_SERVICES.items() if k not in ['homer','docker'] %}
+                      {% for k,s in env.JARVIS_SERVICES.items() if k not in ['homer'] %}
                       {% set protocol = 'https' if s.https|default(false) else 'http' %}
                       {% set portSuffix = '' if (s.port==80 and protocol=='http') or (s.port==443 and protocol=='https') else ':'+s.port|string %}
                             - name: "{{ s.name }}"
+                              {% if s.smart_card is not defined -%}
                               subtitle: "{{ s.subtitle }}"
-                              logo: "{{ s.logo }}"
+                              {% endif -%}
+                              logo: "{{ env.JARVIS_ICON_CDN }}{{ s.logo }}"
+                              {% if s.smart_card is defined -%}
+                              {% for sc_k, sc_v in s.smart_card.items() -%}
+                              {{ sc_k }}: {{ sc_v | to_json }}
+                              {% endfor -%}
+                              {% endif -%}
                               url: "https://{% if s.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ s.subdomains[0] | default(k) }}.{{ env.JARVIS_DOMAIN }}{% endif %}{{ s.path | default('') }}"
                               endpoint: "https://{% if s.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ s.subdomains[0] | default(k) }}.{{ env.JARVIS_DOMAIN }}{% endif %}"
                               ip: "{{ protocol }}://{{ env.JARVIS_NETWORK_PREFIX }}.{{ s.id }}{{ portSuffix }}{{ s.path|default('') }}"
@@ -131,10 +138,10 @@
                           ]
                         }
 
-            - name: '{{ app_name | upper }}: Create URL switcher script'
+            - name: '{{ app_name | upper }}: Create custom script'
               copy:
-                  src: ../utils/homer/url-switcher.js
-                  dest: '{{ path.assets }}/url-switcher-{{ cache_buster }}.js'
+                  src: ../utils/homer/custom.js
+                  dest: '{{ path.assets }}/custom-{{ cache_buster }}.js'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
                   mode: '0644'
@@ -159,7 +166,7 @@
                         </head>
                         <body>
                           <div id="app-mount"></div>
-                          <script src="./assets/url-switcher-{{ cache_buster }}.js"></script>
+                          <script src="./assets/custom-{{ cache_buster }}.js"></script>
                         </body>
                       </html>
                   owner: '{{ mapped_uid }}'
