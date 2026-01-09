@@ -159,7 +159,7 @@
                   - { key: 'WebUI\HostHeaderValidation', value: 'false' }
                   - { key: 'WebUI\AlternativeUIEnabled', value: 'true' }
                   - { key: 'WebUI\RootFolder', value: '/opt/vuetorrent' }
-                  - { key: 'Downloads\SavePath', value: '/media/wdhdd/torrents' }
+                  - { key: 'Downloads\SavePath', value: '/media/wdhdd/Torrent' }
                   - { key: 'WebUI\AuthSubnetWhitelistEnabled', value: 'true' }
                   - { key: 'WebUI\AuthSubnetWhitelist', value: '0.0.0.0/0' }
                   - { key: 'WebUI\Username', value: '{{ env.JARVIS_ADMIN_USERNAME }}' }

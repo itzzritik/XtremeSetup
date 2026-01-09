@@ -2,6 +2,10 @@
 	padding: 0 1rem;
 }
 
+#main-section .card-content {
+	padding-right: 1.8rem;
+}
+
 .columns.layout-vertical .column {
 	display: flex;
 	flex-direction: column;
@@ -19,7 +23,7 @@
 }
 
 .media-left {
-	margin-inline-end: 1rem;
+	margin-inline-end: 1.2rem;
 }
 
 .card .media-left .image img {
