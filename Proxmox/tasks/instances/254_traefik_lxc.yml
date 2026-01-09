@@ -175,6 +175,16 @@
                             insecureSkipVerify: true
 
                         middlewares:
+                          auth:
+                            forwardAuth:
+                              address: "http://{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.auth.id }}:{{ env.JARVIS_SERVICES.auth.port }}/api/authz/forward-auth"
+                              trustForwardHeader: true
+                              authResponseHeaders:
+                                - Remote-User
+                                - Remote-Name
+                                - Remote-Email
+                                - Remote-Groups
+
                           pihole-redirect:
                             redirectRegex:
                               regex: "^https?://pihole\\.{{ env.JARVIS_DOMAIN | replace('.', '\\.') }}/?$"
@@ -186,10 +196,17 @@
                           {{ svc_key }}:
                             rule: "{% if svc.root_domain | default(false) %}Host(`{{ env.JARVIS_DOMAIN }}`){% else %}{% for subdomain in svc.subdomains %}Host(`{{ subdomain }}.{{ env.JARVIS_DOMAIN }}`){% if not loop.last %} || {% endif %}{% endfor %}{% endif %}"
                             service: "{{ 'api@internal' if svc.is_internal | default(false) else svc_key }}"
-                      {% if svc.middlewares | default([]) | length > 0 %}
+                      {% set all_middlewares = [] %}
+                      {% if not svc.skip_auth | default(false) %}
+                      {% set _ = all_middlewares.append('auth') %}
+                      {% endif %}
+                      {% for mw in svc.middlewares | default([]) %}
+                      {% set _ = all_middlewares.append(mw) %}
+                      {% endfor %}
+                      {% if all_middlewares | length > 0 %}
                             middlewares:
-                      {% for middleware in svc.middlewares %}
-                              - "{{ middleware }}"
+                      {% for mw in all_middlewares %}
+                              - "{{ mw }}"
                       {% endfor %}
                       {% endif %}
                       {% endif %}

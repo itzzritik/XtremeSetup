@@ -31,11 +31,6 @@
             group: '{{ mapped_uid }}'
             mode: '0644'
 
-      - name: '{{ app_name | upper }}: Generate Hashed Password'
-        shell: pct exec {{ id }} -- docker run --rm alpine sh -c "apk add -q argon2 >/dev/null && echo -n '{{ env.JARVIS_ADMIN_PASSWORD }}' | argon2 \$(head -c 16 /dev/urandom | base64) -e | tail -1"
-        register: hashed_password
-        changed_when: false
-
       - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
             dest: '{{ path.config }}/docker-compose.yml'
@@ -51,7 +46,7 @@
                       - PGID=1000
                       - PWA_APPNAME=Jarvis Code
                       - DEFAULT_WORKSPACE=/AppConfigs
-                      - HASHED_PASSWORD={{ hashed_password.stdout | trim | replace('$', '$$') }}
+                      - HASHED_PASSWORD={{ env.JARVIS_ADMIN_PASSWORD_ARGON | replace('$', '$$') }}
                     ports:
                       - "{{ env.JARVIS_SERVICES[app_name].port }}:8443"
                     volumes:

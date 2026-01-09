@@ -1,0 +1,76 @@
+- block:
+      - set_fact:
+            app_name: postgres
+            mapped_uid: '{{ instance.subuid | int + 1000 }}'
+            path:
+                config: '{{ env.JARVIS_CONFIGS_DIR }}/postgres'
+                data: '{{ env.JARVIS_CONFIGS_DIR }}/postgres/data'
+
+      - name: '{{ app_name | upper }}: Configure Directories'
+        file:
+            path: '{{ item }}'
+            state: directory
+            mode: '0755'
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            recurse: true
+        loop:
+            - '{{ path.config }}'
+            - '{{ path.data }}'
+
+      - name: '{{ app_name | upper }}: Create docker-compose.yml'
+        copy:
+            dest: '{{ path.config }}/docker-compose.yml'
+            content: |
+                services:
+                  {{ app_name }}:
+                    container_name: {{ app_name }}
+                    image: postgres:17
+                    restart: unless-stopped
+                    environment:
+                      - POSTGRES_USER={{ env.JARVIS_ADMIN_USERNAME }}
+                      - POSTGRES_PASSWORD={{ env.JARVIS_POSTGRES_PASSWORD }}
+                    ports:
+                      - "{{ env.JARVIS_SERVICES[app_name].port }}:5432"
+                    volumes:
+                      - ./data:/var/lib/postgresql/data
+                    healthcheck:
+                      test: ["CMD-SHELL", "pg_isready -U {{ env.JARVIS_ADMIN_USERNAME }} -h localhost"]
+                      interval: 10s
+                      timeout: 5s
+                      retries: 5
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            mode: '0644'
+
+      - name: '{{ app_name | upper }}: Cleanup Existing Container'
+        command: pct exec {{ id }} -- bash -c "docker stop {{ app_name }} 2>/dev/null || true; docker rm {{ app_name }} 2>/dev/null || true"
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Start Docker Compose'
+        command: pct exec {{ id }} -- bash -c "cd {{ instance.configs }}/{{ app_name }} && docker compose up -d"
+        register: postgres_compose
+        changed_when: "'Created' in postgres_compose.stderr or 'Recreated' in postgres_compose.stderr"
+
+      - name: '{{ app_name | upper }}: Wait for Service Ready'
+        wait_for:
+            host: '{{ instance.ip }}'
+            port: '{{ env.JARVIS_SERVICES[app_name].port }}'
+            delay: 5
+            timeout: 60
+
+      - name: '{{ app_name | upper }}: Verify Database Health'
+        command: pct exec {{ id }} -- docker exec {{ app_name }} pg_isready -U {{ env.JARVIS_ADMIN_USERNAME }} -h localhost
+        register: pg_health
+        until: pg_health.rc == 0
+        retries: 10
+        delay: 3
+        failed_when: false
+
+      - assert:
+            that: pg_health.rc == 0
+            fail_msg: 'Health check failed. If user changed, run: rm -rf {{ path.data }}'
+
+  rescue:
+      - debug:
+            msg: '{{ app_name }} failed to deploy'

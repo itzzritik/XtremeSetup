@@ -24,7 +24,7 @@
   tasks:
       - name: Execute System Tasks
         include_tasks: 'tasks/system/{{ item }}.yml'
-        loop: [update, automount]
+        loop: [update, automount, security]
 
       - name: Deploy Docker LXC with Apps
         include_tasks: 'tasks/docker/index.yml'

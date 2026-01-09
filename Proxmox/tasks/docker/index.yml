@@ -81,12 +81,13 @@
               retries: 10
               delay: 3
 
-            - name: '{{ instance.hostname | upper }}: Install Docker'
+            - name: '{{ instance.hostname | upper }}: Install Docker & Dependencies'
               shell: |
                   pct exec {{ id }} -- bash -c '
                   export DEBIAN_FRONTEND=noninteractive
                   apt-get update && apt-get -y upgrade
-                  apt-get install -y ca-certificates curl gnupg
+                  apt-get install -y ca-certificates curl gnupg sqlite3
+                  ln -sf /usr/bin/sqlite3 /usr/bin/sqlite
                   install -m 0755 -d /etc/apt/keyrings
                   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
                   chmod a+r /etc/apt/keyrings/docker.gpg
@@ -117,16 +118,12 @@
                   delay: 5
                   timeout: 60
 
-      - name: '{{ instance.hostname | upper }}: Create Proxy Network'
-        command: pct exec {{ id }} -- docker network create proxy
-        failed_when: false
-        changed_when: false
-
       - name: '{{ instance.hostname | upper }}: Deploy Apps'
         include_tasks: '{{ app_task }}.yml'
         loop:
             - backrest
             - homer
+            - auth
             - code
         loop_control:
             loop_var: app_task
