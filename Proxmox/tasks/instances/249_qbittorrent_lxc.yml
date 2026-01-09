@@ -160,6 +160,8 @@
                   - { key: 'WebUI\AlternativeUIEnabled', value: 'true' }
                   - { key: 'WebUI\RootFolder', value: '/opt/vuetorrent' }
                   - { key: 'Downloads\SavePath', value: '/media/wdhdd/torrents' }
+                  - { key: 'WebUI\AuthSubnetWhitelistEnabled', value: 'true' }
+                  - { key: 'WebUI\AuthSubnetWhitelist', value: '0.0.0.0/0' }
                   - { key: 'WebUI\Username', value: '{{ env.JARVIS_ADMIN_USERNAME }}' }
                   - { key: 'WebUI\Password_PBKDF2', value: '{{ qbit_password_hash.stdout }}' }
 

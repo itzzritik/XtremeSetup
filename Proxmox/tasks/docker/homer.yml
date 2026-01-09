@@ -3,12 +3,14 @@
             app_name: homer
             mapped_uid: '{{ instance.subuid | int + 1000 }}'
             cache_buster: '{{ 999999 | random | to_uuid | hash("md5") | truncate(8, True, "") }}'
-            path:
-                assets: '{{ env.JARVIS_CONFIGS_DIR }}/homer/assets'
+      - set_fact:
+            config:
+                root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+                local: '{{ instance.configs }}/{{ app_name }}'
 
       - name: '{{ app_name | upper }}: Clean assets directory'
         file:
-            path: '{{ path.assets }}'
+            path: '{{ config.root }}'
             state: absent
 
       - name: '{{ app_name | upper }}: Configure Directories'
@@ -20,18 +22,18 @@
             group: '{{ mapped_uid }}'
             recurse: true
         loop:
-            - '{{ path.assets }}'
-            - '{{ path.assets }}/icons'
+            - '{{ config.root }}'
+            - '{{ config.root }}/icons'
 
       - name: '{{ app_name | upper }}: Generate configuration'
         block:
             - name: '{{ app_name | upper }}: Create config.yml'
               copy:
-                  dest: '{{ path.assets }}/config.yml'
+                  dest: '{{ config.root }}/config.yml'
                   content: |
-                      title: "Jarvis"
-                      subtitle: "Home Dashboard"
-                      documentTitle: "Jarvis"
+                      title: "{{ env.JARVIS_BOT_NAME }}"
+                      subtitle: "Apps Dashboard"
+                      documentTitle: "{{ env.JARVIS_BOT_NAME }}"
                       logo: "assets/icons/logo.svg"
                       header: true
                       footer: false
@@ -102,14 +104,14 @@
             - name: '{{ app_name | upper }}: Create custom.css'
               copy:
                   src: ../utils/homer/custom.css
-                  dest: '{{ path.assets }}/custom-{{ cache_buster }}.css'
+                  dest: '{{ config.root }}/custom-{{ cache_buster }}.css'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
                   mode: '0644'
 
             - name: '{{ app_name | upper }}: Create assets'
               copy:
-                  dest: '{{ path.assets }}/{{ item.file }}'
+                  dest: '{{ config.root }}/{{ item.file }}'
                   content: '{{ item.content }}'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
@@ -122,9 +124,9 @@
                   - file: manifest.json
                     content: |
                         {
-                          "name": "Jarvis Dashboard",
-                          "short_name": "Jarvis",
-                          "description": "Jarvis Home Dashboard",
+                          "name": "{{ env.JARVIS_BOT_NAME }} Dashboard",
+                          "short_name": "{{ env.JARVIS_BOT_NAME }}",
+                          "description": "{{ env.JARVIS_BOT_NAME }} Apps Dashboard",
                           "start_url": "/",
                           "display": "standalone",
                           "background_color": "#131313",
@@ -141,14 +143,14 @@
             - name: '{{ app_name | upper }}: Create custom script'
               copy:
                   src: ../utils/homer/custom.js
-                  dest: '{{ path.assets }}/custom-{{ cache_buster }}.js'
+                  dest: '{{ config.root }}/custom-{{ cache_buster }}.js'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
                   mode: '0644'
 
             - name: '{{ app_name | upper }}: Create custom index.html with script import'
               copy:
-                  dest: '{{ path.assets }}/../index.html'
+                  dest: '{{ config.root }}/index.html'
                   content: |
                       <!DOCTYPE html>
                       <html>
@@ -175,7 +177,7 @@
 
       - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
-            dest: '{{ path.assets }}/../docker-compose.yml'
+            dest: '{{ config.root }}/docker-compose.yml'
             content: |
                 services:
                   {{ app_name }}:
@@ -185,8 +187,8 @@
                     ports:
                       - "{{ env.JARVIS_SERVICES[app_name].port }}:8080"
                     volumes:
-                      - ./assets:/www/assets
-                      - ./index.html:/www/index.html
+                      - {{ config.local }}:/www/assets
+                      - {{ config.local }}/index.html:/www/index.html
                     environment:
                       - INIT_ASSETS=0
             owner: '{{ mapped_uid }}'
@@ -198,7 +200,7 @@
         changed_when: false
 
       - name: '{{ app_name | upper }}: Start Docker Compose'
-        command: pct exec {{ id }} -- bash -c "cd {{ instance.configs }}/{{ app_name }} && docker compose up -d"
+        command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
         register: homer_compose
         changed_when: "'Created' in homer_compose.stderr or 'Recreated' in homer_compose.stderr"
 

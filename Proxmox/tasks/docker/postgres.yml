@@ -2,9 +2,11 @@
       - set_fact:
             app_name: postgres
             mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      - set_fact:
             path:
-                config: '{{ env.JARVIS_CONFIGS_DIR }}/postgres'
-                data: '{{ env.JARVIS_CONFIGS_DIR }}/postgres/data'
+                config: '{{ instance.configs }}/{{ app_name }}'
+                data: '{{ instance.configs }}/{{ app_name }}/data'
+                local_config: '{{ instance.configs }}/{{ app_name }}'
 
       - name: '{{ app_name | upper }}: Configure Directories'
         file:
@@ -33,7 +35,7 @@
                     ports:
                       - "{{ env.JARVIS_SERVICES[app_name].port }}:5432"
                     volumes:
-                      - ./data:/var/lib/postgresql/data
+                      - {{ path.local_config }}/data:/var/lib/postgresql/data
                     healthcheck:
                       test: ["CMD-SHELL", "pg_isready -U {{ env.JARVIS_ADMIN_USERNAME }} -h localhost"]
                       interval: 10s
@@ -48,7 +50,7 @@
         changed_when: false
 
       - name: '{{ app_name | upper }}: Start Docker Compose'
-        command: pct exec {{ id }} -- bash -c "cd {{ instance.configs }}/{{ app_name }} && docker compose up -d"
+        command: pct exec {{ id }} -- bash -c "cd {{ path.local_config }} && docker compose up -d"
         register: postgres_compose
         changed_when: "'Created' in postgres_compose.stderr or 'Recreated' in postgres_compose.stderr"
 

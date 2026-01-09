@@ -100,7 +100,8 @@
 			});
 
 			if (service) {
-				const serviceUrl = mode === 'ip' ? service.ip : service.domain;
+				// const serviceUrl = mode === 'ip' ? service.ip : service.domain;
+				const serviceUrl = service.ip;
 				setTagStatus(tag, 'checking');
 				const isOnline = await checkServiceStatus(serviceUrl);
 				setTagStatus(tag, isOnline ? 'online' : 'offline');

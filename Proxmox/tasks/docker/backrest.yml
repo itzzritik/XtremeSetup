@@ -2,9 +2,10 @@
       - set_fact:
             app_name: backrest
             mapped_uid: '{{ instance.subuid | int + 1000 }}'
-            path:
-                data: '{{ env.JARVIS_CONFIGS_DIR }}/backrest/data'
-                config: '{{ env.JARVIS_CONFIGS_DIR }}/backrest/config'
+      - set_fact:
+            config:
+                root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+                local: '{{ instance.configs }}/{{ app_name }}'
 
       - name: '{{ app_name | upper }}: Configure Directories'
         file:
@@ -15,12 +16,12 @@
             group: '{{ mapped_uid }}'
             recurse: true
         loop:
-            - '{{ path.data }}'
-            - '{{ path.config }}'
+            - '{{ config.root }}'
+            - '{{ config.root }}/data'
 
       - name: '{{ app_name | upper }}: Create config.json'
         copy:
-            dest: '{{ path.config }}/config.json'
+            dest: '{{ config.root }}/config.json'
             content: |
                 {
                   "version": 6,
@@ -48,7 +49,7 @@
                   ],
                   "plans": [
                     {
-                      "id": "jarvis-configs",
+                      "id": "{{ env.JARVIS_BOT_NAME | lower }}-configs",
                       "repo": "r2-backup",
                       "paths": ["/media/configs"],
                       "excludes": ["**/cache/**", "**/.cache/**", "**/logs/**"],
@@ -71,7 +72,7 @@
 
       - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
-            dest: '{{ path.config }}/../docker-compose.yml'
+            dest: '{{ config.root }}/docker-compose.yml'
             content: |
                 services:
                   {{ app_name }}:
@@ -81,11 +82,15 @@
                     ports:
                       - "{{ env.JARVIS_SERVICES[app_name].port }}:9898"
                     volumes:
-                      - ./data:/app/data
-                      - ./config:/app/config
-                      - ../:/media/configs
+                      - {{ config.local}}/data:/data
+                      - {{ config.local}}:/config
                       - /media/ssd:/media/ssd
                       - /media/wdhdd:/media/wdhdd
+                    environment:
+                      - BACKREST_DATA=/data
+                      - BACKREST_CONFIG=/config/config.json
+                      - XDG_CACHE_HOME=/cache
+                      - TZ={{ env.JARVIS_TZ }}
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
             mode: '0644'
@@ -95,7 +100,7 @@
         changed_when: false
 
       - name: '{{ app_name | upper }}: Start Docker Compose'
-        command: pct exec {{ id }} -- bash -c "cd {{ instance.configs }}/{{ app_name }} && docker compose up -d"
+        command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
         register: backrest_compose
         changed_when: "'Created' in backrest_compose.stderr or 'Recreated' in backrest_compose.stderr"
 
@@ -114,12 +119,12 @@
         delegate_to: localhost
         become: false
 
-      - name: '{{ app_name | upper }}: Execute Smart Restore'
-        script: /tmp/smart-restore.sh
-        args:
-            executable: /bin/bash
-        register: restore_output
-        changed_when: "'RESTORE_TRIGGER' in restore_output.stdout"
+      # - name: '{{ app_name | upper }}: Execute Smart Restore'
+      #   script: /tmp/smart-restore.sh
+      #   args:
+      #       executable: /bin/bash
+      #   register: restore_output
+      #   changed_when: "'RESTORE_TRIGGER' in restore_output.stdout"
 
   rescue:
       - debug:

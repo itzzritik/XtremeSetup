@@ -1,11 +1,11 @@
 - block:
       - set_fact:
-            app_name: auth
+            app_name: voidauth
             mapped_uid: '{{ instance.subuid | int + 1000 }}'
-            path:
-                config: '{{ env.JARVIS_CONFIGS_DIR }}/auth'
-                app_config: '{{ env.JARVIS_CONFIGS_DIR }}/auth/config'
-                app_data: '{{ env.JARVIS_CONFIGS_DIR }}/auth/data'
+      - set_fact:
+            config:
+                root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+                local: '{{ instance.configs }}/{{ app_name }}'
 
       - name: '{{ app_name | upper }}: Configure Directories'
         file:
@@ -16,13 +16,12 @@
             group: '{{ mapped_uid }}'
             recurse: true
         loop:
-            - '{{ path.config }}'
-            - '{{ path.app_config }}'
-            - '{{ path.app_data }}'
+            - '{{ config.root }}'
+            - '{{ config.root }}/data'
 
       - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
-            dest: '{{ path.config }}/docker-compose.yml'
+            dest: '{{ config.root }}/docker-compose.yml'
             content: |-
                 services:
                   {{ app_name }}:
@@ -30,22 +29,22 @@
                     image: voidauth/voidauth:latest
                     restart: unless-stopped
                     ports:
-                      - "{{ env.JARVIS_SERVICES[app_name].port }}:3000"
+                      - {{ env.JARVIS_SERVICES[app_name].port }}:3000
                     volumes:
-                      - ./config:/app/config
-                      - ./data:/app/db
+                      - {{ config.local }}:/app/config
+                      - {{ config.local }}/data:/app/db
                     environment:
                       - APP_URL=https://auth.{{ env.JARVIS_DOMAIN }}
-                      - APP_TITLE=Jarvis Auth
+                      - APP_TITLE={{ env.JARVIS_BOT_NAME }} Auth
                       - APP_COLOR=#6366f1
-                      - STORAGE_KEY={{ env.JARVIS_AUTH_STORAGE_KEY }}
+                      - STORAGE_KEY={{ env.JARVIS_VOIDAUTH_STORAGE_KEY }}
                       - DB_ADAPTER=sqlite
                       - DEFAULT_REDIRECT=https://{{ env.JARVIS_DOMAIN }}
                       - SMTP_HOST=smtp.gmail.com
                       - SMTP_PORT=587
-                      - SMTP_USER={{ env.JARVIS_ADMIN_EMAIL }}
+                      - SMTP_USER={{ env.JARVIS_BOT_EMAIL }}
                       - SMTP_PASS={{ env.JARVIS_AUTH_GOOGLE_APP_PASSWORD }}
-                      - SMTP_FROM="{{ env.JARVIS_ADMIN_NAME }} <{{ env.JARVIS_ADMIN_EMAIL }}>"
+                      - SMTP_FROM="{{ env.JARVIS_BOT_NAME }} <{{ env.JARVIS_BOT_EMAIL }}>"
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
             mode: '0644'
@@ -55,7 +54,7 @@
         changed_when: false
 
       - name: '{{ app_name | upper }}: Start Docker Compose'
-        command: pct exec {{ id }} -- bash -c "cd {{ instance.configs }}/{{ app_name }} && docker compose up -d"
+        command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
         register: auth_compose
         changed_when: "'Created' in auth_compose.stderr or 'Recreated' in auth_compose.stderr"
 
@@ -68,7 +67,7 @@
 
       - name: '{{ app_name | upper }}: Update Admin Credentials'
         shell: >
-            pct exec {{ id }} -- sqlite {{ instance.configs }}/{{ app_name }}/data/db.sqlite
+            pct exec {{ id }} -- sqlite {{ config.local }}/data/db.sqlite
             "UPDATE user SET
             username = '{{ env.JARVIS_ADMIN_USERNAME }}',
             passwordHash = '{{ env.JARVIS_ADMIN_PASSWORD_ARGON | replace('$', '\$') }}',

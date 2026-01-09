@@ -2,9 +2,10 @@
       - set_fact:
             app_name: code
             mapped_uid: '{{ instance.subuid | int + 1000 }}'
-            path:
-                config: '{{ env.JARVIS_CONFIGS_DIR }}/code'
-                user_data: '{{ env.JARVIS_CONFIGS_DIR }}/code/data'
+      - set_fact:
+            config:
+                root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+                local: '{{ instance.configs }}/{{ app_name }}'
 
       - name: '{{ app_name | upper }}: Configure Directories'
         file:
@@ -15,13 +16,13 @@
             group: '{{ mapped_uid }}'
             recurse: true
         loop:
-            - '{{ path.config }}'
-            - '{{ path.config }}/data'
-            - '{{ path.config }}/data/User'
+            - '{{ config.root }}'
+            - '{{ config.root }}/data'
+            - '{{ config.root }}/data/User'
 
       - name: '{{ app_name | upper }}: Create settings.json'
         copy:
-            dest: '{{ path.config }}/data/User/settings.json'
+            dest: '{{ config.root }}/data/User/settings.json'
             content: |
                 {
                     "workbench.colorTheme": "Material Theme Ocean High Contrast",
@@ -33,7 +34,7 @@
 
       - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
-            dest: '{{ path.config }}/docker-compose.yml'
+            dest: '{{ config.root }}/docker-compose.yml'
             content: |
                 services:
                   {{ app_name }}:
@@ -44,13 +45,12 @@
                       - TZ={{ env.JARVIS_TZ }}
                       - PUID=1000
                       - PGID=1000
-                      - PWA_APPNAME=Jarvis Code
+                      - PWA_APPNAME={{ env.JARVIS_BOT_NAME }} Code
                       - DEFAULT_WORKSPACE=/AppConfigs
-                      - HASHED_PASSWORD={{ env.JARVIS_ADMIN_PASSWORD_ARGON | replace('$', '$$') }}
                     ports:
                       - "{{ env.JARVIS_SERVICES[app_name].port }}:8443"
                     volumes:
-                      - {{ path.config }}:/config
+                      - {{ config.local }}/data:/config
                       - /:/docker
                       - {{ instance.configs }}:/AppConfigs
             owner: '{{ mapped_uid }}'
@@ -58,7 +58,7 @@
             mode: '0644'
 
       - name: '{{ app_name | upper }}: Force Directory Ownership'
-        command: chown -R {{ mapped_uid }}:{{ mapped_uid }} {{ path.config }}
+        command: chown -R {{ mapped_uid }}:{{ mapped_uid }} {{ config.root }}
         changed_when: false
 
       - name: '{{ app_name | upper }}: Cleanup Existing Container'
@@ -66,7 +66,7 @@
         changed_when: false
 
       - name: '{{ app_name | upper }}: Start Docker Compose'
-        command: pct exec {{ id }} -- bash -c "cd {{ instance.configs }}/{{ app_name }} && docker compose up -d"
+        command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
         register: code_compose
         changed_when: "'Created' in code_compose.stderr or 'Recreated' in code_compose.stderr"
 
@@ -84,12 +84,6 @@
                 - redhat.vscode-yaml
                 - foxundermoon.shell-format
                 - vira.vsc-vira-theme
-        ignore_errors: true
-
-      - name: '{{ app_name | upper }}: Customize Login Message'
-        shell: |
-            pct exec {{ id }} -- docker exec {{ app_name }} sed -i 's|"LOGIN_BELOW": ".*"|"LOGIN_BELOW": "Please enter your password to access the development environment"|; s|"LOGIN_USING_HASHED_PASSWORD": ".*"|"LOGIN_USING_HASHED_PASSWORD": ""|' /app/code-server/out/node/i18n/locales/en.json
-        changed_when: false
         ignore_errors: true
 
       - name: '{{ app_name | upper }}: Restart Container'

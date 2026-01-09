@@ -122,8 +122,8 @@
         include_tasks: '{{ app_task }}.yml'
         loop:
             - backrest
+            - voidauth
             - homer
-            - auth
             - code
         loop_control:
             loop_var: app_task

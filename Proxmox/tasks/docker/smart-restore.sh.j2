@@ -4,7 +4,7 @@
 
 # Variables
 DOCKER_LXC_ID="{{ env.JARVIS_SERVICES.docker.id }}"
-CONFIG_DIR="{{ env.JARVIS_CONFIGS_DIR }}"
+CONFIG_DIR="{{ instance.configs }}"
 
 # R2 Credentials for Restic
 export AWS_ACCESS_KEY_ID="{{ env.JARVIS_CF_R2_TOKENS.split(':')[0] }}"
@@ -14,7 +14,7 @@ REPO="s3:{{ env.JARVIS_CF_R2_ENDPOINT }}/configs"
 {% set docker_apps = ['homer'] %}
 {% for svc_key, svc in env.JARVIS_SERVICES.items() %}
 {% if svc_key not in ['backrest', 'proxmox', 'home', 'docker'] %}
-TARGET="{{ env.JARVIS_CONFIGS_DIR }}/{{ svc_key }}"
+TARGET="{{ instance.configs }}/{{ svc_key }}"
 
 # Check if directory exists and is strictly empty (no hidden files either)
 # Or if it doesn't exist

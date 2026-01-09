@@ -115,7 +115,7 @@
                       #!/bin/bash
                       set -e
                       export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
-                      pihole -a -p {{ env.JARVIS_ADMIN_PASSWORD | quote }}
+                      pihole -a -p ''
                   mode: '0700'
               no_log: true
 

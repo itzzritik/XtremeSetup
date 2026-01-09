@@ -1,0 +1,221 @@
+- vars:
+      id: '{{ env.JARVIS_SERVICES.authelia.id }}'
+      instance:
+          hostname: authelia
+          memory: 2048
+          swap: 512
+          cores: 2
+          storage: local-lvm
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+      paths:
+          config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}'
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES.authelia.port }}'
+            timeout: 5
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - set_fact:
+            instance_exists: '{{ instance_check.status | default(0) == 200 }}'
+
+      - name: '{{ instance.hostname | upper }}: Create Config Directory on Host'
+        file:
+            path: '{{ paths.config }}'
+            state: directory
+            mode: '0777'
+            recurse: true
+
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
+        block:
+            - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
+              shell: pct stop {{ id }}; pct destroy {{ id }}
+              failed_when: false
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Create Temporary Install Directory'
+              tempfile:
+                  state: directory
+                  suffix: _authelia_install
+              register: temp_install_dir
+
+            - name: '{{ instance.hostname | upper }}: Create default.vars for Silent Install'
+              copy:
+                  dest: '{{ temp_install_dir.path }}/default.vars'
+                  content: |
+                      var_container_storage={{ instance.storage }}
+                      var_template_storage={{ instance.storage }}
+
+            - name: '{{ instance.hostname | upper }}: Install using community script'
+              shell: |
+                  export mode="default"
+                  export var_ctid="{{ id }}"
+                  export var_hostname="{{ instance.hostname }}"
+                  export var_cpu="{{ instance.cores }}"
+                  export var_ram="{{ instance.memory }}"
+                  export var_disk="8"
+                  export var_net="{{ instance.ip }}/24"
+                  export var_gateway="{{ instance.gateway }}"
+                  export var_unprivileged="1"
+                  export DOMAIN="{{ env.JARVIS_DOMAIN }}"
+                  export TERM=xterm
+                  echo "{{ env.JARVIS_DOMAIN }}" | bash -c "$(curl -fsSL {{ env.JARVIS_COMMUNITY_SCRIPTS_URL }}/ct/authelia.sh)"
+              args:
+                  chdir: '{{ temp_install_dir.path }}'
+                  executable: /bin/bash
+              register: authelia_install
+
+            - name: '{{ instance.hostname | upper }}: Show install output'
+              debug:
+                  var: authelia_install.stdout_lines
+
+            - name: '{{ instance.hostname | upper }}: Cleanup Temporary Directory'
+              file:
+                  path: '{{ temp_install_dir.path }}'
+                  state: absent
+
+            - name: '{{ instance.hostname | upper }}: Stop LXC for Configuration'
+              command: pct stop {{ id }}
+              ignore_errors: true
+
+            - name: '{{ instance.hostname | upper }}: Set Swap Size'
+              command: pct set {{ id }} -swap {{ instance.swap }}
+
+            - name: '{{ instance.hostname | upper }}: Configure LXC Mounts'
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ id }}.conf'
+                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
+                  block: |
+                      mp0: {{ paths.config }},mp=/etc/authelia
+
+            - name: '{{ instance.hostname | upper }}: Create configuration file'
+              copy:
+                  dest: '{{ paths.config }}/configuration.yml'
+                  content: |
+                      ---
+                      theme: dark
+
+                      server:
+                        address: 'tcp://0.0.0.0:9091'
+
+                      log:
+                        level: info
+
+                      identity_validation:
+                        reset_password:
+                          jwt_secret: '{{ env.JARVIS_AUTHELIA_JWT_KEY }}'
+
+                      authentication_backend:
+                        file:
+                          path: /etc/authelia/users.yml
+                          password:
+                            algorithm: argon2
+                            argon2:
+                              variant: argon2id
+                              iterations: 3
+                              memory: 65536
+                              parallelism: 4
+                              key_length: 32
+                              salt_length: 16
+
+                      access_control:
+                        default_policy: deny
+                        rules:
+                          - domain: '{{ env.JARVIS_DOMAIN }}'
+                            policy: bypass
+                          - domain: 'auth.{{ env.JARVIS_DOMAIN }}'
+                            policy: bypass
+                          - domain: '*.{{ env.JARVIS_DOMAIN }}'
+                            policy: one_factor
+
+                      session:
+                        secret: '{{ env.JARVIS_AUTHELIA_SESSION_KEY }}'
+                        cookies:
+                          - domain: '{{ env.JARVIS_DOMAIN }}'
+                            authelia_url: 'https://auth.{{ env.JARVIS_DOMAIN }}'
+                            default_redirection_url: 'https://{{ env.JARVIS_DOMAIN }}'
+                        expiration: '1h'
+                        inactivity: '5m'
+
+                      regulation:
+                        max_retries: 3
+                        find_time: '2m'
+                        ban_time: '5m'
+
+                      storage:
+                        encryption_key: '{{ env.JARVIS_AUTHELIA_STORAGE_KEY }}'
+                        local:
+                          path: /etc/authelia/db.sqlite3
+
+                      notifier:
+                        disable_startup_check: true
+                        smtp:
+                          address: 'smtp://smtp.gmail.com:587'
+                          username: '{{ env.JARVIS_BOT_EMAIL }}'
+                          password: '{{ env.JARVIS_AUTH_GOOGLE_APP_PASSWORD }}'
+                          sender: '{{ env.JARVIS_BOT_NAME }} <{{ env.JARVIS_BOT_EMAIL }}>'
+                  mode: '0600'
+
+            - name: '{{ instance.hostname | upper }}: Create users file'
+              copy:
+                  dest: '{{ paths.config }}/users.yml'
+                  content: |
+                      ---
+                      users:
+                        {{ env.JARVIS_ADMIN_USERNAME }}:
+                          displayname: '{{ env.JARVIS_ADMIN_NAME }}'
+                          password: '{{ env.JARVIS_ADMIN_PASSWORD_ARGON }}'
+                          email: '{{ env.JARVIS_ADMIN_EMAIL }}'
+                          groups:
+                            - admins
+                  mode: '0600'
+
+            - name: '{{ instance.hostname | upper }}: Start LXC'
+              command: pct start {{ id }}
+
+            - name: '{{ instance.hostname | upper }}: Wait for Network'
+              shell: pct exec {{ id }} -- ping -c 1 -W 2 {{ env.JARVIS_DNS_SERVERS[0] }}
+              register: network_check
+              until: network_check.rc == 0
+              retries: 10
+              delay: 3
+
+            - name: '{{ instance.hostname | upper }}: Set file ownership'
+              shell: pct exec {{ id }} -- chown -R authelia:authelia /etc/authelia
+
+            - name: '{{ instance.hostname | upper }}: Install iptables'
+              shell: pct exec {{ id }} -- apt-get update && pct exec {{ id }} -- apt-get install -y iptables
+
+            - name: '{{ instance.hostname | upper }}: Configure Port Forwarding (80 -> 9091)'
+              shell: |
+                  pct exec {{ id }} -- bash -c "cat <<EOF > /etc/systemd/system/authelia-port-forward.service
+                  [Unit]
+                  Description=Authelia Port Forward 80 to 9091
+                  After=network.target
+
+                  [Service]
+                  Type=oneshot
+                  ExecStart=/usr/sbin/iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 9091
+                  ExecStop=/usr/sbin/iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 9091
+                  RemainAfterExit=yes
+
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+                  systemctl daemon-reload && \
+                  systemctl enable --now authelia-port-forward.service"
+              args:
+                  executable: /bin/bash
+
+            - name: '{{ instance.hostname | upper }}: Restart Authelia service'
+              shell: pct exec {{ id }} -- systemctl restart authelia
+
+        when: not instance_exists
+
+  rescue:
+      - debug:
+            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
+  become: true

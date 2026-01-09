@@ -177,7 +177,7 @@
                         middlewares:
                           auth:
                             forwardAuth:
-                              address: "http://{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.auth.id }}:{{ env.JARVIS_SERVICES.auth.port }}/api/authz/forward-auth"
+                              address: "http://{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.voidauth.id }}:{{ env.JARVIS_SERVICES.voidauth.port }}/api/authz/forward-auth"
                               trustForwardHeader: true
                               authResponseHeaders:
                                 - Remote-User
