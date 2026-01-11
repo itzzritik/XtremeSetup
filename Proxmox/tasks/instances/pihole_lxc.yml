@@ -28,7 +28,7 @@
         file:
             path: '{{ item }}'
             state: directory
-            mode: '0755'
+            mode: '0777'
             owner: '{{ instance.subuid }}'
             group: '{{ instance.subuid }}'
             recurse: true
@@ -116,7 +116,7 @@
                       set -e
                       export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
                       pihole -a -p ''
-                  mode: '0700'
+                  mode: '0666'
               no_log: true
 
             - name: '{{ instance.hostname | upper }}: Push Password Script to Container'

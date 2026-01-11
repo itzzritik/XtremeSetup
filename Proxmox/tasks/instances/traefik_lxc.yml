@@ -28,7 +28,7 @@
         file:
             path: '{{ item }}'
             state: directory
-            mode: '0755'
+            mode: '0777'
             owner: '{{ instance.subuid }}'
             group: '{{ instance.subuid }}'
             recurse: true
@@ -163,7 +163,7 @@
                                 - "8.8.8.8:53"
                   owner: '{{ instance.subuid }}'
                   group: '{{ instance.subuid }}'
-                  mode: '0644'
+                  mode: '0666'
 
             - name: '{{ instance.hostname | upper }}: Update dynamic rules'
               copy:
@@ -226,7 +226,7 @@
                       {% endfor %}
                   owner: '{{ instance.subuid }}'
                   group: '{{ instance.subuid }}'
-                  mode: '0644'
+                  mode: '0666'
 
             - name: '{{ instance.hostname | upper }}: Configure Service Override'
               shell: |

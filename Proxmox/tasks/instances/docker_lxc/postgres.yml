@@ -12,7 +12,7 @@
         file:
             path: '{{ item }}'
             state: directory
-            mode: '0755'
+            mode: '0777'
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
             recurse: true
@@ -43,7 +43,7 @@
                       retries: 5
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
-            mode: '0644'
+            mode: '0666'
 
       - name: '{{ app_name | upper }}: Cleanup Existing Container'
         command: pct exec {{ id }} -- bash -c "docker stop {{ app_name }} 2>/dev/null || true; docker rm {{ app_name }} 2>/dev/null || true"

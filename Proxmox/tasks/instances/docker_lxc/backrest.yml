@@ -11,7 +11,7 @@
         file:
             path: '{{ item }}'
             state: directory
-            mode: '0755'
+            mode: '0777'
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
             recurse: true
@@ -51,7 +51,7 @@
                     {
                       "id": "{{ env.JARVIS_BOT_NAME | lower }}-configs",
                       "repo": "r2-backup",
-                      "paths": ["/media/configs"],
+                      "paths": ["{{ instance.configs }}"],
                       "excludes": ["**/cache/**", "**/.cache/**", "**/logs/**"],
                       "schedule": {
                         "cron": "0 2 */2 * *",
@@ -68,7 +68,7 @@
                 }
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
-            mode: '0644'
+            mode: '0666'
 
       - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
@@ -84,6 +84,7 @@
                     volumes:
                       - {{ config.local}}/data:/data
                       - {{ config.local}}:/config
+                      - {{ instance.configs }}:{{ instance.configs }}:ro
                       - /media/ssd:/media/ssd
                       - /media/wdhdd:/media/wdhdd
                     environment:
@@ -93,7 +94,7 @@
                       - TZ={{ env.JARVIS_TZ }}
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
-            mode: '0644'
+            mode: '0666'
 
       - name: '{{ app_name | upper }}: Cleanup Existing Container'
         command: pct exec {{ id }} -- bash -c "docker stop {{ app_name }} 2>/dev/null || true; docker rm {{ app_name }} 2>/dev/null || true"
@@ -115,7 +116,7 @@
         template:
             src: smart-restore.sh.j2
             dest: /tmp/smart-restore.sh
-            mode: '0755'
+            mode: '0777'
         delegate_to: localhost
         become: false
 

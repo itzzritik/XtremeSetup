@@ -29,7 +29,7 @@
         file:
             path: '{{ item }}'
             state: directory
-            mode: '0755'
+            mode: '0777'
             owner: '{{ instance.subuid }}'
             group: '{{ instance.subuid }}'
             recurse: true
@@ -144,7 +144,7 @@
                   force: false
                   owner: '{{ instance.subuid }}'
                   group: '{{ instance.subuid }}'
-                  mode: '0644'
+                  mode: '0666'
 
             - name: '{{ instance.hostname | upper }}: Configure settings'
               community.general.ini_file:
@@ -154,7 +154,7 @@
                   value: '{{ item.value }}'
                   owner: '{{ instance.subuid }}'
                   group: '{{ instance.subuid }}'
-                  mode: '0644'
+                  mode: '0666'
               loop:
                   - { key: 'WebUI\HostHeaderValidation', value: 'false' }
                   - { key: 'WebUI\AlternativeUIEnabled', value: 'true' }

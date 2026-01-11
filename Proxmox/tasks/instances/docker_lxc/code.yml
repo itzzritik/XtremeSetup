@@ -11,7 +11,7 @@
         file:
             path: '{{ item }}'
             state: directory
-            mode: '0755'
+            mode: '0777'
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
             recurse: true
@@ -30,7 +30,7 @@
                 }
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
-            mode: '0644'
+            mode: '0666'
 
       - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
@@ -55,7 +55,7 @@
                       - {{ instance.configs }}:/AppConfigs
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
-            mode: '0644'
+            mode: '0666'
 
       - name: '{{ app_name | upper }}: Force Directory Ownership'
         command: chown -R {{ mapped_uid }}:{{ mapped_uid }} {{ config.root }}

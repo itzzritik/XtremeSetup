@@ -17,7 +17,7 @@
         file:
             path: '{{ item }}'
             state: directory
-            mode: '0755'
+            mode: '0777'
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
             recurse: true
@@ -99,7 +99,7 @@
                       {% endfor %}
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
-                  mode: '0644'
+                  mode: '0666'
 
             - name: '{{ app_name | upper }}: Create custom.css'
               copy:
@@ -107,7 +107,7 @@
                   dest: '{{ config.root }}/custom-{{ cache_buster }}.css'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
-                  mode: '0644'
+                  mode: '0666'
 
             - name: '{{ app_name | upper }}: Create assets'
               copy:
@@ -115,7 +115,7 @@
                   content: '{{ item.content }}'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
-                  mode: '0644'
+                  mode: '0666'
               loop:
                   - file: icons/logo.svg
                     content: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="#3498db"/><text x="50" y="62" font-family="Arial" font-size="32" font-weight="bold" fill="white" text-anchor="middle">J</text></svg>'
@@ -146,7 +146,7 @@
                   dest: '{{ config.root }}/custom-{{ cache_buster }}.js'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
-                  mode: '0644'
+                  mode: '0666'
 
             - name: '{{ app_name | upper }}: Create custom index.html with script import'
               copy:
@@ -173,7 +173,7 @@
                       </html>
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
-                  mode: '0644'
+                  mode: '0666'
 
       - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
@@ -193,7 +193,7 @@
                       - INIT_ASSETS=0
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
-            mode: '0644'
+            mode: '0666'
 
       - name: '{{ app_name | upper }}: Cleanup Existing Container'
         command: pct exec {{ id }} -- bash -c "docker stop {{ app_name }} 2>/dev/null || true; docker rm {{ app_name }} 2>/dev/null || true"
