@@ -14,7 +14,7 @@
 
 - name: Deploy to Remote Proxmox
   hosts: proxmox
-  gather_facts: true
+  gather_facts: false
   pre_tasks:
       - name: Restore Environment Variables
         set_fact:
@@ -24,17 +24,19 @@
   tasks:
       - name: Execute System Tasks
         include_tasks: 'tasks/system/{{ item }}.yml'
-        loop: [update, automount, security]
+        loop:
+            - health
+            - update
+            - automount
+            - security
 
-      - name: Deploy Docker LXC with Apps
-        include_tasks: 'tasks/docker/index.yml'
-
-      - name: Deploy instances
-        include_tasks: '{{ instance_file }}'
-        loop: "{{ lookup('fileglob', playbook_dir + '/tasks/instances/*.yml', wantlist=True) | sort }}"
-        vars:
-            skip: [home, authelia]
-        when: (skip | map('regex_replace', '^(.*)$', '_\\1_') | select('in', instance_file) | list | length) == 0
-        loop_control:
-            loop_var: instance_file
-            label: '{{ instance_file | basename }}'
+      - name: Deploy Instances
+        include_tasks: 'tasks/instances/{{ item }}.yml'
+        loop:
+            - traefik_lxc
+            # - home_vm
+            - docker_lxc
+            - storage_lxc
+            - jellyfin_lxc
+            - qbittorrent_lxc
+            - pihole_lxc

@@ -1,0 +1,173 @@
+- vars:
+      id: '{{ env.JARVIS_SERVICES.files.id }}'
+      instance:
+          hostname: storage
+          memory: 1024
+          swap: 256
+          cores: 2
+          storage: local-lvm
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+      shares:
+          - name: wdhdd
+            path: '/media/wdhdd'
+            auth_required: true
+            comment: 'WD HDD Full Access'
+          - name: ssd
+            path: '/media/ssd'
+            auth_required: true
+            comment: 'SSD Full Access'
+          - name: media
+            path: '/media/wdhdd/Media'
+            auth_required: false
+            comment: 'Media Library (Guest Access)'
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        command: pct status {{ id }}
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - set_fact:
+            instance_exists: '{{ instance_check.rc == 0 }}'
+
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
+        block:
+            - name: '{{ instance.hostname | upper }}: Cleanup Existing LXC'
+              shell: pct stop {{ id }} 2>/dev/null; pct destroy {{ id }} 2>/dev/null; true
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Download Latest Template'
+              shell: |
+                  pveam update >&2
+                  TEMPLATE=$(pveam available | grep -oP 'ubuntu-(2[02468]|[3-9][02468])\.04-standard[^\s]+' | sort -V | tail -1)
+                  pveam download local "$TEMPLATE" >&2 || true
+                  echo "$TEMPLATE"
+              register: template_result
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Create LXC'
+              command: >
+                  pct create {{ id }} local:vztmpl/{{ template_result.stdout | trim }}
+                  --hostname {{ instance.hostname }}
+                  --cores {{ instance.cores }}
+                  --memory {{ instance.memory }}
+                  --swap {{ instance.swap }}
+                  --rootfs {{ instance.storage }}:8
+                  --net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }}
+                  --unprivileged 1
+                  --features nesting=1
+                  --onboot 1
+
+            - name: '{{ instance.hostname | upper }}: Configure Mounts'
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ id }}.conf'
+                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
+                  block: |
+                      mp0: /mnt/wdhdd,mp=/media/wdhdd
+                      mp1: /mnt/ssd,mp=/media/ssd
+
+            - name: '{{ instance.hostname | upper }}: Start LXC'
+              command: pct start {{ id }}
+
+            - name: '{{ instance.hostname | upper }}: Wait for Network'
+              shell: pct exec {{ id }} -- ping -c 1 -W 2 {{ env.JARVIS_DNS_SERVERS[0] }}
+              register: network_check
+              until: network_check.rc == 0
+              retries: 10
+              delay: 3
+
+            - name: '{{ instance.hostname | upper }}: Install SMB & NFS'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  export DEBIAN_FRONTEND=noninteractive
+                  apt-get update && apt-get install -y \
+                      samba nfs-kernel-server
+                  '
+              retries: 2
+              delay: 5
+
+            - name: '{{ instance.hostname | upper }}: Configure SMB & NFS'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  # Configure Samba
+                  cat <<'EOF' > /etc/samba/smb.conf
+                  [global]
+                  workgroup = WORKGROUP
+                  server string = Storage Server
+                  security = user
+                  map to guest = Bad User
+                  log file = /var/log/samba/%m.log
+                  max log size = 50
+
+                  {% for share in shares %}
+                  [{{ share.name }}]
+                  path = {{ share.path }}
+                  comment = {{ share.comment }}
+                  browseable = yes
+                  writable = yes
+                  {% if share.auth_required %}
+                  guest ok = no
+                  valid users = {{ env.JARVIS_ADMIN_USERNAME }}
+                  create mask = 0664
+                  directory mask = 0775
+                  {% else %}
+                  guest ok = yes
+                  read only = no
+                  create mask = 0666
+                  directory mask = 0777
+                  force user = nobody
+                  force group = nogroup
+                  {% endif %}
+
+                  {% endfor %}
+                  EOF
+
+                  # Configure NFS
+                  cat <<'EOF' > /etc/exports
+                  {% for share in shares %}
+                  {% if share.auth_required %}
+                  {{ share.path }} {{ env.JARVIS_NETWORK_PREFIX }}.0/24(rw,sync,no_subtree_check,sec=sys)
+                  {% else %}
+                  {{ share.path }} {{ env.JARVIS_NETWORK_PREFIX }}.0/24(rw,sync,no_subtree_check,all_squash,anonuid=65534,anongid=65534)
+                  {% endif %}
+                  {% endfor %}
+                  EOF
+
+                  # Create SMB user
+                  (echo '{{ env.JARVIS_ADMIN_PASSWORD }}'; echo '{{ env.JARVIS_ADMIN_PASSWORD }}') | smbpasswd -a -s {{ env.JARVIS_ADMIN_USERNAME }}
+                  smbpasswd -e {{ env.JARVIS_ADMIN_USERNAME }}
+
+                  # Set permissions (NTFS-compatible)
+                  {% for share in shares %}
+                  chmod -R {{ '777' if not share.auth_required else '775' }} {{ share.path }} 2>/dev/null || true
+                  {% endfor %}
+
+                  # Export NFS shares
+                  exportfs -ra
+
+                  # Enable and start all services
+                  systemctl enable --now smbd nmbd rpcbind nfs-kernel-server 2>/dev/null || true
+                  "
+              no_log: true
+
+            - name: '{{ instance.hostname | upper }}: Verify Services'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  systemctl is-active smbd
+                  systemctl is-active nmbd
+                  systemctl is-active nfs-kernel-server
+                  '
+              register: service_status
+              failed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Show Service Status'
+              debug:
+                  msg: 'Services: {{ service_status.stdout_lines }}'
+
+        when: not instance_exists
+
+  rescue:
+      - debug:
+            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
+  become: true

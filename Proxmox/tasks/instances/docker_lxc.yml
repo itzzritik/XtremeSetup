@@ -119,14 +119,12 @@
                   timeout: 60
 
       - name: '{{ instance.hostname | upper }}: Deploy Apps'
-        include_tasks: '{{ app_task }}.yml'
+        include_tasks: 'docker_lxc/{{ item }}.yml'
         loop:
             - backrest
             - voidauth
             - homer
             - code
-        loop_control:
-            loop_var: app_task
 
   rescue:
       - debug:

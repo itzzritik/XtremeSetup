@@ -1,32 +1,37 @@
 ---
-- name: Check Last Update Time
+- name: 'UPDATE: Check Last Update Time'
   stat:
       path: '{{ env.JARVIS_DIR }}/last_apt_update'
   register: last_update
 
-- name: System Update & Cleanup
+- name: 'UPDATE: Get Current Timestamp'
+  shell: date +%s
+  register: current_time
+  changed_when: false
+
+- name: 'UPDATE: System Update & Cleanup'
   block:
-      - name: Update Apt Cache
+      - name: 'UPDATE: Update Apt Cache'
         block:
-            - name: Run Apt Update
+            - name: 'UPDATE: Run Apt Update'
               command: apt-get update
         rescue:
-            - name: Clear apt lists and cache
+            - name: 'UPDATE: Clear apt lists and cache'
               shell: rm -rf /var/lib/apt/lists/* /var/cache/apt/*.bin && apt-get clean
 
-            - name: Retry Apt Update
+            - name: 'UPDATE: Retry Apt Update'
               command: apt-get update
 
-      - name: Upgrade, Autoremove & Clean
+      - name: 'UPDATE: Upgrade, Autoremove & Clean'
         apt:
             upgrade: dist
             autoremove: yes
             purge: yes
             autoclean: yes
 
-      - name: Update Timestamp
+      - name: 'UPDATE: Update Timestamp'
         file:
             path: '{{ env.JARVIS_DIR }}/last_apt_update'
             state: touch
   become: true
-  when: not last_update.stat.exists or ((ansible_facts['date_time']['epoch'] | int - last_update.stat.mtime | int) > 86400)
+  when: not last_update.stat.exists or ((current_time.stdout | int - last_update.stat.mtime | int) > 86400)

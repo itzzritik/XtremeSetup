@@ -1,0 +1,39 @@
+---
+- name: 'HEALTH: Refresh Python Installation'
+  block:
+      - name: 'HEALTH: Clean Package Cache'
+        raw: |
+            apt-get clean
+            rm -rf /var/cache/apt/archives/*.deb
+        args:
+            executable: /bin/bash
+
+      - name: 'HEALTH: Update Package Lists'
+        raw: apt-get update
+        args:
+            executable: /bin/bash
+
+      - name: 'HEALTH: Fix Broken Dependencies'
+        raw: |
+            apt-get --fix-broken install -y
+            dpkg --configure -a
+        args:
+            executable: /bin/bash
+
+      - name: 'HEALTH: Reinstall Python Packages'
+        raw: |
+            apt-get install --reinstall -y python3 python3-minimal python3-apt python3-systemd python3-distutils python3-lib2to3 zlib1g
+        args:
+            executable: /bin/bash
+
+      - name: 'HEALTH: Verify Python Health'
+        raw: python3 -c "import sys, zlib, json, apt, systemd.journal; print('OK')" 2>&1
+        register: python_verify
+        failed_when: python_verify.rc != 0
+
+- name: 'HEALTH: Gather Facts'
+  setup:
+
+- name: 'HEALTH: Python Status'
+  debug:
+      msg: 'Python packages refreshed and verified'

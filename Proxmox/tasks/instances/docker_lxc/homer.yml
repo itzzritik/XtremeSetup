@@ -103,7 +103,7 @@
 
             - name: '{{ app_name | upper }}: Create custom.css'
               copy:
-                  src: ../utils/homer/custom.css
+                  src: ../../utils/homer/custom.css
                   dest: '{{ config.root }}/custom-{{ cache_buster }}.css'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
@@ -142,7 +142,7 @@
 
             - name: '{{ app_name | upper }}: Create custom script'
               copy:
-                  src: ../utils/homer/custom.js
+                  src: ../../utils/homer/custom.js
                   dest: '{{ config.root }}/custom-{{ cache_buster }}.js'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
