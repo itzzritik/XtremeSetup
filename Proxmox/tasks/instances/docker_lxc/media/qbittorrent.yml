@@ -1,0 +1,100 @@
+- set_fact:
+      app_name: qbittorrent
+
+- name: '{{ app_name | upper }}: Check Existing Configuration'
+  stat:
+      path: '{{ config.root }}/{{ app_name }}/qBittorrent/config/qBittorrent.conf'
+  register: qbit_config_exists
+
+- name: '{{ app_name | upper }}: Generate Password Hash'
+  shell: |
+      python3 -c 'import base64, hashlib, os; password = os.environ.get("QB_PASSWORD", "").encode(); salt = os.urandom(16); key = hashlib.pbkdf2_hmac("sha512", password, salt, 100000); print("@ByteArray({}:{})".format(base64.b64encode(salt).decode(), base64.b64encode(key).decode()), end="")'
+  environment:
+      QB_PASSWORD: '{{ env.JARVIS_ADMIN_PASSWORD }}'
+  register: qbit_password_hash
+  changed_when: false
+
+- name: '{{ app_name | upper }}: Stop Container for Configuration'
+  command: pct exec {{ id }} -- docker stop {{ app_name }}
+  ignore_errors: true
+  changed_when: false
+
+- name: '{{ app_name | upper }}: Ensure Config Exists'
+  copy:
+      content: "[Preferences]\n"
+      dest: '{{ config.root }}/{{ app_name }}/qBittorrent/config/qBittorrent.conf'
+      force: false
+      owner: '{{ mapped_uid }}'
+      group: '{{ mapped_uid }}'
+      mode: '0666'
+
+- name: '{{ app_name | upper }}: Configure Settings'
+  community.general.ini_file:
+      path: '{{ config.root }}/{{ app_name }}/qBittorrent/config/qBittorrent.conf'
+      section: 'Preferences'
+      option: '{{ item.key }}'
+      value: '{{ item.value }}'
+      owner: '{{ mapped_uid }}'
+      group: '{{ mapped_uid }}'
+      mode: '0666'
+  loop:
+      - { key: 'WebUI\\HostHeaderValidation', value: 'false' }
+      - { key: 'WebUI\\AlternativeUIEnabled', value: 'true' }
+      - { key: 'WebUI\\RootFolder', value: '/config/vuetorrent' }
+      - { key: 'Downloads\\SavePath', value: '/downloads' }
+      - { key: 'Downloads\\TempPath', value: '/downloads/incomplete' }
+      - { key: 'Downloads\\TempPathEnabled', value: 'true' }
+      - { key: 'WebUI\\AuthSubnetWhitelistEnabled', value: 'true' }
+      - { key: 'WebUI\\AuthSubnetWhitelist', value: '0.0.0.0/0' }
+      - { key: 'WebUI\\Username', value: '{{ env.JARVIS_ADMIN_USERNAME }}' }
+      - { key: 'WebUI\\Password_PBKDF2', value: '{{ qbit_password_hash.stdout }}' }
+      - { key: 'BitTorrent\\Session\\DefaultSavePath', value: '/downloads' }
+      - { key: 'BitTorrent\\Session\\TempPath', value: '/downloads/incomplete' }
+      - { key: 'BitTorrent\\Session\\TempPathEnabled', value: 'true' }
+      - { key: 'BitTorrent\\Session\\Port', value: '6881' }
+      - { key: 'Connection\\PortRangeMin', value: '6881' }
+      - { key: 'Connection\\UPnP', value: 'false' }
+      - { key: 'Preferences\\WebUI\\CSRFProtection', value: 'false' }
+      - { key: 'Preferences\\Connection\\ResolvePeerCountries', value: 'true' }
+
+- name: '{{ app_name | upper }}: Configure Download Categories'
+  community.general.ini_file:
+      path: '{{ config.root }}/{{ app_name }}/qBittorrent/config/qBittorrent.conf'
+      section: 'Preferences'
+      option: '{{ item.key }}'
+      value: '{{ item.value }}'
+      owner: '{{ mapped_uid }}'
+      group: '{{ mapped_uid }}'
+      mode: '0666'
+  loop:
+      - { key: 'Downloads\\SavePathHistory', value: '/downloads, /downloads/movies, /downloads/tv, /downloads/anime' }
+
+- name: '{{ app_name | upper }}: Create Categories Config'
+  copy:
+      dest: '{{ config.root }}/{{ app_name }}/qBittorrent/config/categories.json'
+      content: |
+          {
+              "movies": {
+                  "save_path": "/downloads/movies"
+              },
+              "tv": {
+                  "save_path": "/downloads/tv"
+              },
+              "anime": {
+                  "save_path": "/downloads/anime"
+              }
+          }
+      owner: '{{ mapped_uid }}'
+      group: '{{ mapped_uid }}'
+      mode: '0666'
+
+- name: '{{ app_name | upper }}: Start Container'
+  command: pct exec {{ id }} -- docker start {{ app_name }}
+  changed_when: false
+
+- name: '{{ app_name | upper }}: Wait for Service Ready'
+  wait_for:
+      host: '{{ instance.ip }}'
+      port: {{ env.JARVIS_SERVICES[app_name].port }}
+      delay: 3
+      timeout: 60

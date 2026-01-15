@@ -1,0 +1,275 @@
+- block:
+      - set_fact:
+            app_name: media
+            mapped_uid: '{{ instance.subuid | int + 1000 }}'
+
+      - set_fact:
+            config:
+                root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+                local: '{{ instance.configs }}/{{ app_name }}'
+
+      - name: '{{ app_name | upper }}: Configure Directories'
+        file:
+            path: '{{ item }}'
+            state: directory
+            mode: '0777'
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            recurse: true
+        loop:
+            - '{{ config.root }}'
+            - '{{ config.root }}/prowlarr'
+            - '{{ config.root }}/radarr'
+            - '{{ config.root }}/sonarr'
+            - '{{ config.root }}/sonarr-anime'
+            - '{{ config.root }}/qbittorrent'
+            - '{{ config.root }}/bazarr'
+            - '{{ config.root }}/jellyseerr'
+
+      - name: '{{ app_name | upper }}: Create Media Library Directories'
+        file:
+            path: '{{ item }}'
+            state: directory
+            mode: '0777'
+        loop:
+            - '/media/ssd/Media'
+            - '/media/ssd/Media/Downloads'
+            - '/media/ssd/Media/Downloads/movies'
+            - '/media/ssd/Media/Downloads/tv'
+            - '/media/ssd/Media/Downloads/anime'
+            - '/media/ssd/Media/Movies'
+            - '/media/ssd/Media/TV'
+            - '/media/ssd/Media/Anime'
+
+      - name: '{{ app_name | upper }}: Create docker-compose.yml'
+        copy:
+            dest: '{{ config.root }}/docker-compose.yml'
+            content: |-
+                services:
+                  prowlarr:
+                    container_name: prowlarr
+                    image: lscr.io/linuxserver/prowlarr:latest
+                    restart: unless-stopped
+                    security_opt:
+                      - no-new-privileges:true
+                    environment:
+                      - TZ={{ env.JARVIS_TZ }}
+                      - PUID={{ docker_user }}
+                      - PGID={{ docker_user }}
+                    ports:
+                      - 9696:9696
+                    volumes:
+                      - {{ config.local }}/prowlarr:/config
+                    healthcheck:
+                      test: ["CMD", "curl", "-f", "http://localhost:9696/ping"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 60s
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
+
+                  radarr:
+                    container_name: radarr
+                    image: lscr.io/linuxserver/radarr:latest
+                    restart: unless-stopped
+                    security_opt:
+                      - no-new-privileges:true
+                    environment:
+                      - TZ={{ env.JARVIS_TZ }}
+                      - PUID={{ docker_user }}
+                      - PGID={{ docker_user }}
+                    ports:
+                      - 7878:7878
+                    volumes:
+                      - {{ config.local }}/radarr:/config
+                      - /media/ssd/Media:/media
+                    healthcheck:
+                      test: ["CMD", "curl", "-f", "http://localhost:7878/ping"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 60s
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
+
+                  sonarr:
+                    container_name: sonarr
+                    image: lscr.io/linuxserver/sonarr:latest
+                    restart: unless-stopped
+                    security_opt:
+                      - no-new-privileges:true
+                    environment:
+                      - TZ={{ env.JARVIS_TZ }}
+                      - PUID={{ docker_user }}
+                      - PGID={{ docker_user }}
+                    ports:
+                      - 8989:8989
+                    volumes:
+                      - {{ config.local }}/sonarr:/config
+                      - /media/ssd/Media:/media
+                    healthcheck:
+                      test: ["CMD", "curl", "-f", "http://localhost:8989/ping"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 60s
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
+
+                  sonarr-anime:
+                    container_name: sonarr-anime
+                    image: lscr.io/linuxserver/sonarr:latest
+                    restart: unless-stopped
+                    security_opt:
+                      - no-new-privileges:true
+                    environment:
+                      - TZ={{ env.JARVIS_TZ }}
+                      - PUID={{ docker_user }}
+                      - PGID={{ docker_user }}
+                    ports:
+                      - 8990:8989
+                    volumes:
+                      - {{ config.local }}/sonarr-anime:/config
+                      - /media/ssd/Media:/media
+                    healthcheck:
+                      test: ["CMD", "curl", "-f", "http://localhost:8989/ping"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 60s
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
+
+                  qbittorrent:
+                    container_name: qbittorrent
+                    image: lscr.io/linuxserver/qbittorrent:latest
+                    restart: unless-stopped
+                    security_opt:
+                      - no-new-privileges:true
+                    environment:
+                      - TZ={{ env.JARVIS_TZ }}
+                      - PUID={{ docker_user }}
+                      - PGID={{ docker_user }}
+                      - WEBUI_PORT=8080
+                    ports:
+                      - 8080:8080
+                      - 6881:6881
+                      - 6881:6881/udp
+                    volumes:
+                      - {{ config.local }}/qbittorrent:/config
+                      - /media/ssd/Media/Downloads:/downloads
+                    healthcheck:
+                      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 60s
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
+
+                  bazarr:
+                    container_name: bazarr
+                    image: lscr.io/linuxserver/bazarr:latest
+                    restart: unless-stopped
+                    security_opt:
+                      - no-new-privileges:true
+                    environment:
+                      - TZ={{ env.JARVIS_TZ }}
+                      - PUID={{ docker_user }}
+                      - PGID={{ docker_user }}
+                    ports:
+                      - 6767:6767
+                    volumes:
+                      - {{ config.local }}/bazarr:/config
+                      - /media/ssd/Media:/media
+                    healthcheck:
+                      test: ["CMD", "curl", "-f", "http://localhost:6767/api/system/status"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 60s
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
+
+                  jellyseerr:
+                    container_name: jellyseerr
+                    image: fallenbagel/jellyseerr:latest
+                    restart: unless-stopped
+                    security_opt:
+                      - no-new-privileges:true
+                    environment:
+                      - TZ={{ env.JARVIS_TZ }}
+                    ports:
+                      - 5055:5055
+                    volumes:
+                      - {{ config.local }}/jellyseerr:/app/config
+                    healthcheck:
+                      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5055/api/v1/status"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 60s
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            mode: '0666'
+
+      - name: '{{ app_name | upper }}: Cleanup Existing Containers'
+        command: pct exec {{ id }} -- bash -c "docker compose -f {{ config.local }}/docker-compose.yml down 2>/dev/null || true"
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Start Docker Compose'
+        command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
+        register: media_compose
+        changed_when: "'Created' in media_compose.stderr or 'Recreated' in media_compose.stderr"
+
+      - name: '{{ app_name | upper }}: Wait for Services to be Ready'
+        wait_for:
+            host: '{{ instance.ip }}'
+            port: '{{ env.JARVIS_SERVICES[item].port }}'
+            delay: 5
+            timeout: 120
+        loop:
+            - prowlarr
+            - radarr
+            - sonarr
+            - sonarr-anime
+            - qbittorrent
+            - bazarr
+            - jellyseerr
+
+      - name: '{{ app_name | upper }}: Configure Services'
+        include_tasks: 'media/{{ item }}.yml'
+        loop:
+            - qbittorrent
+            - prowlarr
+            - grabber
+            - bazarr
+            - jellyseerr
+
+  rescue:
+      - debug:
+            msg: '{{ app_name }} failed to deploy'

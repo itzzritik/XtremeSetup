@@ -21,9 +21,6 @@
         failed_when: false
         changed_when: false
 
-      - set_fact:
-            instance_exists: '{{ instance_check.status | default(0) == 200 }}'
-
       - name: '{{ instance.hostname | upper }}: Create Config Directories on Host'
         file:
             path: '{{ item }}'
@@ -37,6 +34,7 @@
             - '{{ paths.config_dnsmasq }}'
 
       - name: '{{ instance.hostname | upper }}: Provision Instance'
+        when: instance_check.status | default(0) != 200
         block:
             - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
               shell: pct stop {{ id }}; pct destroy {{ id }}
@@ -133,8 +131,6 @@
             - name: '{{ instance.hostname | upper }}: Remove Password Script from Container'
               command: pct exec {{ id }} -- rm -f /tmp/set_password.sh
               ignore_errors: true
-
-        when: not instance_exists
 
   rescue:
       - debug:

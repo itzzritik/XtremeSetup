@@ -1,0 +1,141 @@
+- set_fact:
+      app_name: jellyseerr
+
+- name: '{{ app_name | upper }}: Wait for Service Ready'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/v1/status'
+      method: GET
+      status_code: [200, 404]
+  register: jellyseerr_health
+  until: jellyseerr_health.status in [200, 404]
+  retries: 30
+  delay: 2
+
+- name: '{{ app_name | upper }}: Check if Initialized'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/v1/settings/public'
+      method: GET
+      status_code: [200]
+  register: jellyseerr_settings
+  ignore_errors: true
+
+- name: '{{ app_name | upper }}: Extract API Key'
+  shell: |
+      pct exec {{ id }} -- cat {{ config.local }}/{{ app_name }}/settings.json | grep -oP '(?<="apiKey":")[^"]+'
+  register: jellyseerr_api_key
+  changed_when: false
+  when: not (jellyseerr_settings.failed | default(false))
+
+- set_fact:
+      jellyseerr_api: '{{ jellyseerr_api_key.stdout }}'
+  when: not (jellyseerr_settings.failed | default(false))
+
+- name: '{{ app_name | upper }}: Check Existing Radarr Configuration'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/v1/settings/radarr'
+      method: GET
+      headers:
+          X-Api-Key: '{{ jellyseerr_api }}'
+      status_code: [200]
+  register: jellyseerr_radarr_check
+  ignore_errors: true
+  when: not (jellyseerr_settings.failed | default(false))
+
+- name: '{{ app_name | upper }}: Add Radarr Server'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/v1/settings/radarr'
+      method: POST
+      headers:
+          X-Api-Key: '{{ jellyseerr_api }}'
+          Content-Type: 'application/json'
+      body_format: json
+      body:
+          name: 'Radarr'
+          hostname: 'radarr'
+          port: {{ env.JARVIS_SERVICES.radarr.port }}
+          apiKey: '{{ radarr_api }}'
+          useSsl: false
+          baseUrl: ''
+          activeProfileId: 1
+          activeDirectory: '/media/Movies'
+          is4k: false
+          minimumAvailability: 'released'
+          isDefault: true
+      status_code: [201, 400]
+  register: jellyseerr_radarr
+  failed_when: jellyseerr_radarr.status == 400 and 'already exists' not in (jellyseerr_radarr.json.message | default(''))
+  when: not (jellyseerr_settings.failed | default(false)) and (jellyseerr_radarr_check.json | default([]) | length == 0)
+
+- name: '{{ app_name | upper }}: Check Existing Sonarr Configuration'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/v1/settings/sonarr'
+      method: GET
+      headers:
+          X-Api-Key: '{{ jellyseerr_api }}'
+      status_code: [200]
+  register: jellyseerr_sonarr_check
+  ignore_errors: true
+  when: not (jellyseerr_settings.failed | default(false))
+
+- name: '{{ app_name | upper }}: Add Sonarr Server'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/v1/settings/sonarr'
+      method: POST
+      headers:
+          X-Api-Key: '{{ jellyseerr_api }}'
+          Content-Type: 'application/json'
+      body_format: json
+      body:
+          name: 'Sonarr'
+          hostname: 'sonarr'
+          port: {{ env.JARVIS_SERVICES.sonarr.port }}
+          apiKey: '{{ sonarr_api }}'
+          useSsl: false
+          baseUrl: ''
+          activeProfileId: 1
+          activeDirectory: '/media/TV'
+          activeAnimeProfileId: null
+          activeAnimeDirectory: null
+          enableSeasonFolders: true
+          isDefault: true
+      status_code: [201, 400]
+  register: jellyseerr_sonarr
+  failed_when: jellyseerr_sonarr.status == 400 and 'already exists' not in (jellyseerr_sonarr.json.message | default(''))
+  when: not (jellyseerr_settings.failed | default(false)) and (jellyseerr_sonarr_check.json | default([]) | length == 0)
+
+- name: '{{ app_name | upper }}: Add Sonarr-Anime Server'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/v1/settings/sonarr'
+      method: POST
+      headers:
+          X-Api-Key: '{{ jellyseerr_api }}'
+          Content-Type: 'application/json'
+      body_format: json
+      body:
+          name: 'Sonarr-Anime'
+          hostname: 'sonarr-anime'
+          port: {{ env.JARVIS_SERVICES["sonarr-anime"].port }}
+          apiKey: '{{ sonarr_anime_api }}'
+          useSsl: false
+          baseUrl: ''
+          activeProfileId: 1
+          activeDirectory: '/media/Anime'
+          activeAnimeProfileId: 1
+          activeAnimeDirectory: '/media/Anime'
+          enableSeasonFolders: true
+          isDefault: false
+      status_code: [201, 400]
+  register: jellyseerr_sonarr_anime
+  failed_when: jellyseerr_sonarr_anime.status == 400 and 'already exists' not in (jellyseerr_sonarr_anime.json.message | default(''))
+  when: not (jellyseerr_settings.failed | default(false)) and (jellyseerr_sonarr_check.json | default([]) | length < 2)
+
+- name: '{{ app_name | upper }}: Note Manual Configuration Required'
+  debug:
+      msg: |
+          Jellyseerr requires manual initial setup through the web UI:
+          1. Access http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}
+          2. Complete the setup wizard
+          3. Add Radarr: http://radarr:{{ env.JARVIS_SERVICES.radarr.port }} with API key: {{ radarr_api }}
+          4. Add Sonarr: http://sonarr:{{ env.JARVIS_SERVICES.sonarr.port }} with API key: {{ sonarr_api }}
+          5. Add Sonarr-Anime: http://sonarr-anime:{{ env.JARVIS_SERVICES["sonarr-anime"].port }} with API key: {{ sonarr_anime_api }}
+  when: jellyseerr_settings.failed | default(false)

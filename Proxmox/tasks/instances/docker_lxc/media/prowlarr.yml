@@ -1,0 +1,114 @@
+- set_fact:
+      app_name: prowlarr
+
+- name: '{{ app_name | upper }}: Wait for API Ready'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/v1/health'
+      method: GET
+      status_code: [200, 401]
+  register: prowlarr_health
+  until: prowlarr_health.status in [200, 401]
+  retries: 30
+  delay: 2
+
+- name: '{{ app_name | upper }}: Extract API Key'
+  shell: |
+      pct exec {{ id }} -- cat {{ config.local }}/{{ app_name }}/config.xml | grep -oP '(?<=<ApiKey>)[^<]+'
+  register: prowlarr_api_key
+  changed_when: false
+
+- set_fact:
+      prowlarr_api: '{{ prowlarr_api_key.stdout }}'
+
+- name: '{{ app_name | upper }}: Check Existing Applications'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/v1/applications'
+      method: GET
+      headers:
+          X-Api-Key: '{{ prowlarr_api }}'
+      status_code: [200]
+  register: prowlarr_existing_apps
+  changed_when: false
+
+- name: '{{ app_name | upper }}: Add Radarr Application'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/v1/applications'
+      method: POST
+      headers:
+          X-Api-Key: '{{ prowlarr_api }}'
+          Content-Type: 'application/json'
+      body_format: json
+      body:
+          name: 'Radarr'
+          syncLevel: 'addAndRemove'
+          implementation: 'Radarr'
+          configContract: 'RadarrSettings'
+          fields:
+              - name: 'prowlarrUrl'
+                value: 'http://{{ app_name }}:{{ env.JARVIS_SERVICES[app_name].port }}'
+              - name: 'baseUrl'
+                value: 'http://radarr:{{ env.JARVIS_SERVICES.radarr.port }}'
+              - name: 'apiKey'
+                value: '{{ radarr_api }}'
+              - name: 'syncCategories'
+                value: [2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080]
+      status_code: [201, 400]
+  register: prowlarr_radarr
+  failed_when: prowlarr_radarr.status == 400 and 'already exists' not in (prowlarr_radarr.json.message | default(''))
+  when: prowlarr_existing_apps.json | selectattr('name', 'equalto', 'Radarr') | list | length == 0
+
+- name: '{{ app_name | upper }}: Add Sonarr Application'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/v1/applications'
+      method: POST
+      headers:
+          X-Api-Key: '{{ prowlarr_api }}'
+          Content-Type: 'application/json'
+      body_format: json
+      body:
+          name: 'Sonarr'
+          syncLevel: 'addAndRemove'
+          implementation: 'Sonarr'
+          configContract: 'SonarrSettings'
+          fields:
+              - name: 'prowlarrUrl'
+                value: 'http://{{ app_name }}:{{ env.JARVIS_SERVICES[app_name].port }}'
+              - name: 'baseUrl'
+                value: 'http://sonarr:{{ env.JARVIS_SERVICES.sonarr.port }}'
+              - name: 'apiKey'
+                value: '{{ sonarr_api }}'
+              - name: 'syncCategories'
+                value: [5000, 5010, 5020, 5030, 5040, 5045, 5050, 5060, 5070, 5080]
+      status_code: [201, 400]
+  register: prowlarr_sonarr
+  failed_when: prowlarr_sonarr.status == 400 and 'already exists' not in (prowlarr_sonarr.json.message | default(''))
+  when: prowlarr_existing_apps.json | selectattr('name', 'equalto', 'Sonarr') | list | length == 0
+
+- name: '{{ app_name | upper }}: Add Sonarr-Anime Application'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/v1/applications'
+      method: POST
+      headers:
+          X-Api-Key: '{{ prowlarr_api }}'
+          Content-Type: 'application/json'
+      body_format: json
+      body:
+          name: 'Sonarr-Anime'
+          syncLevel: 'addAndRemove'
+          implementation: 'Sonarr'
+          configContract: 'SonarrSettings'
+          fields:
+              - name: 'prowlarrUrl'
+                value: 'http://{{ app_name }}:{{ env.JARVIS_SERVICES[app_name].port }}'
+              - name: 'baseUrl'
+                value: 'http://sonarr-anime:{{ env.JARVIS_SERVICES["sonarr-anime"].port }}'
+              - name: 'apiKey'
+                value: '{{ sonarr_anime_api }}'
+              - name: 'syncCategories'
+                value: [5070]
+              - name: 'animeStandardFormatSearch'
+                value: true
+      status_code: [201, 400]
+  register: prowlarr_sonarr_anime
+  failed_when: prowlarr_sonarr_anime.status == 400 and 'already exists' not in (prowlarr_sonarr_anime.json.message | default(''))
+  when: prowlarr_existing_apps.json | selectattr('name', 'equalto', 'Sonarr-Anime') | list | length == 0

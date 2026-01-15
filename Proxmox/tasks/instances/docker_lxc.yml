@@ -11,6 +11,7 @@
           gateway: '{{ env.JARVIS_GATEWAY }}'
           configs: '/root/configs'
           subuid: '100000'
+      docker_user: '1000'
 
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
@@ -20,9 +21,6 @@
         register: instance_check
         failed_when: false
         changed_when: false
-
-      - set_fact:
-            instance_exists: '{{ instance_check.status | default(0) == 200 }}'
 
       - name: '{{ instance.hostname | upper }}: Create Host Config Directory'
         file:
@@ -34,7 +32,7 @@
             recurse: true
 
       - name: '{{ instance.hostname | upper }}: Provision Instance'
-        when: not instance_exists
+        when: instance_check.status | default(0) != 200
         block:
             - name: '{{ instance.hostname | upper }}: Cleanup Existing LXC'
               shell: pct stop {{ id }} 2>/dev/null; pct destroy {{ id }} 2>/dev/null; true
@@ -67,7 +65,6 @@
                   path: '/etc/pve/lxc/{{ id }}.conf'
                   marker: '# {mark} ANSIBLE MANAGED BLOCK'
                   block: |
-                      mp0: /mnt/wdhdd,mp=/media/wdhdd
                       mp1: /mnt/ssd,mp=/media/ssd
                       mp2: {{ env.JARVIS_CONFIGS_DIR }},mp={{ instance.configs }}
 
@@ -125,6 +122,7 @@
             - voidauth
             - homer
             - code
+            - media
 
   rescue:
       - debug:

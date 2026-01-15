@@ -35,7 +35,7 @@
       - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
             dest: '{{ config.root }}/docker-compose.yml'
-            content: |
+            content: |-
                 services:
                   {{ app_name }}:
                     container_name: {{ app_name }}
@@ -43,8 +43,8 @@
                     restart: unless-stopped
                     environment:
                       - TZ={{ env.JARVIS_TZ }}
-                      - PUID=1000
-                      - PGID=1000
+                      - PUID={{ docker_user }}
+                      - PGID={{ docker_user }}
                       - PWA_APPNAME={{ env.JARVIS_BOT_NAME }} Code
                       - DEFAULT_WORKSPACE=/AppConfigs
                     ports:
@@ -53,6 +53,17 @@
                       - {{ config.local }}/data:/config
                       - /:/docker
                       - {{ instance.configs }}:/AppConfigs
+                    healthcheck:
+                      test: ["CMD", "curl", "-f", "-k", "https://localhost:8443"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 60s
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
             mode: '0666'

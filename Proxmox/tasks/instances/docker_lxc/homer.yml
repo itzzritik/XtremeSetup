@@ -103,7 +103,7 @@
 
             - name: '{{ app_name | upper }}: Create custom.css'
               copy:
-                  src: ../../utils/homer/custom.css
+                  src: ./homer/custom.css
                   dest: '{{ config.root }}/custom-{{ cache_buster }}.css'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
@@ -142,7 +142,7 @@
 
             - name: '{{ app_name | upper }}: Create custom script'
               copy:
-                  src: ../../utils/homer/custom.js
+                  src: ./homer/custom.js
                   dest: '{{ config.root }}/custom-{{ cache_buster }}.js'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
@@ -178,7 +178,7 @@
       - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
             dest: '{{ config.root }}/docker-compose.yml'
-            content: |
+            content: |-
                 services:
                   {{ app_name }}:
                     container_name: {{ app_name }}
@@ -191,6 +191,17 @@
                       - {{ config.local }}/index.html:/www/index.html
                     environment:
                       - INIT_ASSETS=0
+                    healthcheck:
+                      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 30s
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
             mode: '0666'

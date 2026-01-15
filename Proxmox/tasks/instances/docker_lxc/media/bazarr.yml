@@ -1,0 +1,90 @@
+- set_fact:
+      app_name: bazarr
+
+- name: '{{ app_name | upper }}: Wait for API Ready'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/system/status'
+      method: GET
+      status_code: [200, 401]
+  register: bazarr_health
+  until: bazarr_health.status in [200, 401]
+  retries: 30
+  delay: 2
+
+- name: '{{ app_name | upper }}: Extract API Key'
+  shell: |
+      pct exec {{ id }} -- cat {{ config.local }}/{{ app_name }}/config/config.ini | grep -oP '(?<=apikey = )[^\s]+'
+  register: bazarr_api_key
+  changed_when: false
+
+- set_fact:
+      bazarr_api: '{{ bazarr_api_key.stdout }}'
+
+- name: '{{ app_name | upper }}: Configure Radarr Connection'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/system/settings'
+      method: POST
+      headers:
+          X-Api-Key: '{{ bazarr_api }}'
+          Content-Type: 'application/json'
+      body_format: json
+      body:
+          settings:
+              radarr:
+                  - ip: 'radarr'
+                    port: {{ env.JARVIS_SERVICES.radarr.port }}
+                    base_url: '/'
+                    ssl: false
+                    apikey: '{{ radarr_api }}'
+                    full_update: 'Daily'
+                    only_monitored: false
+      status_code: [200, 204, 400]
+  register: bazarr_radarr_config
+  failed_when: bazarr_radarr_config.status == 400 and 'already configured' not in (bazarr_radarr_config.content | default(''))
+  changed_when: bazarr_radarr_config.status in [200, 204]
+
+- name: '{{ app_name | upper }}: Configure Sonarr Connection'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/system/settings'
+      method: POST
+      headers:
+          X-Api-Key: '{{ bazarr_api }}'
+          Content-Type: 'application/json'
+      body_format: json
+      body:
+          settings:
+              sonarr:
+                  - ip: 'sonarr'
+                    port: {{ env.JARVIS_SERVICES.sonarr.port }}
+                    base_url: '/'
+                    ssl: false
+                    apikey: '{{ sonarr_api }}'
+                    full_update: 'Daily'
+                    only_monitored: false
+      status_code: [200, 204, 400]
+  register: bazarr_sonarr_config
+  failed_when: bazarr_sonarr_config.status == 400 and 'already configured' not in (bazarr_sonarr_config.content | default(''))
+  changed_when: bazarr_sonarr_config.status in [200, 204]
+
+- name: '{{ app_name | upper }}: Configure Sonarr-Anime Connection'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/system/settings'
+      method: POST
+      headers:
+          X-Api-Key: '{{ bazarr_api }}'
+          Content-Type: 'application/json'
+      body_format: json
+      body:
+          settings:
+              sonarr:
+                  - ip: 'sonarr-anime'
+                    port: {{ env.JARVIS_SERVICES["sonarr-anime"].port }}
+                    base_url: '/'
+                    ssl: false
+                    apikey: '{{ sonarr_anime_api }}'
+                    full_update: 'Daily'
+                    only_monitored: false
+      status_code: [200, 204, 400]
+  register: bazarr_sonarr_anime_config
+  failed_when: bazarr_sonarr_anime_config.status == 400 and 'already configured' not in (bazarr_sonarr_anime_config.content | default(''))
+  changed_when: bazarr_sonarr_anime_config.status in [200, 204]

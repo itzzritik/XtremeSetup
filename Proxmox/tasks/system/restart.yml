@@ -1,0 +1,28 @@
+- name: Restart Proxmox for VM deployment
+  when: run_vms | default(false)
+  block:
+      - name: Trigger hard reboot
+        shell: reboot
+        async: 1
+        poll: 0
+        ignore_errors: true
+
+      - name: Wait for system to go down
+        wait_for:
+            host: '{{ inventory_hostname }}'
+            port: 22
+            state: stopped
+            timeout: 60
+        delegate_to: localhost
+
+      - name: Wait for system to be ready
+        wait_for_connection:
+            delay: 30
+            timeout: 300
+
+      - name: Verify Proxmox health
+        shell: systemctl is-active pvedaemon && pvesh get /cluster/status
+        retries: 5
+        delay: 10
+        until: proxmox_health.rc == 0
+        register: proxmox_health

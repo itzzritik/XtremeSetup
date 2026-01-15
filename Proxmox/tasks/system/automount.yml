@@ -1,14 +1,14 @@
 ---
 - vars:
       mount_points:
-          - uuid: '06BDD2E367CF2A57'
+          - uuid: '79abafbd-9a4a-4297-a23a-8d16e8468595'
             path: '/mnt/ssd'
-            fstype: 'ntfs-3g'
-            opts: 'defaults,noatime,nodiratime,nofail,x-systemd.device-timeout=5s,pdc_permissions,big_writes'
-          - uuid: '083AAA5A3AAA4492'
-            path: '/mnt/wdhdd'
-            fstype: 'ntfs-3g'
-            opts: 'defaults,noatime,nodiratime,nofail,x-systemd.device-timeout=5s,pdc_permissions,big_writes'
+            fstype: 'ext4'
+            opts: 'defaults,noatime,nofail,x-systemd.device-timeout=30s,x-systemd.automount'
+          # - uuid: '083AAA5A3AAA4492'
+          #   path: '/mnt/wdhdd'
+          #   fstype: 'ntfs-3g'
+          #   opts: 'defaults,noatime,nofail,x-systemd.device-timeout=30s,pdc_permissions,big_writes,x-systemd.automount'
   block:
       - name: Ensuring NTFS Support
         apt:
@@ -24,13 +24,23 @@
         loop_control:
             loop_var: mount_point_item
 
-      - name: Mount Drives
+      - name: Configure Fstab (Automount)
         mount:
             path: '{{ mount_point_item.path }}'
             src: 'UUID={{ mount_point_item.uuid }}'
             fstype: '{{ mount_point_item.fstype }}'
             opts: '{{ mount_point_item.opts }}'
-            state: mounted
+            state: present
+        loop: '{{ mount_points }}'
+        loop_control:
+            loop_var: mount_point_item
+
+      - name: Start Automount Units
+        systemd:
+            name: "{{ mount_point_item.path | regex_replace('^/', '') | regex_replace('/', '-') }}.automount"
+            state: started
+            enabled: true
+            daemon_reload: true
         loop: '{{ mount_points }}'
         loop_control:
             loop_var: mount_point_item

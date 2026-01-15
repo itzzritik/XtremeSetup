@@ -73,7 +73,7 @@
       - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
             dest: '{{ config.root }}/docker-compose.yml'
-            content: |
+            content: |-
                 services:
                   {{ app_name }}:
                     container_name: {{ app_name }}
@@ -92,6 +92,17 @@
                       - BACKREST_CONFIG=/config/config.json
                       - XDG_CACHE_HOME=/cache
                       - TZ={{ env.JARVIS_TZ }}
+                    healthcheck:
+                      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9898"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 60s
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
             mode: '0666'
@@ -113,19 +124,63 @@
             timeout: 30
 
       - name: '{{ app_name | upper }}: Generate Smart Restore Script'
-        template:
-            src: smart-restore.sh.j2
+        copy:
             dest: /tmp/smart-restore.sh
+            content: |
+                #!/bin/bash
+                # Smart Restore Script for Backrest
+                # This script checks for missing/empty config directories and restores them from R2
+
+                # Variables
+                DOCKER_LXC_ID="{{ env.JARVIS_SERVICES.docker.id }}"
+                CONFIG_DIR="{{ instance.configs }}"
+
+                # R2 Credentials for Restic
+                export AWS_ACCESS_KEY_ID="{{ env.JARVIS_CF_R2_TOKENS.split(':')[0] }}"
+                export AWS_SECRET_ACCESS_KEY="{{ env.JARVIS_CF_R2_TOKENS.split(':')[1] }}"
+                REPO="s3:{{ env.JARVIS_CF_R2_ENDPOINT }}/configs"
+
+                {% set docker_apps = ['homer'] %}
+                {% for svc_key, svc in env.JARVIS_SERVICES.items() %}
+                {% if svc_key not in ['backrest', 'proxmox', 'home', 'docker'] %}
+                TARGET="{{ instance.configs }}/{{ svc_key }}"
+
+                # Check if directory exists and is strictly empty (no hidden files either)
+                # Or if it doesn't exist
+                if [ ! -d "$TARGET" ] || [ -z "$(ls -A "$TARGET")" ]; then
+                    echo "RESTORE_TRIGGER: {{ svc_key }}"
+                    
+                    # Stop Service
+                    {% if svc_key in docker_apps %}
+                    echo "Stopping Docker App: {{ svc_key }}"
+                    pct exec $DOCKER_LXC_ID -- docker stop {{ svc_key }} || true
+                    {% else %}
+                    echo "Stopping LXC: {{ svc.id }}"
+                    pct stop {{ svc.id }} || true
+                    {% endif %}
+
+                    # Perform Restore via Backrest Container
+                    # We purposefully restore ONLY the specific folder to avoid overwriting others
+                    echo "Restoring: {{ svc_key }}"
+                    pct exec $DOCKER_LXC_ID -- docker exec -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" backrest restic -r "$REPO" restore latest --target / --include "/media/configs/{{ svc_key }}" || echo "Restore Failed or No Snapshot"
+
+                    # Start Service
+                    {% if svc_key in docker_apps %}
+                    echo "Starting Docker App: {{ svc_key }}"
+                    pct exec $DOCKER_LXC_ID -- docker start {{ svc_key }} || true
+                    {% else %}
+                    echo "Starting LXC: {{ svc.id }}"
+                    pct start {{ svc.id }} || true
+                    {% endif %}
+                else
+                    echo "SKIP: {{ svc_key }} (Content matches)"
+                    ls -A "$TARGET"
+                fi
+                {% endif %}
+                {% endfor %}
             mode: '0777'
         delegate_to: localhost
         become: false
-
-      # - name: '{{ app_name | upper }}: Execute Smart Restore'
-      #   script: /tmp/smart-restore.sh
-      #   args:
-      #       executable: /bin/bash
-      #   register: restore_output
-      #   changed_when: "'RESTORE_TRIGGER' in restore_output.stdout"
 
   rescue:
       - debug:

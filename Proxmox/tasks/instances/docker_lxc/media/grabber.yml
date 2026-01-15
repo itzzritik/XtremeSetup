@@ -1,0 +1,97 @@
+- name: '*arr Services: Extract API Keys'
+  block:
+      - name: 'RADARR: Extract API Key'
+        shell: |
+            pct exec {{ id }} -- cat {{ config.local }}/radarr/config.xml | grep -oP '(?<=<ApiKey>)[^<]+'
+        register: radarr_api_key
+        changed_when: false
+
+      - name: 'SONARR: Extract API Key'
+        shell: |
+            pct exec {{ id }} -- cat {{ config.local }}/sonarr/config.xml | grep -oP '(?<=<ApiKey>)[^<]+'
+        register: sonarr_api_key
+        changed_when: false
+
+      - name: 'SONARR-ANIME: Extract API Key'
+        shell: |
+            pct exec {{ id }} -- cat {{ config.local }}/sonarr-anime/config.xml | grep -oP '(?<=<ApiKey>)[^<]+'
+        register: sonarr_anime_api_key
+        changed_when: false
+
+      - set_fact:
+            radarr_api: '{{ radarr_api_key.stdout }}'
+            sonarr_api: '{{ sonarr_api_key.stdout }}'
+            sonarr_anime_api: '{{ sonarr_anime_api_key.stdout }}'
+
+- name: '*arr Services: Configure Instances'
+  block:
+      - name: '{{ item.name | upper }}: Extract API Key'
+        shell: |
+            pct exec {{ id }} -- cat {{ config.local }}/{{ item.config_dir }}/config.xml | grep -oP '(?<=<ApiKey>)[^<]+'
+        register: arr_api_key
+        changed_when: false
+
+      - name: '{{ item.name | upper }}: Add qBittorrent Download Client'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ item.port }}/api/v3/downloadclient'
+            method: POST
+            headers:
+                X-Api-Key: '{{ arr_api_key.stdout }}'
+                Content-Type: 'application/json'
+            body_format: json
+            body:
+                enable: true
+                protocol: 'torrent'
+                priority: 1
+                removeCompletedDownloads: true
+                removeFailedDownloads: true
+                name: 'qBittorrent'
+                fields:
+                    - name: 'host'
+                      value: 'qbittorrent'
+                    - name: 'port'
+                      value: { { env.JARVIS_SERVICES.qbittorrent.port } }
+                    - name: 'username'
+                      value: '{{ env.JARVIS_ADMIN_USERNAME }}'
+                    - name: 'password'
+                      value: '{{ env.JARVIS_ADMIN_PASSWORD }}'
+                    - name: 'category'
+                      value: '{{ item.category }}'
+                    - name: 'initialState'
+                      value: 0
+                implementation: 'QBittorrent'
+                implementationName: 'qBittorrent'
+                configContract: 'QBittorrentSettings'
+            status_code: [201, 400]
+        register: arr_qbit
+        failed_when: arr_qbit.status == 400 and 'already exists' not in (arr_qbit.json | default([]) | map(attribute='errorMessage') | join(''))
+
+      - name: '{{ item.name | upper }}: Add Root Folder'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ item.port }}/api/v3/rootfolder'
+            method: POST
+            headers:
+                X-Api-Key: '{{ arr_api_key.stdout }}'
+                Content-Type: 'application/json'
+            body_format: json
+            body:
+                path: '{{ item.root_folder }}'
+            status_code: [201, 400]
+        register: arr_root
+        failed_when: arr_root.status == 400 and 'already exists' not in (arr_root.json | default([]) | map(attribute='errorMessage') | join(''))
+  loop:
+      - name: 'Radarr'
+        config_dir: 'radarr'
+        port: 7878
+        category: 'movies'
+        root_folder: '/media/Movies'
+      - name: 'Sonarr'
+        config_dir: 'sonarr'
+        port: 8989
+        category: 'tv'
+        root_folder: '/media/TV'
+      - name: 'Sonarr-Anime'
+        config_dir: 'sonarr-anime'
+        port: 8990
+        category: 'anime'
+        root_folder: '/media/Anime'

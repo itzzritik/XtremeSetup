@@ -20,9 +20,6 @@
         failed_when: false
         changed_when: false
 
-      - set_fact:
-            instance_exists: '{{ instance_check.status | default(0) == 200 }}'
-
       - name: '{{ instance.hostname | upper }}: Create Config Directory on Host'
         file:
             path: '{{ item }}'
@@ -34,6 +31,7 @@
             - '{{ paths.data }}'
 
       - name: '{{ instance.hostname | upper }}: Provision Instance'
+        when: instance_check.status | default(0) != 200
         block:
             - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
               shell: pct stop {{ id }}; pct destroy {{ id }}
@@ -93,7 +91,6 @@
                   path: '/etc/pve/lxc/{{ id }}.conf'
                   marker: '# {mark} ANSIBLE MANAGED BLOCK'
                   block: |
-                      mp0: /mnt/wdhdd,mp=/media/wdhdd
                       mp1: /mnt/ssd,mp=/media/ssd
                       mp2: {{ paths.config }},mp=/etc/jellyfin
                       mp3: {{ paths.data }},mp=/var/lib/jellyfin
@@ -101,8 +98,6 @@
 
             - name: '{{ instance.hostname | upper }}: Start LXC'
               command: pct start {{ id }}
-
-        when: not instance_exists
 
   rescue:
       - debug:

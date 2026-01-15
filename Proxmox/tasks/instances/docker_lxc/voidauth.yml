@@ -45,6 +45,17 @@
                       - SMTP_USER={{ env.JARVIS_BOT_EMAIL }}
                       - SMTP_PASS={{ env.JARVIS_AUTH_GOOGLE_APP_PASSWORD }}
                       - SMTP_FROM="{{ env.JARVIS_BOT_NAME }} <{{ env.JARVIS_BOT_EMAIL }}>"
+                    healthcheck:
+                      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 60s
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
             mode: '0666'

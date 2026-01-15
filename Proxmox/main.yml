@@ -3,6 +3,11 @@
   hosts: local
   connection: local
   gather_facts: true
+  vars_prompt:
+      - name: run_vms_input
+        prompt: 'Do you want to install VMs? (y/n)'
+        private: no
+        default: 'n'
   tasks:
       - name: Install Ansible Requirements
         command: ansible-galaxy collection install -r requirements.yml --upgrade
@@ -15,17 +20,23 @@
 - name: Deploy to Remote Proxmox
   hosts: proxmox
   gather_facts: false
+
   pre_tasks:
       - name: Restore Environment Variables
         set_fact:
             env: '{{ hostvars["local"]["env"] }}'
         no_log: true
 
+      - name: Set VM deployment flag
+        set_fact:
+            run_vms: "{{ (hostvars['local']['run_vms_input'] | lower) in ['yes', 'y'] }}"
+
   tasks:
       - name: Execute System Tasks
         include_tasks: 'tasks/system/{{ item }}.yml'
         loop:
-            - health
+            # - restart
+            # - health
             - update
             - automount
             - security
@@ -34,9 +45,10 @@
         include_tasks: 'tasks/instances/{{ item }}.yml'
         loop:
             - traefik_lxc
-            # - home_vm
+            - home_vm
             - docker_lxc
             - storage_lxc
             - jellyfin_lxc
             - qbittorrent_lxc
             - pihole_lxc
+        when: not (item.endswith('_vm') and not run_vms)

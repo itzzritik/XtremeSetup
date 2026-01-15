@@ -28,10 +28,8 @@
         failed_when: false
         changed_when: false
 
-      - set_fact:
-            instance_exists: '{{ instance_check.rc == 0 }}'
-
       - name: '{{ instance.hostname | upper }}: Provision Instance'
+        when: instance_check.rc != 0
         block:
             - name: '{{ instance.hostname | upper }}: Cleanup Existing LXC'
               shell: pct stop {{ id }} 2>/dev/null; pct destroy {{ id }} 2>/dev/null; true
@@ -64,7 +62,6 @@
                   path: '/etc/pve/lxc/{{ id }}.conf'
                   marker: '# {mark} ANSIBLE MANAGED BLOCK'
                   block: |
-                      mp0: /mnt/wdhdd,mp=/media/wdhdd
                       mp1: /mnt/ssd,mp=/media/ssd
 
             - name: '{{ instance.hostname | upper }}: Start LXC'
@@ -164,8 +161,6 @@
             - name: '{{ instance.hostname | upper }}: Show Service Status'
               debug:
                   msg: 'Services: {{ service_status.stdout_lines }}'
-
-        when: not instance_exists
 
   rescue:
       - debug:
