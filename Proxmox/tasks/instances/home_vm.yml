@@ -8,113 +8,254 @@
           bridge: vmbr0
           ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
           gateway: '{{ env.JARVIS_GATEWAY }}'
+          dns_servers: '{{ env.JARVIS_DNS_SERVERS }}'
+          port: '{{ env.JARVIS_SERVICES.home.port }}'
   block:
-      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+      - name: '{{ instance.hostname | upper }}: Check if VM is already running'
         uri:
-            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES.home.port }}'
+            url: 'http://{{ instance.ip }}:{{ instance.port }}'
             timeout: 5
         register: instance_check
         failed_when: false
         changed_when: false
 
-      - set_fact:
-            instance_exists: '{{ instance_check.status | default(0) == 200 }}'
-
-      - name: '{{ instance.hostname | upper }}: Provision Instance'
+      - name: '{{ instance.hostname | upper }}: Provision VM'
+        when: instance_check.status | default(0) != 200
         block:
-            - name: '{{ instance.hostname | upper }}: Stop and Destroy VM'
-              shell: qm stop {{ id }}; qm destroy {{ id }}
-              failed_when: false
-              changed_when: false
+            - name: '{{ instance.hostname | upper }}: Stop and destroy existing VM if present'
+              shell: |
+                  if qm status {{ id }} &> /dev/null; then
+                      qm stop {{ id }} || true
+                      qm destroy {{ id }} || true
+                  fi
+              args:
+                  executable: /bin/bash
 
-            - name: '{{ instance.hostname | upper }}: Create Temporary Install Directory'
+            - name: '{{ instance.hostname | upper }}: Create temporary directory for installation'
               tempfile:
                   state: directory
                   suffix: _haos_install
               register: temp_install_dir
 
-            - name: '{{ instance.hostname | upper }}: Download and patch script'
+            - name: '{{ instance.hostname | upper }}: Download and patch community script'
               shell: |
                   curl -fsSL {{ env.JARVIS_COMMUNITY_SCRIPTS_URL }}/vm/haos-vm.sh -o haos-vm.sh
-
-                  # Replace whiptail confirmation with auto-yes
-                  sed -i 's/if whiptail --backtitle "Proxmox VE Helper Scripts" --title "Homeassistant OS VM" --yesno.*$/if true; then/' haos-vm.sh
-
-                  # Replace start_script function to always use default_settings
-                  sed -i 's/function start_script() {/function start_script() {\n  header_info\n  echo -e "Using Default Settings (Automated)"\n  default_settings\n  return\n  # Original code below:/' haos-vm.sh
-
-                  # Override default_settings values with our config
-                  sed -i 's/VMID=$(get_valid_nextid)/VMID="{{ id }}"/' haos-vm.sh
-                  sed -i 's/HN="haos-${BRANCH}"/HN="{{ instance.hostname }}"/' haos-vm.sh
-                  sed -i 's/CORE_COUNT="2"/CORE_COUNT="{{ instance.cores }}"/' haos-vm.sh
-                  sed -i 's/RAM_SIZE="4096"/RAM_SIZE="{{ instance.memory }}"/' haos-vm.sh
-                  sed -i 's/BRG="vmbr0"/BRG="{{ instance.bridge }}"/' haos-vm.sh
-
-                  # Bypass SSH check
-                  sed -i 's/ssh_check$/# ssh_check (disabled for automation)/' haos-vm.sh
-
+                  sed -i 's/if whiptail.*yesno.*$/if true; then/' haos-vm.sh
+                  awk '/function start_script\(\) \{/{print "function start_script() {"; print "  header_info"; print "  echo \"Using Default Settings (Automated)\""; print "  default_settings"; print "  return"; print "  # Original:"; next}1' haos-vm.sh > haos-vm.sh.tmp && mv haos-vm.sh.tmp haos-vm.sh
+                  sed -i -e 's/VMID=$(get_valid_nextid)/VMID=\"{{ id }}\"/' \
+                         -e 's/HN=\"haos-${BRANCH}\"/HN=\"{{ instance.hostname }}\"/' \
+                         -e 's/CORE_COUNT=\"2\"/CORE_COUNT=\"{{ instance.cores }}\"/' \
+                         -e 's/RAM_SIZE=\"4096\"/RAM_SIZE=\"{{ instance.memory }}\"/' \
+                         -e 's/BRG=\"vmbr0\"/BRG=\"{{ instance.bridge }}\"/' \
+                         -e 's/ssh_check$/# ssh_check/' haos-vm.sh
                   chmod +x haos-vm.sh
               args:
                   chdir: '{{ temp_install_dir.path }}'
                   executable: /bin/bash
 
-            - name: '{{ instance.hostname | upper }}: Install using patched script'
+            - name: '{{ instance.hostname | upper }}: Run community script to create VM'
               shell: |
                   source /etc/profile
                   export TERM=xterm
+                  rm -f *.qcow2* *.xz 2>/dev/null || true
                   ./haos-vm.sh
               args:
                   chdir: '{{ temp_install_dir.path }}'
                   executable: /bin/bash
               register: haos_install
+              retries: 3
+              delay: 10
+              until: haos_install.rc == 0
 
             - name: '{{ instance.hostname | upper }}: Show install output'
               debug:
                   var: haos_install.stdout_lines
 
-            - name: '{{ instance.hostname | upper }}: Create network config'
+            - name: '{{ instance.hostname | upper }}: Wait for QEMU guest agent'
+              shell: qm agent {{ id }} ping
+              register: agent_ping
+              retries: 15
+              delay: 10
+              until: agent_ping.rc == 0
+
+            - name: '{{ instance.hostname | upper }}: Detect network interface'
               shell: |
-                  mkdir -p {{ temp_install_dir.path }}/CONFIG/network
-                  cat > {{ temp_install_dir.path }}/CONFIG/network/my-network << 'EOF'
-                  [connection]
-                  id=my-network
-                  type=ethernet
+                  qm guest exec {{ id }} -- bash -c "ip -o link show | grep -v 'lo:' | grep 'state UP' | head -1 | awk -F': ' '{print \$2}'"
+              register: network_interface_raw
+              retries: 3
+              delay: 15
+              until: (network_interface_raw.stdout | from_json)['out-data'] | trim | length > 0
 
-                  [ipv4]
-                  method=manual
-                  address={{ instance.ip }}/24
-                  gateway={{ instance.gateway }}
-                  dns={{ env.JARVIS_DNS_SERVERS | join(';') }};
+            - name: '{{ instance.hostname | upper }}: Extract interface name from JSON'
+              set_fact:
+                  interface_name: "{{ (network_interface_raw.stdout | from_json)['out-data'] | trim }}"
 
-                  [ipv6]
-                  method=disabled
-                  EOF
-                  genisoimage -o {{ temp_install_dir.path }}/config.iso -V CONFIG -r {{ temp_install_dir.path }}/CONFIG
+            - name: '{{ instance.hostname | upper }}: Delete all existing network connections'
+              shell: |
+                  qm guest exec {{ id }} -- bash -c 'for conn in $(nmcli -t -f NAME connection show); do nmcli connection delete "$conn" 2>/dev/null || true; done'
+              ignore_errors: yes
+
+            - name: '{{ instance.hostname | upper }}: Configure static IP ({{ instance.ip }})'
+              shell: |
+                  qm guest exec {{ id }} -- bash -c "nmcli connection add type ethernet con-name static ifname {{ interface_name }} ipv4.method manual ipv4.addresses {{ instance.ip }}/24 ipv4.gateway {{ instance.gateway }} ipv4.dns {{ instance.dns_servers | join(',') }} ipv6.method disabled connection.autoconnect yes connection.autoconnect-priority 100"
+                  qm guest exec {{ id }} -- nmcli connection up static
+                  sleep 3
+                  qm guest exec {{ id }} -- nmcli -t -f NAME,DEVICE connection show --active | grep "static:{{ interface_name }}"
+              args:
+                  executable: /bin/bash
+              retries: 3
+              delay: 5
+
+            - name: '{{ instance.hostname | upper }}: Set hostname'
+              shell: |
+                  qm guest exec {{ id }} -- hostnamectl set-hostname {{ instance.hostname }}
+
+            - name: '{{ instance.hostname | upper }}: Restart VM to ensure clean state'
+              shell: |
+                  sleep 2
+                  qm guest exec {{ id }} -- reboot || true
               args:
                   executable: /bin/bash
 
-            - name: '{{ instance.hostname | upper }}: Copy ISO to Proxmox Storage'
-              copy:
-                  src: '{{ temp_install_dir.path }}/config.iso'
-                  dest: '/var/lib/vz/template/iso/haos-config-{{ id }}.iso'
-                  remote_src: true
-
-            - name: '{{ instance.hostname | upper }}: Attach Network Config to VM'
-              command: qm set {{ id }} --ide1 local:iso/haos-config-{{ id }}.iso,media=cdrom
-
-            - name: '{{ instance.hostname | upper }}: Restart VM to Apply Network Config'
-              shell: qm stop {{ id }} --skiplock --timeout 10 || true; sleep 5; qm start {{ id }}
+            - name: '{{ instance.hostname | upper }}: Verify network connectivity after restart'
+              shell: |
+                  ping -c 3 {{ instance.ip }}
+                  ping -c 3 {{ instance.hostname }}.local
               args:
                   executable: /bin/bash
+              retries: 30
+              delay: 5
+              register: network_verify
 
-            - name: '{{ instance.hostname | upper }}: Cleanup Temporary Directory'
-              file:
-                  path: '{{ temp_install_dir.path }}'
-                  state: absent
+      - name: '{{ instance.hostname | upper }}: Verify Home Assistant API is ready'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ instance.port }}/api/'
+            status_code: [200, 401]
+        register: api_check
+        retries: 30
+        delay: 10
+        until: api_check.status in [200, 401]
 
-        when: not instance_exists
+      - name: '{{ instance.hostname | upper }}: Restore backup from Google Drive'
+        block:
+            - name: '{{ instance.hostname | upper }}: Wait for onboarding endpoint to be ready'
+              uri:
+                  url: 'http://{{ instance.ip }}:{{ instance.port }}/api/onboarding'
+                  status_code: [200, 404]
+              register: onboarding_check
+              retries: 30
+              delay: 20
+              until: onboarding_check.status in [200, 404]
+              failed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Debug onboarding status'
+              debug:
+                  msg:
+                      - 'Onboarding status: {{ onboarding_check.status }}'
+                      - 'Onboarding JSON: {{ onboarding_check.json | default("N/A") }}'
+                      - 'Should restore: {{ onboarding_check.status != 404 and (onboarding_check.status != 200 or (onboarding_check.json | selectattr("done", "equalto", false) | list | length > 0)) }}'
+
+            - name: '{{ instance.hostname | upper }}: Get "Home Assistant" folder ID from Google Drive'
+              uri:
+                  url: 'https://www.googleapis.com/drive/v3/files?q={{ gdrive_query | urlencode }}&fields=files(id,name)'
+                  headers:
+                      Authorization: 'Bearer {{ env.JARVIS_GDRIVE_ACCESS_TOKEN }}'
+                  status_code: 200
+              vars:
+                  gdrive_query: "name = 'Home Assistant' and mimeType = 'application/vnd.google-apps.folder' and trashed=false"
+              register: gdrive_folder
+              retries: 3
+              delay: 2
+              when: >
+                  onboarding_check.status == 200 and
+                  (onboarding_check.json | selectattr('done', 'equalto', false) | list | length > 0)
+
+            - name: '{{ instance.hostname | upper }}: Get latest backup from "Home Assistant" folder'
+              uri:
+                  url: "https://www.googleapis.com/drive/v3/files?q={{ gdrive_query | urlencode }}&fields=files(id,name,createdTime)&orderBy={{ 'createdTime desc' | urlencode }}&pageSize=1"
+                  headers:
+                      Authorization: 'Bearer {{ env.JARVIS_GDRIVE_ACCESS_TOKEN }}'
+                  status_code: 200
+              vars:
+                  gdrive_query: "'{{ (gdrive_folder.json.files | first).id }}' in parents and name contains '.tar' and trashed=false"
+              register: gdrive_backup
+              retries: 3
+              delay: 2
+              when: >
+                  gdrive_folder is not skipped and
+                  gdrive_folder.json.files | length > 0
+
+            - name: '{{ instance.hostname | upper }}: Download & Restore Backup'
+              shell: |
+                  qm guest exec {{ id }} --timeout 600 -- bash -c "set -e; \
+                  curl -sL -o \"/mnt/data/supervisor/backup/{{ (gdrive_backup.json.files | first).name }}\" \"https://www.googleapis.com/drive/v3/files/{{ (gdrive_backup.json.files | first).id }}?alt=media\" -H \"Authorization: Bearer {{ env.JARVIS_GDRIVE_ACCESS_TOKEN }}\"; \
+                  ha backups reload; \
+                  SLUG=\$(ha backups list --raw-json | jq -r '.data.backups | sort_by(.date) | reverse | .[0].slug'); \
+                  [ -z \"\$SLUG\" ] && exit 1; \
+                  KEY='{{ env.JARVIS_HA_DECRYPT_KEY }}'; INFO=\$(ha backups info \"\$SLUG\" --raw-json); \
+                  if [ \"\$(echo \"\$INFO\" | jq -r .data.type)\" == \"full\" ]; then \
+                    ha backups restore \"\$SLUG\" --password \"\$KEY\"; \
+                  else \
+                    FOLDERS=\$(echo \"\$INFO\" | jq -r '.data.folders | join(\" \")'); \
+                    [ -n \"\$FOLDERS\" ] && ha backups restore \"\$SLUG\" --folders \$FOLDERS --password \"\$KEY\"; \
+                    ADDONS=\$(echo \"\$INFO\" | jq -r '.data.addons | map(.slug) | join(\" \")'); \
+                    [ -n \"\$ADDONS\" ] && ha backups restore \"\$SLUG\" --addons \$ADDONS --password \"\$KEY\"; \
+                    [ \"\$(echo \"\$INFO\" | jq -r .data.homeassistant)\" != \"null\" ] && ha backups restore \"\$SLUG\" --homeassistant --password \"\$KEY\"; \
+                  fi"
+              register: restore_trigger
+              failed_when: >
+                  restore_trigger.rc != 0 or
+                  (restore_trigger.stdout | from_json).get('exitcode', 1) != 0
+              when: gdrive_backup is not skipped and gdrive_backup.json.files | default([]) | length > 0
+
+            - name: '{{ instance.hostname | upper }}: Reboot VM to apply restore'
+              shell: |
+                  sleep 10
+                  qm reboot {{ id }}
+              args:
+                  executable: /bin/bash
+              when: restore_trigger is changed
+              ignore_errors: yes
+
+            - name: '{{ instance.hostname | upper }}: Wait for restore and HA restart'
+              uri:
+                  url: 'http://{{ instance.ip }}:{{ instance.port }}/api/'
+                  status_code: [200, 401]
+              register: restore_wait
+              retries: 50
+              delay: 20
+              until: restore_wait.status in [200, 401]
+              when: restore_trigger is changed
+
+        when: env.JARVIS_GDRIVE_ACCESS_TOKEN is defined
+
+      - name: '{{ instance.hostname | upper }}: Deployment successful'
+        debug:
+            msg:
+                - '✅ Home Assistant OS VM deployed successfully!'
+                - ''
+                - 'Access URLs:'
+                - '  - http://{{ instance.ip }}:{{ instance.port }}'
+                - '  - http://{{ instance.hostname }}.local:{{ instance.port }}'
+                - ''
+                - 'VM Details:'
+                - '  - VM ID: {{ id }}'
+                - '  - Hostname: {{ instance.hostname }}'
+                - '  - Static IP: {{ instance.ip }}'
+                - '  - Gateway: {{ instance.gateway }}'
+                - '  - DNS: {{ instance.dns_servers | join(", ") }}'
+                - '  - CPU Cores: {{ instance.cores }}'
+                - '  - Memory: {{ instance.memory }}MB'
+                - ''
+                - '{% if restore_trigger is changed %}Backup: Restored from Google Drive{% elif env.JARVIS_GDRIVE_ACCESS_TOKEN is not defined %}Backup: Google Drive not configured{% else %}Backup: No backups found{% endif %}'
+
+  always:
+      - name: '{{ instance.hostname | upper }}: Cleanup temporary directory'
+        file:
+            path: '{{ temp_install_dir.path }}'
+            state: absent
+        when: temp_install_dir is defined and temp_install_dir.path is defined
 
   rescue:
       - debug:
             msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
-  become: true
