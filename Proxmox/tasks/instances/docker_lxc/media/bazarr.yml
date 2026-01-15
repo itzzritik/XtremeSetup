@@ -11,9 +11,14 @@
   retries: 30
   delay: 2
 
+- name: '{{ app_name | upper }}: Debug Cat Config File'
+  shell: pct exec {{ id }} -- cat {{ config.local }}/{{ app_name }}/config/config.yaml
+  register: bazarr_config_content
+  changed_when: false
+
 - name: '{{ app_name | upper }}: Extract API Key'
   shell: |
-      pct exec {{ id }} -- cat {{ config.local }}/{{ app_name }}/config/config.ini | grep -oP '(?<=apikey = )[^\s]+'
+      pct exec {{ id }} -- grep -oP 'apikey: \K[a-z0-9]+' {{ config.local }}/{{ app_name }}/config/config.yaml
   register: bazarr_api_key
   changed_when: false
 
@@ -32,7 +37,7 @@
           settings:
               radarr:
                   - ip: 'radarr'
-                    port: {{ env.JARVIS_SERVICES.radarr.port }}
+                    port: '{{ env.JARVIS_SERVICES.radarr.port }}'
                     base_url: '/'
                     ssl: false
                     apikey: '{{ radarr_api }}'
@@ -55,7 +60,7 @@
           settings:
               sonarr:
                   - ip: 'sonarr'
-                    port: {{ env.JARVIS_SERVICES.sonarr.port }}
+                    port: '{{ env.JARVIS_SERVICES.sonarr.port }}'
                     base_url: '/'
                     ssl: false
                     apikey: '{{ sonarr_api }}'
@@ -78,7 +83,7 @@
           settings:
               sonarr:
                   - ip: 'sonarr-anime'
-                    port: {{ env.JARVIS_SERVICES["sonarr-anime"].port }}
+                    port: "{{ env.JARVIS_SERVICES['sonarr-anime'].port }}"
                     base_url: '/'
                     ssl: false
                     apikey: '{{ sonarr_anime_api }}'

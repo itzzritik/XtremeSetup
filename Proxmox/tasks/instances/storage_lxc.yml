@@ -9,16 +9,12 @@
           ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
           gateway: '{{ env.JARVIS_GATEWAY }}'
       shares:
-          - name: wdhdd
-            path: '/media/wdhdd'
-            auth_required: true
-            comment: 'WD HDD Full Access'
           - name: ssd
             path: '/media/ssd'
             auth_required: true
             comment: 'SSD Full Access'
           - name: media
-            path: '/media/wdhdd/Media'
+            path: '/media/ssd/Media'
             auth_required: false
             comment: 'Media Library (Guest Access)'
   block:

@@ -9,7 +9,7 @@
 
       - name: '{{ app_name | upper }}: Configure Directories'
         file:
-            path: '{{ item }}'
+            path: '{{ dir_item }}'
             state: directory
             mode: '0777'
             owner: '{{ mapped_uid }}'
@@ -19,6 +19,8 @@
             - '{{ config.root }}'
             - '{{ config.root }}/data'
             - '{{ config.root }}/data/User'
+        loop_control:
+            loop_var: dir_item
 
       - name: '{{ app_name | upper }}: Create settings.json'
         copy:

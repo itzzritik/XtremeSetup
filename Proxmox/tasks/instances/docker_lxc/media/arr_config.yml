@@ -1,0 +1,54 @@
+- name: '{{ arr_app.name | upper }}: Extract API Key'
+  shell: |
+      pct exec {{ id }} -- cat {{ config.local }}/{{ arr_app.config_dir }}/config.xml | grep -oP '(?<=<ApiKey>)[^<]+'
+  register: arr_api_key
+  changed_when: false
+
+- name: '{{ arr_app.name | upper }}: Add qBittorrent Download Client'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ arr_app.port }}/api/v3/downloadclient'
+      method: POST
+      headers:
+          X-Api-Key: '{{ arr_api_key.stdout }}'
+          Content-Type: 'application/json'
+      body_format: json
+      body:
+          enable: true
+          protocol: 'torrent'
+          priority: 1
+          removeCompletedDownloads: true
+          removeFailedDownloads: true
+          name: 'qBittorrent'
+          fields:
+              - name: 'host'
+                value: 'qbittorrent'
+              - name: 'port'
+                value: '{{ env.JARVIS_SERVICES.qbittorrent.port }}'
+              - name: 'username'
+                value: '{{ env.JARVIS_ADMIN_USERNAME }}'
+              - name: 'password'
+                value: '{{ env.JARVIS_ADMIN_PASSWORD }}'
+              - name: 'category'
+                value: '{{ arr_app.category }}'
+              - name: 'initialState'
+                value: 0
+          implementation: 'QBittorrent'
+          implementationName: 'qBittorrent'
+          configContract: 'QBittorrentSettings'
+      status_code: [201, 400]
+  register: arr_qbit
+  failed_when: arr_qbit.status == 400 and 'already exists' not in (arr_qbit.json | default([]) | map(attribute='errorMessage') | join('')) and 'Should be unique' not in (arr_qbit.json | default([]) | map(attribute='errorMessage') | join(''))
+
+- name: '{{ arr_app.name | upper }}: Add Root Folder'
+  uri:
+      url: 'http://{{ instance.ip }}:{{ arr_app.port }}/api/v3/rootfolder'
+      method: POST
+      headers:
+          X-Api-Key: '{{ arr_api_key.stdout }}'
+          Content-Type: 'application/json'
+      body_format: json
+      body:
+          path: '{{ arr_app.root_folder }}'
+      status_code: [201, 400]
+  register: arr_root
+  failed_when: arr_root.status == 400 and 'already exists' not in (arr_root.json | default([]) | map(attribute='errorMessage') | join('')) and 'is already configured as a root folder' not in (arr_root.json | default([]) | map(attribute='errorMessage') | join(''))

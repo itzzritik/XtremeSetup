@@ -40,7 +40,7 @@
       body_format: json
       body:
           name: 'Radarr'
-          syncLevel: 'addAndRemove'
+          syncLevel: 'fullSync'
           implementation: 'Radarr'
           configContract: 'RadarrSettings'
           fields:
@@ -67,7 +67,7 @@
       body_format: json
       body:
           name: 'Sonarr'
-          syncLevel: 'addAndRemove'
+          syncLevel: 'fullSync'
           implementation: 'Sonarr'
           configContract: 'SonarrSettings'
           fields:
@@ -94,14 +94,14 @@
       body_format: json
       body:
           name: 'Sonarr-Anime'
-          syncLevel: 'addAndRemove'
+          syncLevel: 'fullSync'
           implementation: 'Sonarr'
           configContract: 'SonarrSettings'
           fields:
               - name: 'prowlarrUrl'
                 value: 'http://{{ app_name }}:{{ env.JARVIS_SERVICES[app_name].port }}'
               - name: 'baseUrl'
-                value: 'http://sonarr-anime:{{ env.JARVIS_SERVICES["sonarr-anime"].port }}'
+                value: 'http://sonarr-anime:8989'
               - name: 'apiKey'
                 value: '{{ sonarr_anime_api }}'
               - name: 'syncCategories'

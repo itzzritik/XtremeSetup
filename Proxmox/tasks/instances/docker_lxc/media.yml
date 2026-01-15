@@ -10,7 +10,7 @@
 
       - name: '{{ app_name | upper }}: Configure Directories'
         file:
-            path: '{{ item }}'
+            path: '{{ dir_item }}'
             state: directory
             mode: '0777'
             owner: '{{ mapped_uid }}'
@@ -25,21 +25,25 @@
             - '{{ config.root }}/qbittorrent'
             - '{{ config.root }}/bazarr'
             - '{{ config.root }}/jellyseerr'
+        loop_control:
+            loop_var: dir_item
 
       - name: '{{ app_name | upper }}: Create Media Library Directories'
         file:
-            path: '{{ item }}'
+            path: '{{ media_dir_item }}'
             state: directory
             mode: '0777'
         loop:
-            - '/media/ssd/Media'
-            - '/media/ssd/Media/Downloads'
-            - '/media/ssd/Media/Downloads/movies'
-            - '/media/ssd/Media/Downloads/tv'
-            - '/media/ssd/Media/Downloads/anime'
-            - '/media/ssd/Media/Movies'
-            - '/media/ssd/Media/TV'
-            - '/media/ssd/Media/Anime'
+            - '/mnt/ssd/Media'
+            - '/mnt/ssd/Media/Downloads'
+            - '/mnt/ssd/Media/Downloads/movies'
+            - '/mnt/ssd/Media/Downloads/tv'
+            - '/mnt/ssd/Media/Downloads/anime'
+            - '/mnt/ssd/Media/Movies'
+            - '/mnt/ssd/Media/TV'
+            - '/mnt/ssd/Media/Anime'
+        loop_control:
+            loop_var: media_dir_item
 
       - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:
@@ -169,7 +173,7 @@
                       - 6881:6881
                       - 6881:6881/udp
                     volumes:
-                      - {{ config.local }}/qbittorrent:/config
+                      - {{ config.local }}/qbittorrent:/config/qBittorrent
                       - /media/ssd/Media/Downloads:/downloads
                     healthcheck:
                       test: ["CMD", "curl", "-f", "http://localhost:8080"]
@@ -249,7 +253,7 @@
       - name: '{{ app_name | upper }}: Wait for Services to be Ready'
         wait_for:
             host: '{{ instance.ip }}'
-            port: '{{ env.JARVIS_SERVICES[item].port }}'
+            port: '{{ env.JARVIS_SERVICES[service_item].port }}'
             delay: 5
             timeout: 120
         loop:
@@ -260,15 +264,20 @@
             - qbittorrent
             - bazarr
             - jellyseerr
+        loop_control:
+            loop_var: service_item
+        ignore_errors: true
 
       - name: '{{ app_name | upper }}: Configure Services'
-        include_tasks: 'media/{{ item }}.yml'
+        include_tasks: 'media/{{ service_item }}.yml'
         loop:
             - qbittorrent
-            - prowlarr
             - grabber
+            - prowlarr
             - bazarr
             - jellyseerr
+        loop_control:
+            loop_var: service_item
 
   rescue:
       - debug:

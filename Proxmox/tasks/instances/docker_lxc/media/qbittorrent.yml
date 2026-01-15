@@ -3,7 +3,7 @@
 
 - name: '{{ app_name | upper }}: Check Existing Configuration'
   stat:
-      path: '{{ config.root }}/{{ app_name }}/qBittorrent/config/qBittorrent.conf'
+      path: '{{ config.root }}/{{ app_name }}/qBittorrent.conf'
   register: qbit_config_exists
 
 - name: '{{ app_name | upper }}: Generate Password Hash'
@@ -18,60 +18,55 @@
   command: pct exec {{ id }} -- docker stop {{ app_name }}
   ignore_errors: true
   changed_when: false
-
-- name: '{{ app_name | upper }}: Ensure Config Exists'
-  copy:
-      content: "[Preferences]\n"
-      dest: '{{ config.root }}/{{ app_name }}/qBittorrent/config/qBittorrent.conf'
-      force: false
-      owner: '{{ mapped_uid }}'
-      group: '{{ mapped_uid }}'
-      mode: '0666'
+  retries: 5
+  delay: 5
+  until: result.rc == 0 or result.rc == -11
+  register: result
 
 - name: '{{ app_name | upper }}: Configure Settings'
-  community.general.ini_file:
-      path: '{{ config.root }}/{{ app_name }}/qBittorrent/config/qBittorrent.conf'
-      section: 'Preferences'
-      option: '{{ item.key }}'
-      value: '{{ item.value }}'
+  copy:
+      dest: '{{ config.root }}/{{ app_name }}/qBittorrent.conf'
+      content: |
+          [Preferences]
+          WebUI\HostHeaderValidation=false
+          WebUI\AlternativeUIEnabled=true
+          WebUI\RootFolder=/vuetorrent
+          Downloads\SavePath=/downloads
+          Downloads\TempPath=/downloads/incomplete
+          Downloads\TempPathEnabled=true
+          WebUI\AuthSubnetWhitelistEnabled=true
+          WebUI\AuthSubnetWhitelist=127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+          WebUI\Username={{ env.JARVIS_ADMIN_USERNAME }}
+          WebUI\Password_PBKDF2={{ qbit_password_hash.stdout | trim }}
+          BitTorrent\Session\DefaultSavePath=/downloads
+          BitTorrent\Session\TempPath=/downloads/incomplete
+          BitTorrent\Session\TempPathEnabled=true
+          BitTorrent\Session\Port=6881
+          Connection\PortRangeMin=6881
+          Connection\UPnP=false
+          Preferences\WebUI\CSRFProtection=false
+          Preferences\Connection\ResolvePeerCountries=true
       owner: '{{ mapped_uid }}'
       group: '{{ mapped_uid }}'
       mode: '0666'
-  loop:
-      - { key: 'WebUI\\HostHeaderValidation', value: 'false' }
-      - { key: 'WebUI\\AlternativeUIEnabled', value: 'true' }
-      - { key: 'WebUI\\RootFolder', value: '/config/vuetorrent' }
-      - { key: 'Downloads\\SavePath', value: '/downloads' }
-      - { key: 'Downloads\\TempPath', value: '/downloads/incomplete' }
-      - { key: 'Downloads\\TempPathEnabled', value: 'true' }
-      - { key: 'WebUI\\AuthSubnetWhitelistEnabled', value: 'true' }
-      - { key: 'WebUI\\AuthSubnetWhitelist', value: '0.0.0.0/0' }
-      - { key: 'WebUI\\Username', value: '{{ env.JARVIS_ADMIN_USERNAME }}' }
-      - { key: 'WebUI\\Password_PBKDF2', value: '{{ qbit_password_hash.stdout }}' }
-      - { key: 'BitTorrent\\Session\\DefaultSavePath', value: '/downloads' }
-      - { key: 'BitTorrent\\Session\\TempPath', value: '/downloads/incomplete' }
-      - { key: 'BitTorrent\\Session\\TempPathEnabled', value: 'true' }
-      - { key: 'BitTorrent\\Session\\Port', value: '6881' }
-      - { key: 'Connection\\PortRangeMin', value: '6881' }
-      - { key: 'Connection\\UPnP', value: 'false' }
-      - { key: 'Preferences\\WebUI\\CSRFProtection', value: 'false' }
-      - { key: 'Preferences\\Connection\\ResolvePeerCountries', value: 'true' }
 
 - name: '{{ app_name | upper }}: Configure Download Categories'
   community.general.ini_file:
-      path: '{{ config.root }}/{{ app_name }}/qBittorrent/config/qBittorrent.conf'
+      path: '{{ config.root }}/{{ app_name }}/qBittorrent.conf'
       section: 'Preferences'
-      option: '{{ item.key }}'
-      value: '{{ item.value }}'
+      option: '{{ qbit_item.key }}'
+      value: '{{ qbit_item.value }}'
       owner: '{{ mapped_uid }}'
       group: '{{ mapped_uid }}'
       mode: '0666'
   loop:
       - { key: 'Downloads\\SavePathHistory', value: '/downloads, /downloads/movies, /downloads/tv, /downloads/anime' }
+  loop_control:
+      loop_var: qbit_item
 
 - name: '{{ app_name | upper }}: Create Categories Config'
   copy:
-      dest: '{{ config.root }}/{{ app_name }}/qBittorrent/config/categories.json'
+      dest: '{{ config.root }}/{{ app_name }}/categories.json'
       content: |
           {
               "movies": {
@@ -91,10 +86,24 @@
 - name: '{{ app_name | upper }}: Start Container'
   command: pct exec {{ id }} -- docker start {{ app_name }}
   changed_when: false
+  retries: 5
+  delay: 5
+  register: start_result
+  until: start_result.rc == 0
+
+- name: '{{ app_name | upper }}: Install VueTorrent'
+  shell: |
+      pct exec {{ id }} -- docker exec -u 0 {{ app_name }} sh -c "
+      apk add --no-cache unzip curl &&
+      curl -L https://github.com/VueTorrent/VueTorrent/releases/latest/download/vuetorrent.zip -o /tmp/vuetorrent.zip &&
+      unzip -o /tmp/vuetorrent.zip -d / &&
+      chmod -R 755 /vuetorrent &&
+      rm /tmp/vuetorrent.zip"
+  changed_when: true
 
 - name: '{{ app_name | upper }}: Wait for Service Ready'
   wait_for:
       host: '{{ instance.ip }}'
-      port: {{ env.JARVIS_SERVICES[app_name].port }}
+      port: '{{ env.JARVIS_SERVICES[app_name].port }}'
       delay: 3
       timeout: 60

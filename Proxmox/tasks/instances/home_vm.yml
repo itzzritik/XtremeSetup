@@ -31,6 +31,9 @@
               args:
                   executable: /bin/bash
 
+            - name: '{{ instance.hostname | upper }}: Restart Proxmox Host'
+              include_tasks: ../../system/restart.yml
+
             - name: '{{ instance.hostname | upper }}: Create temporary directory for installation'
               tempfile:
                   state: directory
@@ -247,7 +250,7 @@
                 - '  - CPU Cores: {{ instance.cores }}'
                 - '  - Memory: {{ instance.memory }}MB'
                 - ''
-                - '{% if restore_trigger is changed %}Backup: Restored from Google Drive{% elif env.JARVIS_GDRIVE_ACCESS_TOKEN is not defined %}Backup: Google Drive not configured{% else %}Backup: No backups found{% endif %}'
+                - '{% if restore_trigger is changed %}Backup: Restored from Google Drive{% elif env.JARVIS_GDRIVE_ACCESS_TOKEN is not defined %}Backup: Google Drive not configured{% else %}Backup: Skipped Restore{% endif %}'
 
   always:
       - name: '{{ instance.hostname | upper }}: Cleanup temporary directory'

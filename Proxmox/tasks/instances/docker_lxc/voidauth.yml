@@ -9,7 +9,7 @@
 
       - name: '{{ app_name | upper }}: Configure Directories'
         file:
-            path: '{{ item }}'
+            path: '{{ dir_item }}'
             state: directory
             mode: '0777'
             owner: '{{ mapped_uid }}'
@@ -18,6 +18,8 @@
         loop:
             - '{{ config.root }}'
             - '{{ config.root }}/data'
+        loop_control:
+            loop_var: dir_item
 
       - name: '{{ app_name | upper }}: Create docker-compose.yml'
         copy:

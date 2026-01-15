@@ -1,47 +1,48 @@
 ---
+- name: Collect Mount Facts
+  setup:
+      gather_subset: [mounts]
+
 - vars:
       mount_points:
-          - uuid: '79abafbd-9a4a-4297-a23a-8d16e8468595'
-            path: '/mnt/ssd'
-            fstype: 'ext4'
-            opts: 'defaults,noatime,nofail,x-systemd.device-timeout=30s,x-systemd.automount'
-          # - uuid: '083AAA5A3AAA4492'
-          #   path: '/mnt/wdhdd'
-          #   fstype: 'ntfs-3g'
-          #   opts: 'defaults,noatime,nofail,x-systemd.device-timeout=30s,pdc_permissions,big_writes,x-systemd.automount'
+          - {
+                uuid: '79abafbd-9a4a-4297-a23a-8d16e8468595',
+                path: '/mnt/ssd',
+                type: 'ext4',
+                opts: 'defaults,noatime,nofail,x-systemd.device-timeout=30s,x-systemd.automount',
+            }
+          # - {
+          #       uuid: '083AAA5A3AAA4492',
+          #       path: '/mnt/wdhdd',
+          #       type: 'ntfs-3g',
+          #       opts: 'defaults,noatime,nofail,x-systemd.device-timeout=30s,pdc_permissions,big_writes,x-systemd.automount',
+          #   }
+      targets: "{{ mount_points | rejectattr('path', 'in', ansible_facts['mounts'] | map(attribute='mount') | list) }}"
   block:
-      - name: Ensuring NTFS Support
-        apt:
-            name: ntfs-3g
-            state: present
+      - name: Ensure NTFS Support
+        apt: { name: ntfs-3g, state: present }
 
-      - name: Ensure Mount Points
-        file:
-            path: '{{ mount_point_item.path }}'
-            state: directory
-            mode: '0755'
-        loop: '{{ mount_points }}'
-        loop_control:
-            loop_var: mount_point_item
+      - name: Create Mount Points
+        file: { path: '{{ mount_item.path }}', state: directory, mode: '0755' }
+        loop: '{{ targets }}'
+        loop_control: { loop_var: mount_item }
 
       - name: Configure Fstab (Automount)
         mount:
-            path: '{{ mount_point_item.path }}'
-            src: 'UUID={{ mount_point_item.uuid }}'
-            fstype: '{{ mount_point_item.fstype }}'
-            opts: '{{ mount_point_item.opts }}'
+            path: '{{ mount_item.path }}'
+            src: 'UUID={{ mount_item.uuid }}'
+            fstype: '{{ mount_item.type }}'
+            opts: '{{ mount_item.opts }}'
             state: present
-        loop: '{{ mount_points }}'
-        loop_control:
-            loop_var: mount_point_item
+        loop: '{{ targets }}'
+        loop_control: { loop_var: mount_item }
 
-      - name: Start Automount Units
+      - name: Enable Automount Units
         systemd:
-            name: "{{ mount_point_item.path | regex_replace('^/', '') | regex_replace('/', '-') }}.automount"
+            name: "{{ mount_item.path[1:] | replace('/', '-') }}.automount"
             state: started
             enabled: true
             daemon_reload: true
-        loop: '{{ mount_points }}'
-        loop_control:
-            loop_var: mount_point_item
+        loop: '{{ targets }}'
+        loop_control: { loop_var: mount_item }
   become: true

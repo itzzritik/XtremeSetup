@@ -23,7 +23,7 @@
 
       - name: '{{ instance.hostname | upper }}: Create Config Directories on Host'
         file:
-            path: '{{ item }}'
+            path: '{{ dir_item }}'
             state: directory
             mode: '0777'
             owner: '{{ instance.subuid }}'
@@ -33,6 +33,8 @@
             - '{{ paths.config }}'
             - '{{ paths.config }}/dynamic'
             - '{{ paths.cloudflared_config }}'
+        loop_control:
+            loop_var: dir_item
 
       - name: '{{ instance.hostname | upper }}: Provision Instance'
         when: instance_check.status | default(0) != 200

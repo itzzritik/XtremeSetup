@@ -21,14 +21,14 @@
 
 - name: '{{ app_name | upper }}: Extract API Key'
   shell: |
-      pct exec {{ id }} -- cat {{ config.local }}/{{ app_name }}/settings.json | grep -oP '(?<="apiKey":")[^"]+'
+      pct exec {{ id }} -- grep -oP '"apiKey":\s*"\K[^"]+' {{ config.local }}/{{ app_name }}/settings.json
   register: jellyseerr_api_key
   changed_when: false
-  when: not (jellyseerr_settings.failed | default(false))
+  when: not (jellyseerr_settings.failed | default(false)) and ((jellyseerr_settings.json | default({})).initialized | default(false))
 
 - set_fact:
-      jellyseerr_api: '{{ jellyseerr_api_key.stdout }}'
-  when: not (jellyseerr_settings.failed | default(false))
+      jellyseerr_api: '{{ jellyseerr_api_key.stdout | b64decode }}'
+  when: not (jellyseerr_settings.failed | default(false)) and ((jellyseerr_settings.json | default({})).initialized | default(false))
 
 - name: '{{ app_name | upper }}: Check Existing Radarr Configuration'
   uri:
@@ -39,7 +39,7 @@
       status_code: [200]
   register: jellyseerr_radarr_check
   ignore_errors: true
-  when: not (jellyseerr_settings.failed | default(false))
+  when: not (jellyseerr_settings.failed | default(false)) and ((jellyseerr_settings.json | default({})).initialized | default(false))
 
 - name: '{{ app_name | upper }}: Add Radarr Server'
   uri:
@@ -52,7 +52,7 @@
       body:
           name: 'Radarr'
           hostname: 'radarr'
-          port: {{ env.JARVIS_SERVICES.radarr.port }}
+          port: '{{ env.JARVIS_SERVICES.radarr.port }}'
           apiKey: '{{ radarr_api }}'
           useSsl: false
           baseUrl: ''
@@ -64,7 +64,7 @@
       status_code: [201, 400]
   register: jellyseerr_radarr
   failed_when: jellyseerr_radarr.status == 400 and 'already exists' not in (jellyseerr_radarr.json.message | default(''))
-  when: not (jellyseerr_settings.failed | default(false)) and (jellyseerr_radarr_check.json | default([]) | length == 0)
+  when: not (jellyseerr_settings.failed | default(false)) and ((jellyseerr_settings.json | default({})).initialized | default(false)) and (jellyseerr_radarr_check.json | default([]) | length == 0)
 
 - name: '{{ app_name | upper }}: Check Existing Sonarr Configuration'
   uri:
@@ -75,7 +75,7 @@
       status_code: [200]
   register: jellyseerr_sonarr_check
   ignore_errors: true
-  when: not (jellyseerr_settings.failed | default(false))
+  when: not (jellyseerr_settings.failed | default(false)) and ((jellyseerr_settings.json | default({})).initialized | default(false))
 
 - name: '{{ app_name | upper }}: Add Sonarr Server'
   uri:
@@ -88,7 +88,7 @@
       body:
           name: 'Sonarr'
           hostname: 'sonarr'
-          port: {{ env.JARVIS_SERVICES.sonarr.port }}
+          port: '{{ env.JARVIS_SERVICES.sonarr.port }}'
           apiKey: '{{ sonarr_api }}'
           useSsl: false
           baseUrl: ''
@@ -101,7 +101,7 @@
       status_code: [201, 400]
   register: jellyseerr_sonarr
   failed_when: jellyseerr_sonarr.status == 400 and 'already exists' not in (jellyseerr_sonarr.json.message | default(''))
-  when: not (jellyseerr_settings.failed | default(false)) and (jellyseerr_sonarr_check.json | default([]) | length == 0)
+  when: not (jellyseerr_settings.failed | default(false)) and ((jellyseerr_settings.json | default({})).initialized | default(false)) and (jellyseerr_sonarr_check.json | default([]) | length == 0)
 
 - name: '{{ app_name | upper }}: Add Sonarr-Anime Server'
   uri:
@@ -114,7 +114,7 @@
       body:
           name: 'Sonarr-Anime'
           hostname: 'sonarr-anime'
-          port: {{ env.JARVIS_SERVICES["sonarr-anime"].port }}
+          port: "{{ env.JARVIS_SERVICES['sonarr-anime'].port }}"
           apiKey: '{{ sonarr_anime_api }}'
           useSsl: false
           baseUrl: ''
@@ -127,7 +127,7 @@
       status_code: [201, 400]
   register: jellyseerr_sonarr_anime
   failed_when: jellyseerr_sonarr_anime.status == 400 and 'already exists' not in (jellyseerr_sonarr_anime.json.message | default(''))
-  when: not (jellyseerr_settings.failed | default(false)) and (jellyseerr_sonarr_check.json | default([]) | length < 2)
+  when: not (jellyseerr_settings.failed | default(false)) and ((jellyseerr_settings.json | default({})).initialized | default(false)) and (jellyseerr_sonarr_check.json | default([]) | length < 2)
 
 - name: '{{ app_name | upper }}: Note Manual Configuration Required'
   debug:
@@ -138,4 +138,4 @@
           3. Add Radarr: http://radarr:{{ env.JARVIS_SERVICES.radarr.port }} with API key: {{ radarr_api }}
           4. Add Sonarr: http://sonarr:{{ env.JARVIS_SERVICES.sonarr.port }} with API key: {{ sonarr_api }}
           5. Add Sonarr-Anime: http://sonarr-anime:{{ env.JARVIS_SERVICES["sonarr-anime"].port }} with API key: {{ sonarr_anime_api }}
-  when: jellyseerr_settings.failed | default(false)
+  when: (jellyseerr_settings.failed | default(false)) or not ((jellyseerr_settings.json | default({})).initialized | default(false))

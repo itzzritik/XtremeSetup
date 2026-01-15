@@ -15,7 +15,7 @@
 
       - name: '{{ app_name | upper }}: Configure Directories'
         file:
-            path: '{{ item }}'
+            path: '{{ dir_item }}'
             state: directory
             mode: '0777'
             owner: '{{ mapped_uid }}'
@@ -24,6 +24,8 @@
         loop:
             - '{{ config.root }}'
             - '{{ config.root }}/icons'
+        loop_control:
+            loop_var: dir_item
 
       - name: '{{ app_name | upper }}: Generate configuration'
         block:
@@ -111,8 +113,8 @@
 
             - name: '{{ app_name | upper }}: Create assets'
               copy:
-                  dest: '{{ config.root }}/{{ item.file }}'
-                  content: '{{ item.content }}'
+                  dest: '{{ config.root }}/{{ asset_item.file }}'
+                  content: '{{ asset_item.content }}'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
                   mode: '0666'
@@ -139,6 +141,8 @@
                             }
                           ]
                         }
+              loop_control:
+                  loop_var: asset_item
 
             - name: '{{ app_name | upper }}: Create custom script'
               copy:
