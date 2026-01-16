@@ -7,218 +7,202 @@
             config:
                 root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
                 local: '{{ instance.configs }}/{{ app_name }}'
-
-      - name: '{{ app_name | upper }}: Clean assets directory'
-        file:
-            path: '{{ config.root }}'
-            state: absent
-
-      - name: '{{ app_name | upper }}: Configure Directories'
-        file:
-            path: '{{ dir_item }}'
-            state: directory
-            mode: '0777'
-            owner: '{{ mapped_uid }}'
-            group: '{{ mapped_uid }}'
-            recurse: true
-        loop:
-            - '{{ config.root }}'
-            - '{{ config.root }}/icons'
-        loop_control:
-            loop_var: dir_item
-
-      - name: '{{ app_name | upper }}: Generate configuration'
-        block:
-            - name: '{{ app_name | upper }}: Create config.yml'
-              copy:
-                  dest: '{{ config.root }}/config.yml'
-                  content: |
-                      title: "{{ env.JARVIS_BOT_NAME }}"
-                      subtitle: "Apps Dashboard"
-                      documentTitle: "{{ env.JARVIS_BOT_NAME }}"
-                      logo: "assets/icons/logo.svg"
-                      header: true
-                      footer: false
-                      columns: "auto"
-                      connectivityCheck: true
-                      defaults:
-                        layout: list
-                        colorTheme: auto
-                      stylesheet:
-                        - "assets/custom-{{ cache_buster }}.css"
-                      colors:
-                        light:
-                          highlight-primary: "#6366f1"
-                          highlight-secondary: "#4f46e5"
-                          highlight-hover: "#818cf8"
-                          background: "#f8fafc"
-                          card-background: "#ffffff"
-                          text: "#1e293b"
-                          text-header: "#ffffff"
-                          text-title: "#0f172a"
-                          text-subtitle: "#64748b"
-                          card-shadow: rgba(0, 0, 0, 0.08)
-                          link: "#6366f1"
-                          link-hover: "#4f46e5"
-                        dark:
-                          highlight-primary: "#6366f1"
-                          highlight-secondary: "#4f46e5"
-                          highlight-hover: "#818cf8"
-                          background: "#0f0f0f"
-                          card-background: "#1a1a1a"
-                          text: "#e2e8f0"
-                          text-header: "#ffffff"
-                          text-title: "#f8fafc"
-                          text-subtitle: "#94a3b8"
-                          card-shadow: rgba(0, 0, 0, 0.4)
-                          link: "#818cf8"
-                          link-hover: "#a5b4fc"
-                      urlSwitcher:
-                        homerDomainUrl: "https://{{ env.JARVIS_DOMAIN }}"
-                        homerIpUrl: "http://{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.homer.id }}:{{ env.JARVIS_SERVICES.homer.port }}"
-                      services:
-                        - name: "Services"
-                          icon: "fas fa-server"
-                          items:
-                      {% for k,s in env.JARVIS_SERVICES.items() if not s.hidden|default(false) %}
-                      {% set protocol = 'https' if s.https|default(false) else 'http' %}
-                      {% set portSuffix = '' if (s.port==80 and protocol=='http') or (s.port==443 and protocol=='https') else ':'+s.port|string %}
-                            - name: "{{ s.name }}"
-                              {% if s.smart_card is not defined -%}
-                              subtitle: "{{ s.subtitle }}"
-                              {% endif -%}
-                              logo: "{{ env.JARVIS_ICON_CDN }}{{ s.logo }}"
-                              {% if s.smart_card is defined -%}
-                              {% for sc_k, sc_v in s.smart_card.items() -%}
-                              {{ sc_k }}: {{ sc_v | to_json }}
-                              {% endfor -%}
-                              {% endif -%}
-                              url: "https://{% if s.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ s.subdomains[0] | default(k) }}.{{ env.JARVIS_DOMAIN }}{% endif %}{{ s.path | default('') }}"
-                              endpoint: "https://{% if s.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ s.subdomains[0] | default(k) }}.{{ env.JARVIS_DOMAIN }}{% endif %}"
-                              ip: "{{ protocol }}://{{ env.JARVIS_NETWORK_PREFIX }}.{{ s.id }}{{ portSuffix }}{{ s.path|default('') }}"
-                              target: "_blank"
-                              tag: "open {{ k }}"
-                      {% endfor %}
+      - name: '{{ app_name | upper }}: Check Health Endpoint'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/'
+            method: GET
+            status_code: 200
+            timeout: 2
+        register: homer_health
+        failed_when: false
+      - name: '{{ app_name | upper }}: Check Config URL'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/assets/config.yml'
+            method: GET
+            return_content: true
+            status_code: 200
+            timeout: 2
+        register: homer_config_response
+        when: (homer_health.status | default(0)) == 200
+        failed_when: false
+      - set_fact:
+            healthy:
+                app: '{{ (homer_health.status | default(0)) == 200 }}'
+                config: "{{ (homer_health.status | default(0)) == 200 and (homer_config_response.status | default(0)) == 200 and ('stylesheet' in (homer_config_response.content | default('') | from_yaml | default({}))) }}"
+      - debug:
+            msg:
+                - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
+                - "{{ app_name | title }} Config Status: {{ 'Healthy' if healthy.config else 'Unhealthy' }}"
+      - block:
+            - name: '{{ app_name | upper }}: Clean assets directory'
+              file:
+                  path: '{{ config.root }}'
+                  state: absent
+              when: not healthy.app
+            - name: '{{ app_name | upper }}: Configure Directories'
+              file:
+                  path: '{{ dir_item }}'
+                  state: directory
+                  mode: '0777'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
-                  mode: '0666'
-
-            - name: '{{ app_name | upper }}: Create custom.css'
-              copy:
-                  src: ./homer/custom.css
-                  dest: '{{ config.root }}/custom-{{ cache_buster }}.css'
-                  owner: '{{ mapped_uid }}'
-                  group: '{{ mapped_uid }}'
-                  mode: '0666'
-
-            - name: '{{ app_name | upper }}: Create assets'
-              copy:
-                  dest: '{{ config.root }}/{{ asset_item.file }}'
-                  content: '{{ asset_item.content }}'
-                  owner: '{{ mapped_uid }}'
-                  group: '{{ mapped_uid }}'
-                  mode: '0666'
+                  recurse: true
               loop:
-                  - file: icons/logo.svg
-                    content: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="#3498db"/><text x="50" y="62" font-family="Arial" font-size="32" font-weight="bold" fill="white" text-anchor="middle">J</text></svg>'
-                  - file: favicon.svg
-                    content: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="#6366f1"/><text x="50" y="62" font-family="Arial" font-size="32" font-weight="bold" fill="white" text-anchor="middle">J</text></svg>'
-                  - file: manifest.json
-                    content: |
-                        {
-                          "name": "{{ env.JARVIS_BOT_NAME }} Dashboard",
-                          "short_name": "{{ env.JARVIS_BOT_NAME }}",
-                          "description": "{{ env.JARVIS_BOT_NAME }} Apps Dashboard",
-                          "start_url": "/",
-                          "display": "standalone",
-                          "background_color": "#131313",
-                          "theme_color": "#3498db",
-                          "icons": [
-                            {
-                              "src": "icons/logo.svg",
-                              "sizes": "any",
-                              "type": "image/svg+xml"
-                            }
-                          ]
-                        }
+                  - '{{ config.root }}'
+                  - '{{ config.root }}/icons'
               loop_control:
-                  loop_var: asset_item
-
-            - name: '{{ app_name | upper }}: Create custom script'
-              copy:
-                  src: ./homer/custom.js
-                  dest: '{{ config.root }}/custom-{{ cache_buster }}.js'
-                  owner: '{{ mapped_uid }}'
-                  group: '{{ mapped_uid }}'
-                  mode: '0666'
-
-            - name: '{{ app_name | upper }}: Create custom index.html with script import'
-              copy:
-                  dest: '{{ config.root }}/index.html'
-                  content: |
-                      <!DOCTYPE html>
-                      <html>
-                        <head>
-                          <meta charset="UTF-8" />
-                          <link rel="icon" href="assets/icons/favicon.ico" />
-                          <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" sizes="180x180">
-                          <link rel="mask-icon" href="assets/icons/logo.svg">
-                          <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
-                          <title>Homer</title>
-                          <script type="module" crossorigin src="./resources/index-BF4DSS10.js"></script>
-                          <link rel="stylesheet" crossorigin href="./resources/index-BUSrgv1m.css">
-                          <link rel="manifest" href="./assets/manifest.json" crossorigin="use-credentials">
-                          <script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script>
-                        </head>
-                        <body>
-                          <div id="app-mount"></div>
-                          <script src="./assets/custom-{{ cache_buster }}.js"></script>
-                        </body>
-                      </html>
-                  owner: '{{ mapped_uid }}'
-                  group: '{{ mapped_uid }}'
-                  mode: '0666'
-
-      - name: '{{ app_name | upper }}: Create docker-compose.yml'
-        copy:
-            dest: '{{ config.root }}/docker-compose.yml'
-            content: |-
-                services:
-                  {{ app_name }}:
-                    container_name: {{ app_name }}
-                    image: b4bz/homer
-                    restart: unless-stopped
-                    ports:
-                      - "{{ env.JARVIS_SERVICES[app_name].port }}:8080"
-                    volumes:
-                      - {{ config.local }}:/www/assets
-                      - {{ config.local }}/index.html:/www/index.html
-                    environment:
-                      - INIT_ASSETS=0
-                    healthcheck:
-                      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080"]
-                      interval: 30s
-                      timeout: 10s
-                      retries: 3
-                      start_period: 30s
-                    logging:
-                      driver: "json-file"
-                      options:
-                        max-size: "10m"
-                        max-file: "3"
-            owner: '{{ mapped_uid }}'
-            group: '{{ mapped_uid }}'
-            mode: '0666'
-
-      - name: '{{ app_name | upper }}: Cleanup Existing Container'
-        command: pct exec {{ id }} -- bash -c "docker stop {{ app_name }} 2>/dev/null || true; docker rm {{ app_name }} 2>/dev/null || true"
-        changed_when: false
-
-      - name: '{{ app_name | upper }}: Start Docker Compose'
-        command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
-        register: homer_compose
-        changed_when: "'Created' in homer_compose.stderr or 'Recreated' in homer_compose.stderr"
-
+                  loop_var: dir_item
+            - name: '{{ app_name | upper }}: Generate configuration'
+              block:
+                  - name: '{{ app_name | upper }}: Create config.yml'
+                    copy:
+                        dest: '{{ config.root }}/config.yml'
+                        content: |
+                            title: "{{ env.JARVIS_BOT_NAME }}"
+                            subtitle: "Apps Dashboard"
+                            documentTitle: "{{ env.JARVIS_BOT_NAME }}"
+                            logo: "assets/icons/logo.svg"
+                            header: true
+                            footer: false
+                            columns: "auto"
+                            connectivityCheck: true
+                            defaults:
+                              layout: list
+                              colorTheme: auto
+                            stylesheet:
+                              - "assets/custom-{{ cache_buster }}.css"
+                            colors:
+                              light:
+                                highlight-primary: "#6366f1"
+                                highlight-secondary: "#4f46e5"
+                                highlight-hover: "#818cf8"
+                                background: "#f8fafc"
+                                card-background: "#ffffff"
+                                text: "#1e293b"
+                                text-header: "#ffffff"
+                                text-title: "#0f172a"
+                                text-subtitle: "#64748b"
+                                card-shadow: rgba(0, 0, 0, 0.08)
+                                link: "#6366f1"
+                                link-hover: "#4f46e5"
+                              dark:
+                                highlight-primary: "#6366f1"
+                                highlight-secondary: "#4f46e5"
+                                highlight-hover: "#818cf8"
+                                background: "#0f0f0f"
+                                card-background: "#1a1a1a"
+                                text: "#e2e8f0"
+                                text-header: "#ffffff"
+                                text-title: "#f8fafc"
+                                text-subtitle: "#94a3b8"
+                                card-shadow: rgba(0, 0, 0, 0.4)
+                                link: "#818cf8"
+                                link-hover: "#a5b4fc"
+                            urlSwitcher:
+                              homerDomainUrl: "https://{{ env.JARVIS_DOMAIN }}"
+                              homerIpUrl: "http://{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.homer.id }}:{{ env.JARVIS_SERVICES.homer.port }}"
+                            services:
+                              - name: "Services"
+                                icon: "fas fa-server"
+                                items:
+                            {% for k,s in env.JARVIS_SERVICES.items() if not s.hidden|default(false) %}
+                            {% set protocol = 'https' if s.https|default(false) else 'http' %}
+                            {% set portSuffix = '' if (s.port==80 and protocol=='http') or (s.port==443 and protocol=='https') else ':'+s.port|string %}
+                                  - name: "{{ s.name }}"
+                                    {% if s.smart_card is not defined -%}
+                                    subtitle: "{{ s.subtitle }}"
+                                    {% endif -%}
+                                    logo: "{{ env.JARVIS_ICON_CDN }}{{ s.logo }}"
+                                    {% if s.smart_card is defined -%}
+                                    {% for sc_k, sc_v in s.smart_card.items() -%}
+                                    {{ sc_k }}: {{ sc_v | to_json }}
+                                    {% endfor -%}
+                                    {% endif -%}
+                                    url: "https://{% if s.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ s.subdomains[0] | default(k) }}.{{ env.JARVIS_DOMAIN }}{% endif %}{{ s.path | default('') }}"
+                                    endpoint: "https://{% if s.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ s.subdomains[0] | default(k) }}.{{ env.JARVIS_DOMAIN }}{% endif %}"
+                                    ip: "{{ protocol }}://{{ env.JARVIS_NETWORK_PREFIX }}.{{ s.id }}{{ portSuffix }}{{ s.path|default('') }}"
+                                    target: "_blank"
+                                    tag: "open {{ k }}"
+                            {% endfor %}
+                        owner: '{{ mapped_uid }}'
+                        group: '{{ mapped_uid }}'
+                        mode: '0666'
+                  - name: '{{ app_name | upper }}: Create custom.css'
+                    copy:
+                        src: ./homer/custom.css
+                        dest: '{{ config.root }}/custom-{{ cache_buster }}.css'
+                        owner: '{{ mapped_uid }}'
+                        group: '{{ mapped_uid }}'
+                        mode: '0666'
+                  - name: '{{ app_name | upper }}: Create assets'
+                    copy:
+                        dest: '{{ config.root }}/{{ asset_item.file }}'
+                        content: '{{ asset_item.content }}'
+                        owner: '{{ mapped_uid }}'
+                        group: '{{ mapped_uid }}'
+                        mode: '0666'
+                    loop:
+                        - file: icons/logo.svg
+                          content: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="#3498db"/><text x="50" y="62" font-family="Arial" font-size="32" font-weight="bold" fill="white" text-anchor="middle">J</text></svg>'
+                        - file: favicon.svg
+                          content: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="#6366f1"/><text x="50" y="62" font-family="Arial" font-size="32" font-weight="bold" fill="white" text-anchor="middle">J</text></svg>'
+                        - file: manifest.json
+                          content: |
+                              {
+                                "name": "{{ env.JARVIS_BOT_NAME }} Dashboard",
+                                "short_name": "{{ env.JARVIS_BOT_NAME }}",
+                                "description": "{{ env.JARVIS_BOT_NAME }} Apps Dashboard",
+                                "start_url": "/",
+                                "display": "standalone",
+                                "background_color": "#131313",
+                                "theme_color": "#3498db",
+                                "icons": [
+                                  {
+                                    "src": "icons/logo.svg",
+                                    "sizes": "any",
+                                    "type": "image/svg+xml"
+                                  }
+                                ]
+                              }
+                    loop_control:
+                        loop_var: asset_item
+                  - name: '{{ app_name | upper }}: Create custom script'
+                    copy:
+                        src: ./homer/custom.js
+                        dest: '{{ config.root }}/custom-{{ cache_buster }}.js'
+                        owner: '{{ mapped_uid }}'
+                        group: '{{ mapped_uid }}'
+                        mode: '0666'
+                  - name: '{{ app_name | upper }}: Create custom index.html with script import'
+                    copy:
+                        dest: '{{ config.root }}/index.html'
+                        content: |
+                            <!DOCTYPE html>
+                            <html>
+                              <head>
+                                <meta charset="UTF-8" />
+                                <link rel="icon" href="assets/icons/favicon.ico" />
+                                <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" sizes="180x180">
+                                <link rel="mask-icon" href="assets/icons/logo.svg">
+                                <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+                                <title>Homer</title>
+                                <script type="module" crossorigin src="./resources/index-BF4DSS10.js"></script>
+                                <link rel="stylesheet" crossorigin href="./resources/index-BUSrgv1m.css">
+                                <link rel="manifest" href="./assets/manifest.json" crossorigin="use-credentials">
+                                <script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script>
+                              </head>
+                              <body>
+                                <div id="app-mount"></div>
+                                <script src="./assets/custom-{{ cache_buster }}.js"></script>
+                              </body>
+                            </html>
+                        owner: '{{ mapped_uid }}'
+                        group: '{{ mapped_uid }}'
+                        mode: '0666'
+      - name: '{{ app_name | upper }}: Restart for Config Update'
+        command: pct exec {{ id }} -- docker restart {{ app_name }}
+        when: healthy.app and (not healthy.config)
+        changed_when: true
   rescue:
       - debug:
             msg: '{{ app_name }} failed to deploy'

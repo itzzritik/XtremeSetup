@@ -6,183 +6,187 @@
             config:
                 root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
                 local: '{{ instance.configs }}/{{ app_name }}'
-
-      - name: '{{ app_name | upper }}: Configure Directories'
-        file:
-            path: '{{ dir_item }}'
-            state: directory
-            mode: '0777'
-            owner: '{{ mapped_uid }}'
-            group: '{{ mapped_uid }}'
-            recurse: true
-        loop:
-            - '{{ config.root }}'
-            - '{{ config.root }}/data'
-        loop_control:
-            loop_var: dir_item
-
-      - name: '{{ app_name | upper }}: Create config.json'
-        copy:
-            dest: '{{ config.root }}/config.json'
-            content: |
-                {
-                  "version": 6,
-                  "instance": "backrest",
-                  "auth": {
-                    "users": [
+      - name: '{{ app_name | upper }}: Check Health Endpoint'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/'
+            method: GET
+            status_code: [200, 401]
+            timeout: 2
+        register: backrest_health
+        failed_when: false
+      - name: '{{ app_name | upper }}: Check Config File Existence'
+        stat:
+            path: '{{ config.local }}/config.json'
+        register: backrest_config_stat
+      - name: '{{ app_name | upper }}: Validate Config JSON'
+        slurp:
+            src: '{{ config.local }}/config.json'
+        register: backrest_config_content
+        when: backrest_config_stat.stat.exists
+        failed_when: false
+      - set_fact:
+            healthy:
+                app: '{{ (backrest_health.status | default(0)) in [200, 401] }}'
+                config: "{{ backrest_config_stat.stat.exists and (backrest_config_content.content | default('') | b64decode | from_json | default(false)) }}"
+      - debug:
+            msg:
+                - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
+                - "{{ app_name | title }} Config Status: {{ 'Healthy' if healthy.config else 'Unhealthy' }}"
+      - block:
+            - name: '{{ app_name | upper }}: Configure Directories'
+              file:
+                  path: '{{ dir_item }}'
+                  state: directory
+                  mode: '0777'
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  recurse: true
+              loop:
+                  - '{{ config.root }}'
+                  - '{{ config.root }}/data'
+              loop_control:
+                  loop_var: dir_item
+            - name: '{{ app_name | upper }}: Create config.json'
+              copy:
+                  dest: '{{ config.root }}/config.json'
+                  content: |
                       {
-                        "name": "{{ env.JARVIS_ADMIN_USERNAME }}",
-                        "passwordBcrypt": "{{ env.JARVIS_ADMIN_PASSWORD_BCRYPT }}"
+                        "version": 6,
+                        "instance": "backrest",
+                        "auth": {
+                          "users": [
+                            {
+                              "name": "{{ env.JARVIS_ADMIN_USERNAME }}",
+                              "passwordBcrypt": "{{ env.JARVIS_ADMIN_PASSWORD_BCRYPT }}"
+                            }
+                          ]
+                        },
+                        "repos": [
+                          {
+                            "id": "r2-backup",
+                            "uri": "s3:{{ env.JARVIS_CF_R2_ENDPOINT }}/configs",
+                            "password": "{{ env.JARVIS_ADMIN_PASSWORD }}",
+                            "env": ["AWS_ACCESS_KEY_ID={{ env.JARVIS_CF_R2_TOKENS.split(':')[0] }}", "AWS_SECRET_ACCESS_KEY={{ env.JARVIS_CF_R2_TOKENS.split(':')[1] }}"],
+                            "autoInitialize": true,
+                            "prunePolicy": {
+                              "maxUnusedPercent": 25
+                            },
+                            "flags": ["--verbose"]
+                          }
+                        ],
+                        "plans": [
+                          {
+                            "id": "{{ env.JARVIS_BOT_NAME | lower }}-configs",
+                            "repo": "r2-backup",
+                            "paths": ["{{ instance.configs }}"],
+                            "excludes": ["**/cache/**", "**/.cache/**", "**/logs/**"],
+                            "schedule": {
+                              "cron": "0 2 */2 * *",
+                              "clock": "CLOCK_LOCAL"
+                            },
+                            "retention": {
+                              "policyKeepLastN": 5,
+                              "policyKeepDaily": 7,
+                              "policyKeepWeekly": 4,
+                              "policyKeepMonthly": 6
+                            }
+                          }
+                        ]
                       }
-                    ]
-                  },
-                  "repos": [
-                    {
-                      "id": "r2-backup",
-                      "uri": "s3:{{ env.JARVIS_CF_R2_ENDPOINT }}/configs",
-                      "password": "{{ env.JARVIS_ADMIN_PASSWORD }}",
-                      "env": ["AWS_ACCESS_KEY_ID={{ env.JARVIS_CF_R2_TOKENS.split(':')[0] }}", "AWS_SECRET_ACCESS_KEY={{ env.JARVIS_CF_R2_TOKENS.split(':')[1] }}"],
-                      "autoInitialize": true,
-                      "prunePolicy": {
-                        "maxUnusedPercent": 25
-                      },
-                      "flags": ["--verbose"]
-                    }
-                  ],
-                  "plans": [
-                    {
-                      "id": "{{ env.JARVIS_BOT_NAME | lower }}-configs",
-                      "repo": "r2-backup",
-                      "paths": ["{{ instance.configs }}"],
-                      "excludes": ["**/cache/**", "**/.cache/**", "**/logs/**"],
-                      "schedule": {
-                        "cron": "0 2 */2 * *",
-                        "clock": "CLOCK_LOCAL"
-                      },
-                      "retention": {
-                        "policyKeepLastN": 5,
-                        "policyKeepDaily": 7,
-                        "policyKeepWeekly": 4,
-                        "policyKeepMonthly": 6
-                      }
-                    }
-                  ]
-                }
-            owner: '{{ mapped_uid }}'
-            group: '{{ mapped_uid }}'
-            mode: '0666'
-
-      - name: '{{ app_name | upper }}: Create docker-compose.yml'
-        copy:
-            dest: '{{ config.root }}/docker-compose.yml'
-            content: |-
-                services:
-                  {{ app_name }}:
-                    container_name: {{ app_name }}
-                    image: garethgeorge/backrest
-                    restart: unless-stopped
-                    ports:
-                      - "{{ env.JARVIS_SERVICES[app_name].port }}:9898"
-                    volumes:
-                      - {{ config.local}}/data:/data
-                      - {{ config.local}}:/config
-                      - {{ instance.configs }}:{{ instance.configs }}:ro
-                      - /media/ssd:/media/ssd
-                    environment:
-                      - BACKREST_DATA=/data
-                      - BACKREST_CONFIG=/config/config.json
-                      - XDG_CACHE_HOME=/cache
-                      - TZ={{ env.JARVIS_TZ }}
-                    healthcheck:
-                      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9898"]
-                      interval: 30s
-                      timeout: 10s
-                      retries: 3
-                      start_period: 60s
-                    logging:
-                      driver: "json-file"
-                      options:
-                        max-size: "10m"
-                        max-file: "3"
-            owner: '{{ mapped_uid }}'
-            group: '{{ mapped_uid }}'
-            mode: '0666'
-
-      - name: '{{ app_name | upper }}: Cleanup Existing Container'
-        command: pct exec {{ id }} -- bash -c "docker stop {{ app_name }} 2>/dev/null || true; docker rm {{ app_name }} 2>/dev/null || true"
-        changed_when: false
-
-      - name: '{{ app_name | upper }}: Start Docker Compose'
-        command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
-        register: backrest_compose
-        changed_when: "'Created' in backrest_compose.stderr or 'Recreated' in backrest_compose.stderr"
-
-      - name: '{{ app_name | upper }}: Wait for Service Ready'
-        wait_for:
-            host: '{{ instance.ip }}'
-            port: '{{ env.JARVIS_SERVICES[app_name].port }}'
-            delay: 5
-            timeout: 30
-
-      - name: '{{ app_name | upper }}: Generate Smart Restore Script'
-        copy:
-            dest: /tmp/smart-restore.sh
-            content: |
-                #!/bin/bash
-                # Smart Restore Script for Backrest
-                # This script checks for missing/empty config directories and restores them from R2
-
-                # Variables
-                DOCKER_LXC_ID="{{ env.JARVIS_SERVICES.docker.id }}"
-                CONFIG_DIR="{{ instance.configs }}"
-
-                # R2 Credentials for Restic
-                export AWS_ACCESS_KEY_ID="{{ env.JARVIS_CF_R2_TOKENS.split(':')[0] }}"
-                export AWS_SECRET_ACCESS_KEY="{{ env.JARVIS_CF_R2_TOKENS.split(':')[1] }}"
-                REPO="s3:{{ env.JARVIS_CF_R2_ENDPOINT }}/configs"
-
-                {% set docker_apps = ['homer'] %}
-                {% for svc_key, svc in env.JARVIS_SERVICES.items() %}
-                {% if svc_key not in ['backrest', 'proxmox', 'home', 'docker'] %}
-                TARGET="{{ instance.configs }}/{{ svc_key }}"
-
-                # Check if directory exists and is strictly empty (no hidden files either)
-                # Or if it doesn't exist
-                if [ ! -d "$TARGET" ] || [ -z "$(ls -A "$TARGET")" ]; then
-                    echo "RESTORE_TRIGGER: {{ svc_key }}"
-                    
-                    # Stop Service
-                    {% if svc_key in docker_apps %}
-                    echo "Stopping Docker App: {{ svc_key }}"
-                    pct exec $DOCKER_LXC_ID -- docker stop {{ svc_key }} || true
-                    {% else %}
-                    echo "Stopping LXC: {{ svc.id }}"
-                    pct stop {{ svc.id }} || true
-                    {% endif %}
-
-                    # Perform Restore via Backrest Container
-                    # We purposefully restore ONLY the specific folder to avoid overwriting others
-                    echo "Restoring: {{ svc_key }}"
-                    pct exec $DOCKER_LXC_ID -- docker exec -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" backrest restic -r "$REPO" restore latest --target / --include "/media/configs/{{ svc_key }}" || echo "Restore Failed or No Snapshot"
-
-                    # Start Service
-                    {% if svc_key in docker_apps %}
-                    echo "Starting Docker App: {{ svc_key }}"
-                    pct exec $DOCKER_LXC_ID -- docker start {{ svc_key }} || true
-                    {% else %}
-                    echo "Starting LXC: {{ svc.id }}"
-                    pct start {{ svc.id }} || true
-                    {% endif %}
-                else
-                    echo "SKIP: {{ svc_key }} (Content matches)"
-                    ls -A "$TARGET"
-                fi
-                {% endif %}
-                {% endfor %}
-            mode: '0777'
-        delegate_to: localhost
-        become: false
-
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
+            - name: '{{ app_name | upper }}: Generate Smart Restore Script'
+              copy:
+                  dest: /tmp/smart-restore.sh
+                  content: |
+                      #!/bin/bash
+                      # Smart Restore Script for Backrest
+                      DOCKER_LXC_ID="{{ env.JARVIS_SERVICES.docker.id }}"
+                      CONFIG_DIR="{{ instance.configs }}"
+                      export AWS_ACCESS_KEY_ID="{{ env.JARVIS_CF_R2_TOKENS.split(':')[0] }}"
+                      export AWS_SECRET_ACCESS_KEY="{{ env.JARVIS_CF_R2_TOKENS.split(':')[1] }}"
+                      REPO="s3:{{ env.JARVIS_CF_R2_ENDPOINT }}/configs"
+                      {% set docker_apps = ['homer'] %}
+                      {% for svc_key, svc in env.JARVIS_SERVICES.items() %}
+                      {% if svc_key not in ['backrest', 'proxmox', 'home', 'docker'] %}
+                      TARGET="{{ instance.configs }}/{{ svc_key }}"
+                      if [ ! -d "$TARGET" ] || [ -z "$(ls -A "$TARGET")" ]; then
+                          echo "RESTORE_TRIGGER: {{ svc_key }}"
+                          {% if svc_key in docker_apps %}
+                          pct exec $DOCKER_LXC_ID -- docker stop {{ svc_key }} || true
+                          {% else %}
+                          pct stop {{ svc.id }} || true
+                          {% endif %}
+                          pct exec $DOCKER_LXC_ID -- docker exec -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" backrest restic -r "$REPO" restore latest --target / --include "/media/configs/{{ svc_key }}" || echo "Restore Failed or No Snapshot"
+                          {% if svc_key in docker_apps %}
+                          pct exec $DOCKER_LXC_ID -- docker start {{ svc_key }} || true
+                          {% else %}
+                          pct start {{ svc.id }} || true
+                          {% endif %}
+                      else
+                          echo "SKIP: {{ svc_key }} (Content matches)"
+                      fi
+                      {% endif %}
+                      {% endfor %}
+                  mode: '0777'
+              delegate_to: localhost
+              become: false
+        when: (not healthy.app) or (not healthy.config)
+      - block:
+            - name: '{{ app_name | upper }}: Create docker-compose.yml'
+              copy:
+                  dest: '{{ config.root }}/docker-compose.yml'
+                  content: |-
+                      services:
+                        {{ app_name }}:
+                          container_name: {{ app_name }}
+                          image: garethgeorge/backrest
+                          restart: unless-stopped
+                          ports:
+                            - "{{ env.JARVIS_SERVICES[app_name].port }}:9898"
+                          volumes:
+                            - {{ config.local}}/data:/data
+                            - {{ config.local}}:/config
+                            - {{ instance.configs }}:{{ instance.configs }}:ro
+                            - /media/ssd:/media/ssd
+                          environment:
+                            - BACKREST_DATA=/data
+                            - BACKREST_CONFIG=/config/config.json
+                            - XDG_CACHE_HOME=/cache
+                            - TZ={{ env.JARVIS_TZ }}
+                          healthcheck:
+                            test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9898"]
+                            interval: 30s
+                            timeout: 10s
+                            retries: 3
+                            start_period: 60s
+                          logging:
+                            driver: "json-file"
+                            options:
+                              max-size: "10m"
+                              max-file: "3"
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
+            - name: '{{ app_name | upper }}: Cleanup Existing Container'
+              command: pct exec {{ id }} -- bash -c "docker stop {{ app_name }} 2>/dev/null || true; docker rm {{ app_name }} 2>/dev/null || true"
+              changed_when: false
+            - name: '{{ app_name | upper }}: Start Docker Compose'
+              command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
+              register: backrest_compose
+              changed_when: "'Created' in backrest_compose.stderr or 'Recreated' in backrest_compose.stderr"
+            - name: '{{ app_name | upper }}: Wait for Service Ready'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: '{{ env.JARVIS_SERVICES[app_name].port }}'
+                  delay: 5
+                  timeout: 30
+        when: not healthy.app
+      - name: '{{ app_name | upper }}: Restart for Config Update'
+        command: pct exec {{ id }} -- docker restart {{ app_name }}
+        when: healthy.app and (not healthy.config)
+        changed_when: true
   rescue:
       - debug:
             msg: '{{ app_name }} failed to deploy'
