@@ -1,109 +1,196 @@
-- set_fact:
-      app_name: qbittorrent
+- block:
+      - set_fact:
+            app_name: qbittorrent
+            config_group: media
+            mapped_uid: '{{ instance.subuid | int + 1000 }}'
 
-- name: '{{ app_name | upper }}: Check Existing Configuration'
-  stat:
-      path: '{{ config.root }}/{{ app_name }}/qBittorrent.conf'
-  register: qbit_config_exists
+      - set_fact:
+            config:
+                root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ config_group }}'
+                local: '{{ instance.configs }}/{{ config_group }}'
 
-- name: '{{ app_name | upper }}: Generate Password Hash'
-  shell: |
-      python3 -c 'import base64, hashlib, os; password = os.environ.get("QB_PASSWORD", "").encode(); salt = os.urandom(16); key = hashlib.pbkdf2_hmac("sha512", password, salt, 100000); print("@ByteArray({}:{})".format(base64.b64encode(salt).decode(), base64.b64encode(key).decode()), end="")'
-  environment:
-      QB_PASSWORD: '{{ env.JARVIS_ADMIN_PASSWORD }}'
-  register: qbit_password_hash
-  changed_when: false
+      - name: '{{ app_name | upper }}: Check Health & UI'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/'
+            method: GET
+            return_content: true
+            status_code: 200
+            timeout: 2
+        register: app_health
+        failed_when: false
 
-- name: '{{ app_name | upper }}: Stop Container for Configuration'
-  command: pct exec {{ id }} -- docker stop {{ app_name }}
-  ignore_errors: true
-  changed_when: false
-  retries: 5
-  delay: 5
-  until: result.rc == 0 or result.rc == -11
-  register: result
+      - set_fact:
+            healthy:
+                app: '{{ (app_health.status | default(0)) == 200 }}'
+                config: "{{ (env.JARVIS_BOT_NAME + ' Torrent') in (app_health.content | default('')) }}"
 
-- name: '{{ app_name | upper }}: Configure Settings'
-  copy:
-      dest: '{{ config.root }}/{{ app_name }}/qBittorrent.conf'
-      content: |
-          [Preferences]
-          WebUI\HostHeaderValidation=false
-          WebUI\AlternativeUIEnabled=true
-          WebUI\RootFolder=/vuetorrent
-          Downloads\SavePath=/downloads
-          Downloads\TempPath=/downloads/incomplete
-          Downloads\TempPathEnabled=true
-          WebUI\AuthSubnetWhitelistEnabled=true
-          WebUI\AuthSubnetWhitelist=127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
-          WebUI\Username={{ env.JARVIS_ADMIN_USERNAME }}
-          WebUI\Password_PBKDF2={{ qbit_password_hash.stdout | trim }}
-          BitTorrent\Session\DefaultSavePath=/downloads
-          BitTorrent\Session\TempPath=/downloads/incomplete
-          BitTorrent\Session\TempPathEnabled=true
-          BitTorrent\Session\Port=6881
-          Connection\PortRangeMin=6881
-          Connection\UPnP=false
-          Preferences\WebUI\CSRFProtection=false
-          Preferences\Connection\ResolvePeerCountries=true
-      owner: '{{ mapped_uid }}'
-      group: '{{ mapped_uid }}'
-      mode: '0666'
+      - debug:
+            msg:
+                - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
+                - "{{ app_name | title }} Config Status: {{ 'Healthy' if healthy.config else 'Unhealthy' }}"
 
-- name: '{{ app_name | upper }}: Configure Download Categories'
-  community.general.ini_file:
-      path: '{{ config.root }}/{{ app_name }}/qBittorrent.conf'
-      section: 'Preferences'
-      option: '{{ qbit_item.key }}'
-      value: '{{ qbit_item.value }}'
-      owner: '{{ mapped_uid }}'
-      group: '{{ mapped_uid }}'
-      mode: '0666'
-  loop:
-      - { key: 'Downloads\\SavePathHistory', value: '/downloads, /downloads/movies, /downloads/tv, /downloads/anime' }
-  loop_control:
-      loop_var: qbit_item
+      - block:
+            - name: '{{ app_name | upper }}: Configure Directories'
+              file:
+                  path: '{{ dir_item }}'
+                  state: directory
+                  mode: '0777'
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  recurse: true
+              loop:
+                  - '{{ config.root }}/{{ app_name }}'
+                  - '/mnt/ssd/Media/Downloads'
+              loop_control:
+                  loop_var: dir_item
 
-- name: '{{ app_name | upper }}: Create Categories Config'
-  copy:
-      dest: '{{ config.root }}/{{ app_name }}/categories.json'
-      content: |
-          {
-              "movies": {
-                  "save_path": "/downloads/movies"
-              },
-              "tv": {
-                  "save_path": "/downloads/tv"
-              },
-              "anime": {
-                  "save_path": "/downloads/anime"
-              }
-          }
-      owner: '{{ mapped_uid }}'
-      group: '{{ mapped_uid }}'
-      mode: '0666'
+            - name: '{{ app_name | upper }}: Create docker-compose.yml'
+              copy:
+                  dest: '{{ config.root }}/{{ app_name }}/docker-compose.yml'
+                  content: |-
+                      services:
+                        {{ app_name }}:
+                          container_name: {{ app_name }}
+                          image: lscr.io/linuxserver/qbittorrent:latest
+                          restart: unless-stopped
+                          security_opt:
+                            - no-new-privileges:true
+                          environment:
+                            - TZ={{ env.JARVIS_TZ }}
+                            - PUID={{ docker_user }}
+                            - PGID={{ docker_user }}
+                            - DOCKER_MODS=ghcr.io/vuetorrent/vuetorrent-lsio-mod:latest
+                            - WEBUI_PORT=8080
+                          ports:
+                            - {{ env.JARVIS_SERVICES[app_name].port }}:8080
+                            - 6881:6881
+                            - 6881:6881/udp
+                          volumes:
+                            - {{ config.local }}/{{ app_name }}:/config/qBittorrent
+                            - /media/ssd/Media/Downloads:/downloads
+                          healthcheck:
+                            test: ["CMD", "curl", "-f", "http://localhost:8080"]
+                            interval: 30s
+                            timeout: 10s
+                            retries: 3
+                            start_period: 60s
+                          logging:
+                            driver: "json-file"
+                            options:
+                              max-size: "10m"
+                              max-file: "3"
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
 
-- name: '{{ app_name | upper }}: Start Container'
-  command: pct exec {{ id }} -- docker start {{ app_name }}
-  changed_when: false
-  retries: 5
-  delay: 5
-  register: start_result
-  until: start_result.rc == 0
+            - name: '{{ app_name | upper }}: Cleanup Existing Container'
+              command: pct exec {{ id }} -- bash -c "docker stop {{ app_name }} 2>/dev/null || true; docker rm {{ app_name }} 2>/dev/null || true"
+              changed_when: false
 
-- name: '{{ app_name | upper }}: Install VueTorrent'
-  shell: |
-      pct exec {{ id }} -- docker exec -u 0 {{ app_name }} sh -c "
-      apk add --no-cache unzip curl &&
-      curl -L https://github.com/VueTorrent/VueTorrent/releases/latest/download/vuetorrent.zip -o /tmp/vuetorrent.zip &&
-      unzip -o /tmp/vuetorrent.zip -d / &&
-      chmod -R 755 /vuetorrent &&
-      rm /tmp/vuetorrent.zip"
-  changed_when: true
+            - name: '{{ app_name | upper }}: Start Docker Compose'
+              command: pct exec {{ id }} -- bash -c "cd {{ config.local }}/{{ app_name }} && docker compose up -d"
+              register: compose_output
+              changed_when: "'Created' in compose_output.stderr or 'Recreated' in compose_output.stderr"
 
-- name: '{{ app_name | upper }}: Wait for Service Ready'
-  wait_for:
-      host: '{{ instance.ip }}'
-      port: '{{ env.JARVIS_SERVICES[app_name].port }}'
-      delay: 3
-      timeout: 60
+            - name: '{{ app_name | upper }}: Wait for Services to be Ready'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: '{{ env.JARVIS_SERVICES[app_name].port }}'
+                  delay: 5
+                  timeout: 120
+        when: not healthy.app
+
+      - block:
+            - name: '{{ app_name | upper }}: Generate Password Hash'
+              shell: |
+                  python3 -c 'import base64, hashlib, os; password = os.environ.get("QB_PASSWORD", "").encode(); salt = os.urandom(16); key = hashlib.pbkdf2_hmac("sha512", password, salt, 100000); print("@ByteArray({}:{})".format(base64.b64encode(salt).decode(), base64.b64encode(key).decode()), end="")'
+              environment:
+                  QB_PASSWORD: '{{ env.JARVIS_ADMIN_PASSWORD }}'
+              register: qbit_password_hash
+              changed_when: false
+
+            - name: '{{ app_name | upper }}: Stop Container for Configuration'
+              command: pct exec {{ id }} -- docker stop {{ app_name }}
+              ignore_errors: true
+              changed_when: false
+              register: result
+
+            - name: '{{ app_name | upper }}: Configure Settings'
+              copy:
+                  dest: '{{ config.root }}/{{ app_name }}/qBittorrent.conf'
+                  content: |
+                      [Preferences]
+                      WebUI\HostHeaderValidation=false
+                      WebUI\AlternativeUIEnabled=true
+                      WebUI\RootFolder=/vuetorrent
+                      Downloads\SavePath=/downloads
+                      Downloads\TempPath=/downloads/incomplete
+                      Downloads\TempPathEnabled=true
+                      WebUI\AuthSubnetWhitelistEnabled=true
+                      WebUI\AuthSubnetWhitelist=127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+                      WebUI\Username={{ env.JARVIS_ADMIN_USERNAME }}
+                      WebUI\Password_PBKDF2={{ qbit_password_hash.stdout | trim }}
+                      BitTorrent\Session\DefaultSavePath=/downloads
+                      BitTorrent\Session\TempPath=/downloads/incomplete
+                      BitTorrent\Session\TempPathEnabled=true
+                      BitTorrent\Session\Port=6881
+                      Connection\PortRangeMin=6881
+                      Connection\UPnP=false
+                      Preferences\WebUI\CSRFProtection=false
+                      Preferences\Connection\ResolvePeerCountries=true
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
+
+            - name: '{{ app_name | upper }}: Configure Download Categories'
+              community.general.ini_file:
+                  path: '{{ config.root }}/{{ app_name }}/qBittorrent.conf'
+                  section: 'Preferences'
+                  option: '{{ qbit_item.key }}'
+                  value: '{{ qbit_item.value }}'
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
+              loop:
+                  - { key: 'Downloads\\SavePathHistory', value: '/downloads, /downloads/movies, /downloads/tv, /downloads/anime' }
+              loop_control:
+                  loop_var: qbit_item
+
+            - name: '{{ app_name | upper }}: Create Categories Config'
+              copy:
+                  dest: '{{ config.root }}/{{ app_name }}/categories.json'
+                  content: |
+                      {
+                          "movies": {
+                              "save_path": "/downloads/movies"
+                          },
+                          "tv": {
+                              "save_path": "/downloads/tv"
+                          },
+                          "anime": {
+                              "save_path": "/downloads/anime"
+                          }
+                      }
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
+
+            - name: '{{ app_name | upper }}: Start Container'
+              command: pct exec {{ id }} -- docker start {{ app_name }}
+              changed_when: false
+              register: start_result
+              until: start_result.rc == 0
+              retries: 5
+              delay: 5
+
+            - name: '{{ app_name | upper }}: Wait for Service Ready'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: '{{ env.JARVIS_SERVICES[app_name].port }}'
+                  delay: 3
+                  timeout: 60
+        when: not healthy.config
+
+  rescue:
+      - debug:
+            msg: '{{ app_name }} failed to deploy'
