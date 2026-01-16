@@ -1,0 +1,110 @@
+- vars:
+      app_name: sonarr
+      config_group: media
+      mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ config_group }}/{{ app_name }}'
+          local: '{{ instance.configs }}/{{ config_group }}/{{ app_name }}'
+  block:
+      - name: '{{ app_name | upper }}: Check Health Endpoint'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/ping'
+            method: GET
+            status_code: 200
+            timeout: 2
+        register: app_health
+        failed_when: false
+
+      - name: '{{ app_name | upper }}: Check Config Existence'
+        stat:
+            path: '{{ config.local }}/config.xml'
+        register: app_config_stat
+
+      - set_fact:
+            healthy:
+                app: '{{ (app_health.status | default(0)) == 200 }}'
+                config: '{{ app_config_stat.stat.exists }}'
+
+      - debug:
+            msg:
+                - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
+                - "{{ app_name | title }} Config Status: {{ 'Healthy' if healthy.config else 'Unhealthy' }}"
+
+      - block:
+            - name: '{{ app_name | upper }}: Configure Directories'
+              file:
+                  path: '{{ dir_item }}'
+                  state: directory
+                  mode: '0777'
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  recurse: true
+              loop:
+                  - '{{ config.root }}'
+              loop_control:
+                  loop_var: dir_item
+
+            - name: '{{ app_name | upper }}: Create docker-compose.yml'
+              copy:
+                  dest: '{{ config.root }}/docker-compose.yml'
+                  content: |-
+                      services:
+                        {{ app_name }}:
+                          container_name: {{ app_name }}
+                          image: lscr.io/linuxserver/sonarr:latest
+                          restart: unless-stopped
+                          security_opt:
+                            - no-new-privileges:true
+                          environment:
+                            - TZ={{ env.JARVIS_TZ }}
+                            - PUID={{ docker_user }}
+                            - PGID={{ docker_user }}
+                          ports:
+                            - {{ env.JARVIS_SERVICES[app_name].port }}:8989
+                          volumes:
+                            - {{ config.local }}:/config
+                            - /media/ssd/Media:/media
+                          healthcheck:
+                            test: ["CMD", "curl", "-f", "http://localhost:8989/ping"]
+                            interval: 30s
+                            timeout: 10s
+                            retries: 3
+                            start_period: 60s
+                          logging:
+                            driver: "json-file"
+                            options:
+                              max-size: "10m"
+                              max-file: "3"
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
+
+            - name: '{{ app_name | upper }}: Cleanup Existing Container'
+              command: pct exec {{ id }} -- bash -c "docker stop {{ app_name }} 2>/dev/null || true; docker rm {{ app_name }} 2>/dev/null || true"
+              changed_when: false
+
+            - name: '{{ app_name | upper }}: Start Docker Compose'
+              command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
+              register: compose_output
+              changed_when: "'Created' in compose_output.stderr or 'Recreated' in compose_output.stderr"
+
+            - name: '{{ app_name | upper }}: Wait for Services to be Ready'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: '{{ env.JARVIS_SERVICES[app_name].port }}'
+                  delay: 5
+                  timeout: 120
+        when: not healthy.app
+
+      - name: '{{ app_name | upper }}: Configure Service'
+        include_tasks: arrstack.yml
+        vars:
+            arr_app:
+                name: '{{ app_name }}'
+                port: '{{ env.JARVIS_SERVICES[app_name].port }}'
+                category: 'tv'
+                root_folder: '/media/TV'
+
+  rescue:
+      - debug:
+            msg: '{{ app_name }} failed to deploy'

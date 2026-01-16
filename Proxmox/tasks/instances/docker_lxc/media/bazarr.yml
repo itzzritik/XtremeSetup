@@ -1,95 +1,192 @@
-- set_fact:
+- vars:
       app_name: bazarr
+      config_group: media
+      mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ config_group }}/{{ app_name }}'
+          local: '{{ instance.configs }}/{{ config_group }}/{{ app_name }}'
+  block:
+      - name: '{{ app_name | upper }}: Check Health Endpoint'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/system/status'
+            method: GET
+            status_code: 200
+            timeout: 2
+        register: app_health
+        failed_when: false
 
-- name: '{{ app_name | upper }}: Wait for API Ready'
-  uri:
-      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/system/status'
-      method: GET
-      status_code: [200, 401]
-  register: bazarr_health
-  until: bazarr_health.status in [200, 401]
-  retries: 30
-  delay: 2
+      - name: '{{ app_name | upper }}: Check Config Existence'
+        stat:
+            path: '{{ config.local }}/config/config.yaml'
+        register: app_config_stat
 
-- name: '{{ app_name | upper }}: Debug Cat Config File'
-  shell: pct exec {{ id }} -- cat {{ config.local }}/{{ app_name }}/config/config.yaml
-  register: bazarr_config_content
-  changed_when: false
+      - set_fact:
+            healthy:
+                app: '{{ (app_health.status | default(0)) == 200 }}'
+                config: '{{ app_config_stat.stat.exists }}'
 
-- name: '{{ app_name | upper }}: Extract API Key'
-  shell: |
-      pct exec {{ id }} -- grep -oP 'apikey: \K[a-z0-9]+' {{ config.local }}/{{ app_name }}/config/config.yaml
-  register: bazarr_api_key
-  changed_when: false
+      - debug:
+            msg:
+                - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
+                - "{{ app_name | title }} Config Status: {{ 'Healthy' if healthy.config else 'Unhealthy' }}"
 
-- set_fact:
-      bazarr_api: '{{ bazarr_api_key.stdout }}'
+      - block:
+            - name: '{{ app_name | upper }}: Configure Directories'
+              file:
+                  path: '{{ dir_item }}'
+                  state: directory
+                  mode: '0777'
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  recurse: true
+              loop:
+                  - '{{ config.root }}'
+              loop_control:
+                  loop_var: dir_item
 
-- name: '{{ app_name | upper }}: Configure Radarr Connection'
-  uri:
-      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/system/settings'
-      method: POST
-      headers:
-          X-Api-Key: '{{ bazarr_api }}'
-          Content-Type: 'application/json'
-      body_format: json
-      body:
-          settings:
-              radarr:
-                  - ip: 'radarr'
-                    port: '{{ env.JARVIS_SERVICES.radarr.port }}'
-                    base_url: '/'
-                    ssl: false
-                    apikey: '{{ radarr_api }}'
-                    full_update: 'Daily'
-                    only_monitored: false
-      status_code: [200, 204, 400]
-  register: bazarr_radarr_config
-  failed_when: bazarr_radarr_config.status == 400 and 'already configured' not in (bazarr_radarr_config.content | default(''))
-  changed_when: bazarr_radarr_config.status in [200, 204]
+            - name: '{{ app_name | upper }}: Create docker-compose.yml'
+              copy:
+                  dest: '{{ config.root }}/docker-compose.yml'
+                  content: |-
+                      services:
+                        {{ app_name }}:
+                          container_name: {{ app_name }}
+                          image: lscr.io/linuxserver/bazarr:latest
+                          restart: unless-stopped
+                          security_opt:
+                            - no-new-privileges:true
+                          environment:
+                            - TZ={{ env.JARVIS_TZ }}
+                            - PUID={{ docker_user }}
+                            - PGID={{ docker_user }}
+                          ports:
+                            - {{ env.JARVIS_SERVICES[app_name].port }}:6767
+                          volumes:
+                            - {{ config.local }}:/config
+                            - /media/ssd/Media:/media
+                          healthcheck:
+                            test: ["CMD", "curl", "-f", "http://localhost:6767/api/system/status"]
+                            interval: 30s
+                            timeout: 10s
+                            retries: 3
+                            start_period: 60s
+                          logging:
+                            driver: "json-file"
+                            options:
+                              max-size: "10m"
+                              max-file: "3"
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
 
-- name: '{{ app_name | upper }}: Configure Sonarr Connection'
-  uri:
-      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/system/settings'
-      method: POST
-      headers:
-          X-Api-Key: '{{ bazarr_api }}'
-          Content-Type: 'application/json'
-      body_format: json
-      body:
-          settings:
-              sonarr:
-                  - ip: 'sonarr'
-                    port: '{{ env.JARVIS_SERVICES.sonarr.port }}'
-                    base_url: '/'
-                    ssl: false
-                    apikey: '{{ sonarr_api }}'
-                    full_update: 'Daily'
-                    only_monitored: false
-      status_code: [200, 204, 400]
-  register: bazarr_sonarr_config
-  failed_when: bazarr_sonarr_config.status == 400 and 'already configured' not in (bazarr_sonarr_config.content | default(''))
-  changed_when: bazarr_sonarr_config.status in [200, 204]
+            - name: '{{ app_name | upper }}: Cleanup Existing Container'
+              command: pct exec {{ id }} -- bash -c "docker stop {{ app_name }} 2>/dev/null || true; docker rm {{ app_name }} 2>/dev/null || true"
+              changed_when: false
 
-- name: '{{ app_name | upper }}: Configure Sonarr-Anime Connection'
-  uri:
-      url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/system/settings'
-      method: POST
-      headers:
-          X-Api-Key: '{{ bazarr_api }}'
-          Content-Type: 'application/json'
-      body_format: json
-      body:
-          settings:
-              sonarr:
-                  - ip: 'sonarr-anime'
-                    port: "{{ env.JARVIS_SERVICES['sonarr-anime'].port }}"
-                    base_url: '/'
-                    ssl: false
-                    apikey: '{{ sonarr_anime_api }}'
-                    full_update: 'Daily'
-                    only_monitored: false
-      status_code: [200, 204, 400]
-  register: bazarr_sonarr_anime_config
-  failed_when: bazarr_sonarr_anime_config.status == 400 and 'already configured' not in (bazarr_sonarr_anime_config.content | default(''))
-  changed_when: bazarr_sonarr_anime_config.status in [200, 204]
+            - name: '{{ app_name | upper }}: Start Docker Compose'
+              command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
+              register: compose_output
+              changed_when: "'Created' in compose_output.stderr or 'Recreated' in compose_output.stderr"
+
+            - name: '{{ app_name | upper }}: Wait for Services to be Ready'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: '{{ env.JARVIS_SERVICES[app_name].port }}'
+                  delay: 5
+                  timeout: 120
+        when: not healthy.app
+
+      - name: '{{ app_name | upper }}: Wait for API Ready'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/system/status'
+            method: GET
+            status_code: [200, 401]
+        register: bazarr_health
+        until: bazarr_health.status in [200, 401]
+        retries: 30
+        delay: 2
+
+      - name: '{{ app_name | upper }}: Extract API Key'
+        shell: |
+            pct exec {{ id }} -- grep -oP 'apikey: \K[a-z0-9]+' {{ config.local }}/config/config.yaml
+        register: bazarr_api_key
+        changed_when: false
+
+      - set_fact:
+            bazarr_api: '{{ bazarr_api_key.stdout }}'
+
+      - name: '{{ app_name | upper }}: Configure Radarr Connection'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/system/settings'
+            method: POST
+            headers:
+                X-Api-Key: '{{ bazarr_api }}'
+                Content-Type: 'application/json'
+            body_format: json
+            body:
+                settings:
+                    radarr:
+                        - ip: '{{ instance.ip }}'
+                          port: '{{ env.JARVIS_SERVICES.radarr.port }}'
+                          base_url: '/'
+                          ssl: false
+                          apikey: '{{ radarr_api }}'
+                          full_update: 'Daily'
+                          only_monitored: false
+            status_code: [200, 204, 400]
+        register: bazarr_radarr_config
+        failed_when: bazarr_radarr_config.status == 400 and 'already configured' not in (bazarr_radarr_config.content | default(''))
+        changed_when: bazarr_radarr_config.status in [200, 204]
+        when: radarr_api != ""
+
+      - name: '{{ app_name | upper }}: Configure Sonarr Connection'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/system/settings'
+            method: POST
+            headers:
+                X-Api-Key: '{{ bazarr_api }}'
+                Content-Type: 'application/json'
+            body_format: json
+            body:
+                settings:
+                    sonarr:
+                        - ip: '{{ instance.ip }}'
+                          port: '{{ env.JARVIS_SERVICES.sonarr.port }}'
+                          base_url: '/'
+                          ssl: false
+                          apikey: '{{ sonarr_api }}'
+                          full_update: 'Daily'
+                          only_monitored: false
+            status_code: [200, 204, 400]
+        register: bazarr_sonarr_config
+        failed_when: bazarr_sonarr_config.status == 400 and 'already configured' not in (bazarr_sonarr_config.content | default(''))
+        changed_when: bazarr_sonarr_config.status in [200, 204]
+        when: sonarr_api != ""
+
+      - name: '{{ app_name | upper }}: Configure Sonarr-Anime Connection'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/api/system/settings'
+            method: POST
+            headers:
+                X-Api-Key: '{{ bazarr_api }}'
+                Content-Type: 'application/json'
+            body_format: json
+            body:
+                settings:
+                    sonarr:
+                        - ip: '{{ instance.ip }}'
+                          port: "{{ env.JARVIS_SERVICES['sonarr-anime'].port }}"
+                          base_url: '/'
+                          ssl: false
+                          apikey: '{{ sonarr_anime_api }}'
+                          full_update: 'Daily'
+                          only_monitored: false
+            status_code: [200, 204, 400]
+        register: bazarr_sonarr_anime_config
+        failed_when: bazarr_sonarr_anime_config.status == 400 and 'already configured' not in (bazarr_sonarr_anime_config.content | default(''))
+        changed_when: bazarr_sonarr_anime_config.status in [200, 204]
+        when: sonarr_anime_api != ""
+
+  rescue:
+      - debug:
+            msg: '{{ app_name }} failed to deploy'

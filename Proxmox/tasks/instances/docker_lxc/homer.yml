@@ -1,12 +1,11 @@
-- block:
-      - set_fact:
-            app_name: homer
-            mapped_uid: '{{ instance.subuid | int + 1000 }}'
-            cache_buster: '{{ 999999 | random | to_uuid | hash("md5") | truncate(8, True, "") }}'
-      - set_fact:
-            config:
-                root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
-                local: '{{ instance.configs }}/{{ app_name }}'
+- vars:
+      app_name: homer
+      mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      cache_buster: '{{ 999999 | random | to_uuid | hash("md5") | truncate(8, True, "") }}'
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+          local: '{{ instance.configs }}/{{ app_name }}'
+  block:
       - name: '{{ app_name | upper }}: Check Health Endpoint'
         uri:
             url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/'
@@ -27,33 +26,32 @@
         failed_when: false
       - set_fact:
             healthy:
-                app: '{{ (homer_health.status | default(0)) == 200 }}'
-                config: "{{ (homer_health.status | default(0)) == 200 and (homer_config_response.status | default(0)) == 200 and ('stylesheet' in (homer_config_response.content | default('') | from_yaml | default({}))) }}"
+                app: '{{ homer_health.status | default(0) == 200 }}'
+                config: '{{ healthy.app and homer_config_response.status | default(0) == 200 and "stylesheet" in (homer_config_response.content | default("") | from_yaml | default({})) }}'
       - debug:
             msg:
                 - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
                 - "{{ app_name | title }} Config Status: {{ 'Healthy' if healthy.config else 'Unhealthy' }}"
       - block:
-            - name: '{{ app_name | upper }}: Clean assets directory'
-              file:
-                  path: '{{ config.root }}'
-                  state: absent
-              when: not healthy.app
-            - name: '{{ app_name | upper }}: Configure Directories'
-              file:
-                  path: '{{ dir_item }}'
-                  state: directory
-                  mode: '0777'
-                  owner: '{{ mapped_uid }}'
-                  group: '{{ mapped_uid }}'
-                  recurse: true
-              loop:
-                  - '{{ config.root }}'
-                  - '{{ config.root }}/icons'
-              loop_control:
-                  loop_var: dir_item
             - name: '{{ app_name | upper }}: Generate configuration'
               block:
+                  - name: '{{ app_name | upper }}: Clean assets directory'
+                    file:
+                        path: '{{ config.root }}'
+                        state: absent
+                  - name: '{{ app_name | upper }}: Configure Directories'
+                    file:
+                        path: '{{ dir_item }}'
+                        state: directory
+                        mode: '0777'
+                        owner: '{{ mapped_uid }}'
+                        group: '{{ mapped_uid }}'
+                        recurse: true
+                    loop:
+                        - '{{ config.root }}'
+                        - '{{ config.root }}/icons'
+                    loop_control:
+                        loop_var: dir_item
                   - name: '{{ app_name | upper }}: Create config.yml'
                     copy:
                         dest: '{{ config.root }}/config.yml'
@@ -199,10 +197,49 @@
                         owner: '{{ mapped_uid }}'
                         group: '{{ mapped_uid }}'
                         mode: '0666'
+        when: not healthy.config
+
+      - block:
+            - name: '{{ app_name | upper }}: Create docker-compose.yml'
+              copy:
+                  dest: '{{ config.root }}/docker-compose.yml'
+                  content: |-
+                      services:
+                        {{ app_name }}:
+                          container_name: {{ app_name }}
+                          image: b4bz/homer
+                          restart: unless-stopped
+                          ports:
+                            - "{{ env.JARVIS_SERVICES[app_name].port }}:8080"
+                          volumes:
+                            - {{ config.local }}:/www/assets
+                            - {{ config.local }}/index.html:/www/index.html
+                          environment:
+                            - INIT_ASSETS=0
+                          healthcheck:
+                            test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080"]
+                            interval: 30s
+                            timeout: 10s
+                            retries: 3
+                            start_period: 30s
+                          logging:
+                            driver: "json-file"
+                            options:
+                              max-size: "10m"
+                              max-file: "3"
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
+            - name: '{{ app_name | upper }}: Start Docker Compose'
+              command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
+              register: homer_compose
+              changed_when: "'Created' in homer_compose.stderr or 'Recreated' in homer_compose.stderr"
+        when: not healthy.app
+
       - name: '{{ app_name | upper }}: Restart for Config Update'
         command: pct exec {{ id }} -- docker restart {{ app_name }}
         when: healthy.app and (not healthy.config)
-        changed_when: true
+
   rescue:
       - debug:
             msg: '{{ app_name }} failed to deploy'

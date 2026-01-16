@@ -1,8 +1,19 @@
+- name: '{{ arr_app.name | upper }}: Wait for Config File'
+  stat:
+      path: '{{ config.root }}/config.xml'
+  register: arr_config_check
+  retries: 12
+  delay: 5
+  until: arr_config_check.stat.exists
+
 - name: '{{ arr_app.name | upper }}: Extract API Key'
   shell: |
-      pct exec {{ id }} -- cat {{ config.local }}/{{ arr_app.config_dir }}/config.xml | grep -oP '(?<=<ApiKey>)[^<]+'
+      pct exec {{ id }} -- cat {{ config.local }}/config.xml | grep -oP '(?<=<ApiKey>)[^<]+'
   register: arr_api_key
   changed_when: false
+  retries: 5
+  delay: 5
+  until: arr_api_key.rc == 0
 
 - name: '{{ arr_app.name | upper }}: Add qBittorrent Download Client'
   uri:
@@ -21,7 +32,7 @@
           name: 'qBittorrent'
           fields:
               - name: 'host'
-                value: 'qbittorrent'
+                value: '{{ instance.ip }}'
               - name: 'port'
                 value: '{{ env.JARVIS_SERVICES.qbittorrent.port }}'
               - name: 'username'

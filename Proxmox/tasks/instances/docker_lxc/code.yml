@@ -1,12 +1,10 @@
-- block:
-      - set_fact:
-            app_name: code
-            mapped_uid: '{{ instance.subuid | int + 1000 }}'
-      - set_fact:
-            config:
-                root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
-                local: '{{ instance.configs }}/{{ app_name }}'
-
+- vars:
+      app_name: code
+      mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+          local: '{{ instance.configs }}/{{ app_name }}'
+  block:
       - name: '{{ app_name | upper }}: Check Health Endpoint'
         uri:
             url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/healthz'
@@ -16,34 +14,28 @@
         register: code_health
         failed_when: false
 
-      - name: '{{ app_name | upper }}: Check Settings File'
-        stat:
-            path: '{{ config.local }}/data/User/settings.json'
-        register: code_settings_stat
-
-      - name: '{{ app_name | upper }}: Check Extensions File'
-        stat:
-            path: '{{ config.local }}/data/extensions/extensions.json'
-        register: code_extensions_stat
-
       - name: '{{ app_name | upper }}: Validate Settings JSON'
-        slurp:
-            src: '{{ config.local }}/data/User/settings.json'
-        register: code_settings_content
-        when: code_settings_stat.stat.exists
+        shell: |
+            [ -f "{{ config.local }}/data/User/settings.json" ] && \
+            [ -s "{{ config.local }}/data/User/settings.json" ] && \
+            jq empty "{{ config.local }}/data/User/settings.json" 2>/dev/null
+        register: code_settings_valid
         failed_when: false
+        changed_when: false
 
       - name: '{{ app_name | upper }}: Validate Extensions JSON'
-        slurp:
-            src: '{{ config.local }}/data/extensions/extensions.json'
-        register: code_extensions_content
-        when: code_extensions_stat.stat.exists
+        shell: |
+            [ -f "{{ config.local }}/data/extensions/extensions.json" ] && \
+            [ -s "{{ config.local }}/data/extensions/extensions.json" ] && \
+            jq empty "{{ config.local }}/data/extensions/extensions.json" 2>/dev/null
+        register: code_extensions_valid
         failed_when: false
+        changed_when: false
 
       - set_fact:
             healthy:
                 app: '{{ (code_health.status | default(0)) == 200 }}'
-                config: "{{ code_settings_stat.stat.exists and (code_settings_content.content | default('') | b64decode | from_json | default(false)) and code_extensions_stat.stat.exists and (code_extensions_content.content | default('') | b64decode | from_json | default(false)) }}"
+                config: '{{ (code_settings_valid.rc | default(1)) == 0 and (code_extensions_valid.rc | default(1)) == 0 }}'
       - debug:
             msg:
                 - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
@@ -63,23 +55,6 @@
                   - '{{ config.root }}/data/User'
               loop_control:
                   loop_var: dir_item
-            - name: '{{ app_name | upper }}: Create settings.json'
-              copy:
-                  dest: '{{ config.root }}/data/User/settings.json'
-                  content: |
-                      {
-                          "workbench.colorTheme": "Vira Carbon High Contrast",
-                          "workbench.iconTheme": "vira-icons-carbon",
-                          "viraTheme.accent": "Vira"
-                      }
-                  owner: '{{ mapped_uid }}'
-                  group: '{{ mapped_uid }}'
-                  mode: '0666'
-            - name: '{{ app_name | upper }}: Force Directory Ownership'
-              command: chown -R {{ mapped_uid }}:{{ mapped_uid }} {{ config.root }}
-              changed_when: false
-        when: (not healthy.app) or (not healthy.config)
-      - block:
             - name: '{{ app_name | upper }}: Create docker-compose.yml'
               copy:
                   dest: '{{ config.root }}/docker-compose.yml'
@@ -115,9 +90,6 @@
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
                   mode: '0666'
-            - name: '{{ app_name | upper }}: Cleanup Existing Container'
-              command: pct exec {{ id }} -- bash -c "docker rm -f {{ app_name }} 2>/dev/null || true"
-              changed_when: false
             - name: '{{ app_name | upper }}: Start Docker Compose'
               command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
               register: code_compose
@@ -128,6 +100,20 @@
                   port: '{{ env.JARVIS_SERVICES[app_name].port }}'
                   delay: 5
                   timeout: 300
+        when: not healthy.app
+      - block:
+            - name: '{{ app_name | upper }}: Create settings.json'
+              copy:
+                  dest: '{{ config.root }}/data/User/settings.json'
+                  content: |
+                      {
+                          "workbench.colorTheme": "Vira Carbon High Contrast",
+                          "workbench.iconTheme": "vira-icons-carbon",
+                          "viraTheme.accent": "Vira"
+                      }
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
             - name: '{{ app_name | upper }}: Install Extensions'
               command: pct exec {{ id }} -- docker exec {{ app_name }} /app/code-server/bin/code-server --extensions-dir /config/extensions --user-data-dir /config/data {{ extensions | map('regex_replace', '^', '--install-extension ') | join(' ') }} --force
               vars:
@@ -139,20 +125,7 @@
             - name: '{{ app_name | upper }}: Restart Container'
               command: pct exec {{ id }} -- docker restart {{ app_name }}
               changed_when: false
-        when: not healthy.app
-      - block:
-            - name: '{{ app_name | upper }}: Install Extensions (Update)'
-              command: pct exec {{ id }} -- docker exec {{ app_name }} /app/code-server/bin/code-server --extensions-dir /config/extensions --user-data-dir /config/data {{ extensions | map('regex_replace', '^', '--install-extension ') | join(' ') }} --force
-              vars:
-                  extensions:
-                      - redhat.vscode-yaml
-                      - foxundermoon.shell-format
-                      - vira.vsc-vira-theme
-              ignore_errors: true
-            - name: '{{ app_name | upper }}: Restart for Config Update'
-              command: pct exec {{ id }} -- docker restart {{ app_name }}
-              changed_when: true
-        when: healthy.app and (not healthy.config)
+        when: not healthy.config
   rescue:
       - debug:
             msg: '{{ app_name }} failed to deploy'

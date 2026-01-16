@@ -1,14 +1,12 @@
-- block:
-      - set_fact:
-            app_name: qbittorrent
-            config_group: media
-            mapped_uid: '{{ instance.subuid | int + 1000 }}'
-
-      - set_fact:
-            config:
-                root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ config_group }}'
-                local: '{{ instance.configs }}/{{ config_group }}'
-
+- vars:
+      app_name: qbittorrent
+      theme_name: VueTorrent
+      config_group: media
+      mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ config_group }}/{{ app_name }}'
+          local: '{{ instance.configs }}/{{ config_group }}/{{ app_name }}'
+  block:
       - name: '{{ app_name | upper }}: Check Health & UI'
         uri:
             url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/'
@@ -22,7 +20,7 @@
       - set_fact:
             healthy:
                 app: '{{ (app_health.status | default(0)) == 200 }}'
-                config: "{{ (env.JARVIS_BOT_NAME + ' Torrent') in (app_health.content | default('')) }}"
+                config: "{{ theme_name in (app_health.content | default('')) }}"
 
       - debug:
             msg:
@@ -39,14 +37,14 @@
                   group: '{{ mapped_uid }}'
                   recurse: true
               loop:
-                  - '{{ config.root }}/{{ app_name }}'
+                  - '{{ config.root }}'
                   - '/mnt/ssd/Media/Downloads'
               loop_control:
                   loop_var: dir_item
 
             - name: '{{ app_name | upper }}: Create docker-compose.yml'
               copy:
-                  dest: '{{ config.root }}/{{ app_name }}/docker-compose.yml'
+                  dest: '{{ config.root }}/docker-compose.yml'
                   content: |-
                       services:
                         {{ app_name }}:
@@ -66,7 +64,7 @@
                             - 6881:6881
                             - 6881:6881/udp
                           volumes:
-                            - {{ config.local }}/{{ app_name }}:/config/qBittorrent
+                            - {{ config.local }}:/config/qBittorrent
                             - /media/ssd/Media/Downloads:/downloads
                           healthcheck:
                             test: ["CMD", "curl", "-f", "http://localhost:8080"]
@@ -88,7 +86,7 @@
               changed_when: false
 
             - name: '{{ app_name | upper }}: Start Docker Compose'
-              command: pct exec {{ id }} -- bash -c "cd {{ config.local }}/{{ app_name }} && docker compose up -d"
+              command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
               register: compose_output
               changed_when: "'Created' in compose_output.stderr or 'Recreated' in compose_output.stderr"
 
@@ -117,12 +115,12 @@
 
             - name: '{{ app_name | upper }}: Configure Settings'
               copy:
-                  dest: '{{ config.root }}/{{ app_name }}/qBittorrent.conf'
+                  dest: '{{ config.root }}/qBittorrent.conf'
                   content: |
                       [Preferences]
                       WebUI\HostHeaderValidation=false
                       WebUI\AlternativeUIEnabled=true
-                      WebUI\RootFolder=/vuetorrent
+                      WebUI\RootFolder=/{{ theme_name | lower }}
                       Downloads\SavePath=/downloads
                       Downloads\TempPath=/downloads/incomplete
                       Downloads\TempPathEnabled=true
@@ -144,7 +142,7 @@
 
             - name: '{{ app_name | upper }}: Configure Download Categories'
               community.general.ini_file:
-                  path: '{{ config.root }}/{{ app_name }}/qBittorrent.conf'
+                  path: '{{ config.root }}/qBittorrent.conf'
                   section: 'Preferences'
                   option: '{{ qbit_item.key }}'
                   value: '{{ qbit_item.value }}'
@@ -158,7 +156,7 @@
 
             - name: '{{ app_name | upper }}: Create Categories Config'
               copy:
-                  dest: '{{ config.root }}/{{ app_name }}/categories.json'
+                  dest: '{{ config.root }}/categories.json'
                   content: |
                       {
                           "movies": {
