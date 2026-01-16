@@ -14,28 +14,18 @@
         register: code_health
         failed_when: false
 
-      - name: '{{ app_name | upper }}: Validate Settings JSON'
+      - name: '{{ app_name | upper }}: Check Config Content'
         shell: |
-            [ -f "{{ config.local }}/data/User/settings.json" ] && \
-            [ -s "{{ config.local }}/data/User/settings.json" ] && \
-            jq empty "{{ config.local }}/data/User/settings.json" 2>/dev/null
-        register: code_settings_valid
-        failed_when: false
-        changed_when: false
-
-      - name: '{{ app_name | upper }}: Validate Extensions JSON'
-        shell: |
-            [ -f "{{ config.local }}/data/extensions/extensions.json" ] && \
-            [ -s "{{ config.local }}/data/extensions/extensions.json" ] && \
-            jq empty "{{ config.local }}/data/extensions/extensions.json" 2>/dev/null
-        register: code_extensions_valid
+            grep -q "vira" "{{ config.root }}/data/User/settings.json" && \
+            grep -q "vira" "{{ config.root }}/data/extensions/extensions.json"
+        register: code_config_check
         failed_when: false
         changed_when: false
 
       - set_fact:
             healthy:
                 app: '{{ (code_health.status | default(0)) == 200 }}'
-                config: '{{ (code_settings_valid.rc | default(1)) == 0 and (code_extensions_valid.rc | default(1)) == 0 }}'
+                config: '{{ (code_config_check.rc | default(1)) == 0 }}'
       - debug:
             msg:
                 - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
@@ -77,7 +67,7 @@
                             - /:/docker
                             - {{ instance.configs }}:/AppConfigs
                           healthcheck:
-                            test: ["CMD", "curl", "-f", "-k", "https://localhost:8443"]
+                            test: ["CMD", "curl", "-f", "-k", "https://localhost:8443/healthz"]
                             interval: 30s
                             timeout: 10s
                             retries: 3
