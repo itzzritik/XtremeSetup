@@ -122,6 +122,7 @@
             - voidauth
             - homer
             - code
+            - alist
             - media
         loop_control:
             loop_var: docker_app_item

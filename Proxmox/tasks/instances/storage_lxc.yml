@@ -1,5 +1,5 @@
 - vars:
-      id: '{{ env.JARVIS_SERVICES.files.id }}'
+      id: '{{ env.JARVIS_SERVICES.storage.id }}'
       instance:
           hostname: storage
           memory: 1024
@@ -24,7 +24,38 @@
         failed_when: false
         changed_when: false
 
-      - name: '{{ instance.hostname | upper }}: Provision Instance'
+      - name: '{{ instance.hostname | upper }}: Check SMB Service'
+        command: smbclient -L //{{ instance.ip }} -U {{ env.JARVIS_ADMIN_USERNAME }}%{{ env.JARVIS_ADMIN_PASSWORD }}
+        register: smb_check
+        failed_when: false
+        changed_when: false
+        when: instance_check.rc == 0
+
+      - name: '{{ instance.hostname | upper }}: Check NFS Service'
+        command: showmount -e {{ instance.ip }}
+        register: nfs_check
+        failed_when: false
+        changed_when: false
+        when: instance_check.rc == 0
+
+      - name: '{{ instance.hostname | upper }}: Check Privileged Status'
+        shell: "pct config {{ id }} | grep -q 'unprivileged: 1'"
+        register: is_unprivileged
+        failed_when: false
+        changed_when: false
+        when: instance_check.rc == 0
+
+      - name: '{{ instance.hostname | upper }}: Force Rebuild if Unprivileged (NFS Req)'
+        shell: pct stop {{ id }} && pct destroy {{ id }}
+        when: instance_check.rc == 0 and is_unprivileged.rc == 0
+        changed_when: true
+
+      - name: '{{ instance.hostname | upper }}: Reset Instance Check'
+        set_fact:
+            instance_check: { 'rc': 1 }
+        when: instance_check.rc == 0 and is_unprivileged.rc == 0
+
+      - name: '{{ instance.hostname | upper }}: Provision Infrastructure'
         when: instance_check.rc != 0
         block:
             - name: '{{ instance.hostname | upper }}: Cleanup Existing LXC'
@@ -49,7 +80,7 @@
                   --swap {{ instance.swap }}
                   --rootfs {{ instance.storage }}:8
                   --net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }}
-                  --unprivileged 1
+                  --unprivileged 0
                   --features nesting=1
                   --onboot 1
 
@@ -70,20 +101,21 @@
               retries: 10
               delay: 3
 
-            - name: '{{ instance.hostname | upper }}: Install SMB & NFS'
+      - name: '{{ instance.hostname | upper }}: SMB Setup'
+        when: instance_check.rc != 0 or (smb_check is defined and smb_check.rc != 0)
+        block:
+            - name: '{{ instance.hostname | upper }}: Install Samba'
               shell: |
                   pct exec {{ id }} -- bash -c '
                   export DEBIAN_FRONTEND=noninteractive
-                  apt-get update && apt-get install -y \
-                      samba nfs-kernel-server
+                  apt-get update && apt-get install -y samba
                   '
               retries: 2
               delay: 5
 
-            - name: '{{ instance.hostname | upper }}: Configure SMB & NFS'
+            - name: '{{ instance.hostname | upper }}: Configure Samba'
               shell: |
                   pct exec {{ id }} -- bash -c "
-                  # Configure Samba
                   cat <<'EOF' > /etc/samba/smb.conf
                   [global]
                   workgroup = WORKGROUP
@@ -116,7 +148,53 @@
                   {% endfor %}
                   EOF
 
-                  # Configure NFS
+                  (echo '{{ env.JARVIS_ADMIN_PASSWORD }}'; echo '{{ env.JARVIS_ADMIN_PASSWORD }}') | smbpasswd -a -s {{ env.JARVIS_ADMIN_USERNAME }}
+                  smbpasswd -e {{ env.JARVIS_ADMIN_USERNAME }}
+
+                  {% for share in shares %}
+                  chmod -R {{ '777' if not share.auth_required else '775' }} {{ share.path }} 2>/dev/null || true
+                  {% endfor %}
+
+                  systemctl enable --now smbd nmbd 2>/dev/null || true
+                  systemctl restart smbd nmbd
+                  "
+
+      - name: '{{ instance.hostname | upper }}: NFS Setup'
+        when: instance_check.rc != 0 or (nfs_check is defined and nfs_check.rc != 0)
+        block:
+            - name: '{{ instance.hostname | upper }}: Configure AppArmor (NFS Support)'
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ id }}.conf'
+                  marker: '# {mark} ANSIBLE NFS'
+                  block: |
+                      lxc.apparmor.profile: unconfined
+
+            - name: '{{ instance.hostname | upper }}: Restart LXC (Apply Features)'
+              shell: pct stop {{ id }} && pct start {{ id }}
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Wait for Network'
+              shell: pct exec {{ id }} -- ping -c 1 -W 2 {{ env.JARVIS_DNS_SERVERS[0] }}
+              register: network_check_nfs
+              until: network_check_nfs.rc == 0
+              retries: 10
+              delay: 3
+
+            - name: '{{ instance.hostname | upper }}: Install NFS'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  export DEBIAN_FRONTEND=noninteractive
+                  apt-get update && apt-get install -y nfs-kernel-server
+                  '
+              retries: 2
+              delay: 5
+
+            - name: '{{ instance.hostname | upper }}: Configure NFS'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  systemctl mask rpc-gssd rpc-svcgssd
+                  systemctl disable --now rpc-gssd rpc-svcgssd || true
+
                   cat <<'EOF' > /etc/exports
                   {% for share in shares %}
                   {% if share.auth_required %}
@@ -127,36 +205,28 @@
                   {% endfor %}
                   EOF
 
-                  # Create SMB user
-                  (echo '{{ env.JARVIS_ADMIN_PASSWORD }}'; echo '{{ env.JARVIS_ADMIN_PASSWORD }}') | smbpasswd -a -s {{ env.JARVIS_ADMIN_USERNAME }}
-                  smbpasswd -e {{ env.JARVIS_ADMIN_USERNAME }}
-
-                  # Set permissions (NTFS-compatible)
                   {% for share in shares %}
                   chmod -R {{ '777' if not share.auth_required else '775' }} {{ share.path }} 2>/dev/null || true
                   {% endfor %}
 
-                  # Export NFS shares
                   exportfs -ra
 
-                  # Enable and start all services
-                  systemctl enable --now smbd nmbd rpcbind nfs-kernel-server 2>/dev/null || true
+                  systemctl enable --now rpcbind nfs-kernel-server 2>/dev/null || true
+                  systemctl restart rpcbind nfs-kernel-server
                   "
-              no_log: true
 
-            - name: '{{ instance.hostname | upper }}: Verify Services'
-              shell: |
-                  pct exec {{ id }} -- bash -c '
-                  systemctl is-active smbd
-                  systemctl is-active nmbd
-                  systemctl is-active nfs-kernel-server
-                  '
-              register: service_status
-              failed_when: false
+      - name: '{{ instance.hostname | upper }}: Verify Services'
+        shell: |
+            pct exec {{ id }} -- bash -c '
+            echo "SMB: $(systemctl is-active smbd)"
+            echo "NFS: $(systemctl is-active nfs-kernel-server)"
+            '
+        register: service_status
+        failed_when: false
 
-            - name: '{{ instance.hostname | upper }}: Show Service Status'
-              debug:
-                  msg: 'Services: {{ service_status.stdout_lines }}'
+      - name: '{{ instance.hostname | upper }}: Show Service Status'
+        debug:
+            msg: '{{ service_status.stdout_lines }}'
 
   rescue:
       - debug:

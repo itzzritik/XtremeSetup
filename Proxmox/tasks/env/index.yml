@@ -1,0 +1,82 @@
+---
+- name: Load Services Configuration
+  include_vars:
+      file: tasks/env/services.yml
+      name: service_defs
+
+- vars:
+      project: jarvis
+      doppler_required_secrets:
+          - JARVIS_ADMIN_EMAIL
+          - JARVIS_ADMIN_NAME
+          - JARVIS_ADMIN_PASSWORD
+          - JARVIS_AUTH_GITHUB_CLIENT_ID
+          - JARVIS_AUTH_GITHUB_CLIENT_SECRET
+          - JARVIS_AUTH_GOOGLE_APP_PASSWORD
+          - JARVIS_AUTH_GOOGLE_CLIENT_ID
+          - JARVIS_AUTH_GOOGLE_CLIENT_SECRET
+          - JARVIS_AUTH_X_CLIENT_ID
+          - JARVIS_AUTH_X_CLIENT_SECRET
+          - JARVIS_VOIDAUTH_STORAGE_KEY
+          - JARVIS_BOT_EMAIL
+          - JARVIS_CF_DNS_API_TOKEN
+          - JARVIS_CF_TUNNEL_TOKEN
+          - JARVIS_CF_R2_ENDPOINT
+          - JARVIS_CF_R2_TOKENS
+          - JARVIS_DOMAIN
+          - JARVIS_GOOGLE_SERVICE_JSON
+          - JARVIS_GITHUB_TOKEN_SSH
+          - JARVIS_HA_DECRYPT_KEY
+          - JARVIS_POSTGRES_PASSWORD
+      local_config:
+          JARVIS_BOT_NAME: '{{ project | title }}'
+          JARVIS_DIR: '/root/.{{ project }}'
+          JARVIS_CONFIGS_DIR: '/root/.{{ project }}/configs'
+          JARVIS_ADMIN_USERNAME: 'root'
+          JARVIS_NETWORK_PREFIX: '192.168.68'
+          JARVIS_GATEWAY: '{{ local_config.JARVIS_NETWORK_PREFIX }}.1'
+          JARVIS_DNS_SERVERS: ['8.8.8.8', '8.8.4.4']
+          JARVIS_TZ: 'Asia/Kolkata'
+          JARVIS_CERT_RESOLVER: 'letsencrypt'
+          JARVIS_COMMUNITY_SCRIPTS_URL: 'https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main'
+          JARVIS_ICON_CDN: 'https://cdn.jsdelivr.net/gh/selfhst/icons@main/svg/'
+          JARVIS_SERVICES: '{{ service_defs.JARVIS_SERVICES }}'
+
+  block:
+      - name: Ensure Doppler is Installed
+        homebrew:
+            name: dopplerhq/cli/doppler
+            state: present
+
+      - name: Retrieve Doppler Secrets
+        block:
+            - name: Download Secrets
+              command: doppler secrets download --project {{ project }} --config prd --no-file --format json
+              register: secrets_output
+              changed_when: false
+              no_log: true
+
+        rescue:
+            - name: Doppler Login Required
+              fail:
+                  msg: 'FAILED: `doppler login` required for {{ project }}/prd'
+
+      - name: Parse and Verify Secrets
+        set_fact:
+            doppler_secrets: '{{ secrets_output.stdout | from_json }}'
+        no_log: true
+
+      - name: Validate Required Secrets
+        assert:
+            that: doppler_required_secrets | difference(doppler_secrets.keys()) | length == 0
+            fail_msg: 'Missing: {{ doppler_required_secrets | difference(doppler_secrets.keys()) | join(", ") }}'
+            success_msg: 'All required secrets are present.'
+
+      - name: Construct Global Environment
+        set_fact:
+            env: '{{ doppler_secrets | combine(local_config) }}'
+        no_log: true
+
+      - name: Success Message
+        debug:
+            msg: 'Environment configured successfully. {{ env.keys() | length }} variables loaded.'

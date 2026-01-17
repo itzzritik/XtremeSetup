@@ -1,0 +1,176 @@
+JARVIS_SERVICES:
+    docker:
+        id: 253
+        name: Docker
+        subtitle: Container Platform
+        logo: docker.svg
+        port: 2375
+        hidden: true
+
+    voidauth:
+        id: 253
+        name: Auth
+        subtitle: VoidAuth OAuth Provider
+        logo: ceph.svg
+        port: 3000
+        subdomains: [auth]
+        skip_auth: true
+
+    postgres:
+        id: 253
+        name: PostgreSQL
+        subtitle: Database Server
+        logo: databasus.svg
+        port: 5432
+        hidden: true
+
+    homer:
+        id: 253
+        name: Homer
+        subtitle: Dashboard
+        logo: homer.svg
+        port: 8010
+        root_domain: true
+        skip_auth: true
+        hidden: true
+
+    backrest:
+        id: 253
+        name: Backup
+        subtitle: Backrest Backup Manager
+        logo: tpdb.svg
+        port: 9898
+        subdomains: [backup]
+
+    code:
+        id: 253
+        name: Code
+        subtitle: VS Code Server
+        logo: visual-studio-code.svg
+        port: 8888
+        subdomains: [code]
+
+    qbittorrent:
+        id: 253
+        name: Torrent
+        subtitle: qBitTorrent Downloader
+        logo: utorrent.svg
+        port: 8080
+        subdomains: [torrent]
+        section: 'Media Server'
+
+    prowlarr:
+        id: 253
+        name: Prowlarr
+        subtitle: Indexer Manager
+        logo: prowlarr.svg
+        port: 9696
+        subdomains: [prowlarr]
+        section: 'Media Server'
+
+    radarr:
+        id: 253
+        name: Radarr
+        subtitle: Movie Manager
+        logo: radarr.svg
+        port: 7878
+        subdomains: [radarr]
+        section: 'Media Server'
+
+    sonarr:
+        id: 253
+        name: Sonarr
+        subtitle: TV Manager
+        logo: sonarr.svg
+        port: 8989
+        subdomains: [sonarr]
+        section: 'Media Server'
+
+    sonarr-anime:
+        id: 253
+        name: Anime
+        subtitle: Anime Manager
+        logo: anilist.svg
+        port: 8990
+        subdomains: [anime]
+        section: 'Media Server'
+
+    bazarr:
+        id: 253
+        name: Bazarr
+        subtitle: Subtitle Manager
+        logo: bazarr.svg
+        port: 6767
+        subdomains: [bazarr]
+        section: 'Media Server'
+
+    jellyseerr:
+        id: 253
+        name: Jellyseerr
+        subtitle: Request Manager
+        logo: jellyseerr.svg
+        port: 5055
+        subdomains: [request]
+        section: 'Media Server'
+        skip_auth: true
+
+    proxmox:
+        id: 200
+        name: Jarvis Console
+        subtitle: Proxmox Dashboard
+        logo: proxmox.svg
+        port: 8006
+        path: /#v1:0:=node/jarvis:4:=jsconsole
+        https: true
+        subdomains: [pm]
+        insecure: true
+
+    traefik:
+        id: 205
+        name: Proxy
+        subtitle: Traefik Reverse Proxy
+        logo: at-t.svg
+        port: 8080
+        subdomains: [proxy]
+        is_internal: true
+
+    storage:
+        id: 245
+        name: Storage
+        subtitle: Samba Server
+        logo: cloudpanel.svg
+        hidden: true
+
+    alist:
+        id: 253
+        name: Files
+        subtitle: NAS & File Manager
+        logo: filebrowser-quantum.svg
+        port: 5244
+        subdomains: [files]
+
+    jellyfin:
+        id: 248
+        name: Movies
+        subtitle: Jellyfin Media Server
+        logo: streamyfin.svg
+        port: 8096
+        subdomains: [media, jellyfin]
+
+    home:
+        id: 250
+        name: Smart Home
+        subtitle: Home Assistant Dashboard
+        logo: home-assistant-matter-hub.svg
+        port: 8123
+        subdomains: [home]
+
+    pihole:
+        id: 252
+        name: Pihole
+        subtitle: DNS & Ad Blocker
+        logo: pi-hole.svg
+        port: 80
+        path: /admin
+        subdomains: [dns]
+        middlewares: [pihole-redirect]

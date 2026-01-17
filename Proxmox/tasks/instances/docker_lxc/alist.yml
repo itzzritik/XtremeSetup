@@ -1,0 +1,138 @@
+- vars:
+      app_name: alist
+      mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+          local: '{{ instance.configs }}/{{ app_name }}'
+  block:
+      - name: '{{ app_name | upper }}: Check Health Endpoint'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/'
+            method: GET
+            status_code: 200
+            timeout: 2
+        register: alist_health
+        failed_when: false
+
+      - name: '{{ app_name | upper }}: Check Configuration State'
+        stat:
+            path: '{{ config.root }}/.password_set'
+        register: alist_config_state
+
+      - set_fact:
+            healthy:
+                app: '{{ alist_health.status | default(0) == 200 }}'
+                config: '{{ alist_config_state.stat.exists }}'
+
+      - debug:
+            msg:
+                - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
+                - "{{ app_name | title }} Config Status: {{ 'Healthy' if healthy.config else 'Unhealthy' }}"
+
+      - block:
+            - name: '{{ app_name | upper }}: Configure Directories'
+              file:
+                  path: '{{ dir_item }}'
+                  state: directory
+                  mode: '0777'
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  recurse: true
+              loop:
+                  - '{{ config.root }}'
+                  - '{{ config.local }}'
+              loop_control:
+                  loop_var: dir_item
+
+            - name: '{{ app_name | upper }}: Create docker-compose.yml'
+              copy:
+                  dest: '{{ config.root }}/docker-compose.yml'
+                  content: |-
+                      services:
+                        {{ app_name }}:
+                          container_name: {{ app_name }}
+                          image: xhofe/alist:latest-aio
+                          restart: unless-stopped
+                          ports:
+                            - "{{ env.JARVIS_SERVICES[app_name].port }}:{{ env.JARVIS_SERVICES[app_name].port }}"
+                          volumes:
+                            - {{ config.local }}:/opt/alist/data
+                            - /media/ssd:/media/ssd
+                          environment:
+                            - TZ={{ env.JARVIS_TZ }}
+                            - PUID=0
+                            - PGID=0
+                            - UMASK=022
+                          healthcheck:
+                            test: ["CMD", "curl", "-f", "http://localhost:{{ env.JARVIS_SERVICES[app_name].port }}/"]
+                            interval: 30s
+                            timeout: 10s
+                            retries: 3
+                            start_period: 30s
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
+                  force: true
+
+            - name: '{{ app_name | upper }}: Start Docker Compose'
+              command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
+              register: alist_compose
+              changed_when: "'Created' in alist_compose.stderr or 'Recreated' in alist_compose.stderr"
+
+            - name: '{{ app_name | upper }}: Wait for Port'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: '{{ env.JARVIS_SERVICES[app_name].port }}'
+                  timeout: 60
+        when: not healthy.app
+
+      - block:
+            - name: '{{ app_name | upper }}: Wait for Database'
+              wait_for:
+                  path: '{{ config.root }}/data.db'
+                  state: present
+                  timeout: 60
+
+            - name: '{{ app_name | upper }}: Set Admin Password'
+              command: pct exec {{ id }} -- docker exec {{ app_name }} ./alist admin set {{ env.JARVIS_ADMIN_PASSWORD }}
+              register: alist_password
+              changed_when: true
+
+            - name: '{{ app_name | upper }}: Rename Admin User'
+              shell: |
+                  pct exec {{ id }} -- sqlite3 {{ config.local }}/data.db "UPDATE x_users SET username='{{ env.JARVIS_ADMIN_USERNAME }}' WHERE username='admin';"
+              register: alist_user_rename
+              changed_when: true
+
+            - name: '{{ app_name | upper }}: Add Local Storage'
+              shell: |
+                  pct exec {{ id }} -- sqlite3 {{ config.local }}/data.db "
+                  INSERT OR IGNORE INTO x_storages (
+                      mount_path, driver, cache_expiration, status, addition, modified, disabled, enable_sign, order_by, order_direction, extract_folder, web_proxy, webdav_policy, down_proxy_url, down_proxy_sign
+                  ) VALUES (
+                      '/ssd', 'Local', 30, 'work', '{\"root_folder_path\":\"/media/ssd\",\"thumbnail\":false,\"thumb_cache_folder\":\"\",\"show_hidden\":true,\"mkdir_perm\":\"777\"}', datetime('now'), 0, 0, 'name', 'asc', '', 0, '302_redirect', '', 0
+                  );"
+              register: alist_storage_add
+              changed_when: true
+
+            - name: '{{ app_name | upper }}: Enable Guest User'
+              shell: |
+                  pct exec {{ id }} -- sqlite3 {{ config.local }}/data.db "UPDATE x_users SET disabled=0 WHERE username='guest';"
+              register: alist_guest_enable
+              changed_when: true
+
+            - name: '{{ app_name | upper }}: Restart Alist (Apply Config)'
+              command: pct exec {{ id }} -- docker restart {{ app_name }}
+              changed_when: true
+
+            - name: '{{ app_name | upper }}: Mark Configured'
+              file:
+                  path: '{{ config.root }}/.password_set'
+                  state: touch
+                  mode: '0644'
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+
+  rescue:
+      - debug:
+            msg: '{{ app_name }} failed to deploy'

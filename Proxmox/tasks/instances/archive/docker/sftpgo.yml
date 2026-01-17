@@ -1,0 +1,93 @@
+- vars:
+      app_name: sftpgo
+      mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+          local: '{{ instance.configs }}/{{ app_name }}'
+  block:
+      - name: '{{ app_name | upper }}: Check Health Endpoint'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/healthz'
+            method: GET
+            status_code: 200
+            timeout: 2
+        register: sftpgo_health
+        failed_when: false
+
+      - name: '{{ app_name | upper }}: Check Configuration State'
+        stat:
+            path: '{{ config.root }}/docker-compose.yml'
+        register: sftpgo_config_state
+
+      - set_fact:
+            healthy:
+                app: '{{ sftpgo_health.status | default(0) == 200 }}'
+                config: '{{ sftpgo_config_state.stat.exists }}'
+
+      - debug:
+            msg:
+                - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
+                - "{{ app_name | title }} Config Status: {{ 'Healthy' if healthy.config else 'Unhealthy' }}"
+
+      - block:
+            - name: '{{ app_name | upper }}: Configure Directories'
+              file:
+                  path: '{{ dir_item }}'
+                  state: directory
+                  mode: '0777'
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  recurse: true
+              loop:
+                  - '{{ config.root }}'
+                  - '{{ config.local }}'
+              loop_control:
+                  loop_var: dir_item
+
+            - name: '{{ app_name | upper }}: Create docker-compose.yml'
+              copy:
+                  dest: '{{ config.root }}/docker-compose.yml'
+                  content: |-
+                      services:
+                        {{ app_name }}:
+                          container_name: {{ app_name }}
+                          image: drakkan/sftpgo:latest
+                          restart: unless-stopped
+                          ports:
+                            - "{{ env.JARVIS_SERVICES[app_name].port }}:{{ env.JARVIS_SERVICES[app_name].port }}"
+                          volumes:
+                            - {{ config.local }}:/srv/sftpgo
+                            - /media/ssd:/media/ssd
+                          environment:
+                            - SFTPGO_HTTPD__BINDINGS__0__PORT={{ env.JARVIS_SERVICES[app_name].port }}
+                            - SFTPGO_DATA_PROVIDER__CREATE_DEFAULT_ADMIN=true
+                            - SFTPGO_DEFAULT_ADMIN_USERNAME={{ env.JARVIS_ADMIN_USERNAME }}
+                            - SFTPGO_DEFAULT_ADMIN_PASSWORD={{ env.JARVIS_ADMIN_PASSWORD }}
+                            - PUID={{ mapped_uid }}
+                            - PGID={{ mapped_uid }}
+                          healthcheck:
+                            test: ["CMD", "curl", "-f", "http://localhost:{{ env.JARVIS_SERVICES[app_name].port }}/healthz"]
+                            interval: 30s
+                            timeout: 10s
+                            retries: 3
+                            start_period: 30s
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
+                  force: true
+
+            - name: '{{ app_name | upper }}: Start Docker Compose'
+              command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
+              register: sftpgo_compose
+              changed_when: "'Created' in sftpgo_compose.stderr or 'Recreated' in sftpgo_compose.stderr"
+
+            - name: '{{ app_name | upper }}: Wait for Port'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: '{{ env.JARVIS_SERVICES[app_name].port }}'
+                  timeout: 60
+        when: not healthy.app
+
+  rescue:
+      - debug:
+            msg: '{{ app_name }} failed to deploy'

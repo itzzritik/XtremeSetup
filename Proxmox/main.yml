@@ -19,7 +19,7 @@
             run_vms_input: '{{ run_vms_input }}'
 
       - name: Environment Setup
-        include_tasks: tasks/env.yml
+        include_tasks: tasks/env/index.yml
 
 - name: Deploy to Remote Proxmox
   hosts: proxmox
