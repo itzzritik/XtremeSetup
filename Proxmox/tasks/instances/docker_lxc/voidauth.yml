@@ -59,11 +59,15 @@
                                   - STORAGE_KEY={{ env.JARVIS_VOIDAUTH_STORAGE_KEY }}
                                   - DB_ADAPTER=sqlite
                                   - DEFAULT_REDIRECT=https://{{ env.JARVIS_DOMAIN }}
+                                  - PASSWORD_STRENGTH=2
+                                  - CONTACT_EMAIL={{ env.JARVIS_BOT_EMAIL }}
+                                  - ENABLE_DEBUG=true
+                                  - SIGNUP=true
                                   - SMTP_HOST=smtp.gmail.com
                                   - SMTP_PORT=587
                                   - SMTP_USER={{ env.JARVIS_BOT_EMAIL }}
                                   - SMTP_PASS={{ env.JARVIS_AUTH_GOOGLE_APP_PASSWORD }}
-                                  - SMTP_FROM="{{ env.JARVIS_BOT_NAME }} <{{ env.JARVIS_BOT_EMAIL }}>"
+                                  - SMTP_FROM="hi@{{ env.JARVIS_DOMAIN }}"
                                 healthcheck:
                                   test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
                                   interval: 30s

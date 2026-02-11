@@ -11,6 +11,7 @@
           gateway: '{{ env.JARVIS_GATEWAY }}'
           configs: '/root/configs'
           subuid: '100000'
+          mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
       docker_user: '1000'
 
   block:
@@ -55,7 +56,7 @@
                   --memory {{ instance.memory }}
                   --swap {{ instance.swap }}
                   --rootfs {{ instance.storage }}:{{ instance.disk }}
-                  --net0 name=eth0,bridge=vmbr0,firewall=0,ip={{ instance.ip }}/24,gw={{ instance.gateway }}
+                  --net0 name=eth0,bridge=vmbr0,firewall=0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
                   --unprivileged 1
                   --features nesting=1,keyctl=1
                   --onboot 1

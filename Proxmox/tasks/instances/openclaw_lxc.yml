@@ -1,0 +1,171 @@
+- vars:
+      id: '{{ env.JARVIS_SERVICES.openclaw.id }}'
+      instance:
+          hostname: openclaw
+          memory: 4096
+          swap: 1024
+          cores: 2
+          storage: local-lvm
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+          mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        command: pct status {{ id }}
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Check Service Status'
+        command: pct exec {{ id }} -- systemctl is-active openclaw
+        register: service_check
+        failed_when: false
+        changed_when: false
+        when: instance_check.rc == 0
+
+      - name: '{{ instance.hostname | upper }}: Create Config Directory on Host'
+        file:
+            path: '{{ env.JARVIS_CONFIGS_DIR }}/openclaw'
+            state: directory
+            mode: '0755'
+
+      - name: '{{ instance.hostname | upper }}: Provision Infrastructure'
+        when: instance_check.rc != 0
+        block:
+            - name: '{{ instance.hostname | upper }}: Download Latest Template'
+              shell: |
+                  pveam update >&2
+                  TEMPLATE=$(pveam available | grep -oP 'ubuntu-(2[024-9]|[3-9][0-9])\.04-standard[^\s]+' | sort -V | tail -1)
+                  pveam download local "$TEMPLATE" >&2 || true
+                  echo "$TEMPLATE"
+              register: template_result
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Create LXC'
+              command: >
+                  pct create {{ id }} local:vztmpl/{{ template_result.stdout | trim }}
+                  --hostname {{ instance.hostname }}
+                  --cores {{ instance.cores }}
+                  --memory {{ instance.memory }}
+                  --swap {{ instance.swap }}
+                  --rootfs {{ instance.storage }}:20
+                  --net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
+                  --unprivileged 1
+                  --features nesting=1
+                  --onboot 1
+
+            - name: '{{ instance.hostname | upper }}: Configure Bind Mount'
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ id }}.conf'
+                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
+                  block: |
+                      mp0: {{ env.JARVIS_CONFIGS_DIR }}/openclaw,mp=/root/.openclaw
+
+            - name: '{{ instance.hostname | upper }}: Start LXC'
+              command: pct start {{ id }}
+
+            - name: '{{ instance.hostname | upper }}: Wait for Network'
+              shell: pct exec {{ id }} -- ping -c 1 -W 2 {{ env.JARVIS_DNS_SERVERS[0] }}
+              register: network_check
+              until: network_check.rc == 0
+              retries: 10
+              delay: 3
+
+            - name: '{{ instance.hostname | upper }}: Install Dependencies'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  export DEBIAN_FRONTEND=noninteractive
+                  apt-get update
+                  apt-get install -y curl git unzip gnupg iptables-persistent
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Install Bun'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  curl -fsSL https://bun.sh/install | bash
+                  ln -s /root/.bun/bin/bun /usr/local/bin/bun
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Clone OpenClaw'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  git clone https://github.com/openclaw/openclaw.git /opt/openclaw
+                  cd /opt/openclaw
+                  bun install
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Configure Systemd Service'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  cat <<'EOF' > /etc/systemd/system/openclaw.service
+                  [Unit]
+                  Description=OpenClaw AI Assistant
+                  After=network.target
+
+                  [Service]
+                  Type=simple
+                  User=root
+                  WorkingDirectory=/opt/openclaw
+                  ExecStart=/usr/local/bin/bun run start
+                  Restart=always
+                  RestartSec=10
+                  Environment=NODE_ENV=production
+
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+
+                  systemctl daemon-reload
+                  systemctl enable --now openclaw
+                  "
+
+            - name: '{{ instance.hostname | upper }}: Configure Firewall (Security Hardening)'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  # Flush existing rules
+                  iptables -F
+                  iptables -X
+                  iptables -Z
+
+                  # Default Policies
+                  iptables -P INPUT DROP
+                  iptables -P FORWARD DROP
+                  iptables -P OUTPUT DROP
+
+                  # Allow Loopback
+                  iptables -A INPUT -i lo -j ACCEPT
+                  iptables -A OUTPUT -o lo -j ACCEPT
+
+                  # Allow Established/Related
+                  iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+                  iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+                  # Allow DNS (UDP/TCP 53) Output
+                  iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+                  iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
+
+                  # Allow HTTP/HTTPS (80/443) Output
+                  iptables -A OUTPUT -p tcp --dport 80 -j ACCEPT
+                  iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
+
+                  # Allow Internal Access to Web UI (Port 3000)
+                  iptables -A INPUT -p tcp --dport 3000 -s {{ env.JARVIS_NETWORK_PREFIX }}.0/24 -j ACCEPT
+
+                  # Save Rules
+                  iptables-save > /etc/iptables/rules.v4
+                  "
+
+      - name: '{{ instance.hostname | upper }}: Verify Service'
+        shell: pct exec {{ id }} -- systemctl is-active openclaw
+        register: service_status
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Show Service Status'
+        debug:
+            msg: 'OpenClaw Status: {{ service_status.stdout }}'
+
+  rescue:
+      - debug:
+            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
+  become: true

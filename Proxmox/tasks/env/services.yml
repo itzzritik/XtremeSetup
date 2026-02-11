@@ -1,4 +1,65 @@
 JARVIS_SERVICES:
+    proxmox:
+        id: 200
+        name: Jarvis Console
+        subtitle: Proxmox Dashboard
+        logo: proxmox.svg
+        port: 8006
+        path: /#v1:0:=node/jarvis:4:=jsconsole
+        https: true
+        subdomains: [pm]
+        insecure: true
+
+    traefik:
+        id: 205
+        name: Proxy
+        subtitle: Traefik Reverse Proxy
+        logo: at-t.svg
+        port: 8080
+        subdomains: [proxy]
+        is_internal: true
+
+    storage:
+        id: 245
+        name: Storage
+        subtitle: Samba Server
+        logo: cloudpanel.svg
+        hidden: true
+
+    openclaw:
+        id: 246
+        name: OpenClaw
+        subtitle: Personal AI Assistant
+        logo: openclaw.svg
+        port: 3000
+        subdomains: [claw]
+
+    jellyfin:
+        id: 248
+        name: Movies
+        subtitle: Jellyfin Media Server
+        logo: streamyfin.svg
+        port: 8096
+        subdomains: [media, jellyfin]
+
+    home:
+        id: 250
+        name: Smart Home
+        subtitle: Home Assistant Dashboard
+        logo: home-assistant-matter-hub.svg
+        port: 8123
+        subdomains: [home]
+
+    pihole:
+        id: 252
+        name: Pihole
+        subtitle: DNS & Ad Blocker
+        logo: pi-hole.svg
+        port: 80
+        path: /admin
+        subdomains: [dns]
+        middlewares: [pihole-redirect]
+
     docker:
         id: 253
         name: Docker
@@ -9,7 +70,7 @@ JARVIS_SERVICES:
 
     voidauth:
         id: 253
-        name: Auth
+        name: Account
         subtitle: VoidAuth OAuth Provider
         logo: ceph.svg
         port: 3000
@@ -114,33 +175,6 @@ JARVIS_SERVICES:
         section: 'Media Server'
         skip_auth: true
 
-    proxmox:
-        id: 200
-        name: Jarvis Console
-        subtitle: Proxmox Dashboard
-        logo: proxmox.svg
-        port: 8006
-        path: /#v1:0:=node/jarvis:4:=jsconsole
-        https: true
-        subdomains: [pm]
-        insecure: true
-
-    traefik:
-        id: 205
-        name: Proxy
-        subtitle: Traefik Reverse Proxy
-        logo: at-t.svg
-        port: 8080
-        subdomains: [proxy]
-        is_internal: true
-
-    storage:
-        id: 245
-        name: Storage
-        subtitle: Samba Server
-        logo: cloudpanel.svg
-        hidden: true
-
     alist:
         id: 253
         name: Files
@@ -149,28 +183,3 @@ JARVIS_SERVICES:
         port: 5244
         subdomains: [files]
 
-    jellyfin:
-        id: 248
-        name: Movies
-        subtitle: Jellyfin Media Server
-        logo: streamyfin.svg
-        port: 8096
-        subdomains: [media, jellyfin]
-
-    home:
-        id: 250
-        name: Smart Home
-        subtitle: Home Assistant Dashboard
-        logo: home-assistant-matter-hub.svg
-        port: 8123
-        subdomains: [home]
-
-    pihole:
-        id: 252
-        name: Pihole
-        subtitle: DNS & Ad Blocker
-        logo: pi-hole.svg
-        port: 80
-        path: /admin
-        subdomains: [dns]
-        middlewares: [pihole-redirect]

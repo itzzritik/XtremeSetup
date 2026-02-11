@@ -8,6 +8,7 @@
           storage: local-lvm
           ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
           gateway: '{{ env.JARVIS_GATEWAY }}'
+          mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
       paths:
           config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/etc'
           data: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/lib'
@@ -71,6 +72,9 @@
                   chdir: '{{ temp_install_dir.path }}'
                   executable: /bin/bash
               register: jellyfin_install
+
+            - name: '{{ instance.hostname | upper }}: Configure MAC Address'
+              command: pct set {{ id }} -net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
 
             - name: '{{ instance.hostname | upper }}: Show install output'
               debug:

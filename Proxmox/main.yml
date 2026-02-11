@@ -41,7 +41,7 @@
         loop:
             - update
             - automount
-            - security
+            - configure
 
       - name: Deploy Instances
         include_tasks: 'tasks/instances/{{ item }}.yml'

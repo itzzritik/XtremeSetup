@@ -10,6 +10,7 @@
           gateway: '{{ env.JARVIS_GATEWAY }}'
           dns_servers: '{{ env.JARVIS_DNS_SERVERS }}'
           port: '{{ env.JARVIS_SERVICES.home.port }}'
+          mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
   block:
       - name: '{{ instance.hostname | upper }}: Check if VM is already running'
         uri:
@@ -69,6 +70,9 @@
               retries: 3
               delay: 10
               until: haos_install.rc == 0
+
+            - name: '{{ instance.hostname | upper }}: Configure MAC Address'
+              shell: qm set {{ id }} --net0 model=virtio,macaddr={{ instance.mac }},bridge={{ instance.bridge }}
 
             - name: '{{ instance.hostname | upper }}: Show install output'
               debug:

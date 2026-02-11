@@ -8,6 +8,7 @@
           storage: local-lvm
           ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
           gateway: '{{ env.JARVIS_GATEWAY }}'
+          mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
           subuid: '100000'
       paths:
           config_pihole: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/etc-pihole'
@@ -70,9 +71,11 @@
                   export TERM=xterm
                   echo -e "y\nn" | bash -c "$(curl -fsSL {{ env.JARVIS_COMMUNITY_SCRIPTS_URL }}/ct/pihole.sh)"
               args:
-                  chdir: '{{ temp_install_dir.path }}'
                   executable: /bin/bash
               register: pihole_install
+
+            - name: '{{ instance.hostname | upper }}: Configure MAC Address'
+              command: pct set {{ id }} -net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
 
             - name: '{{ instance.hostname | upper }}: Show install output'
               debug:

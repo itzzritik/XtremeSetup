@@ -8,6 +8,7 @@
           storage: local-lvm
           ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
           gateway: '{{ env.JARVIS_GATEWAY }}'
+          mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
       shares:
           - name: ssd
             path: '/media/ssd'
@@ -79,7 +80,7 @@
                   --memory {{ instance.memory }}
                   --swap {{ instance.swap }}
                   --rootfs {{ instance.storage }}:8
-                  --net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }}
+                  --net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
                   --unprivileged 0
                   --features nesting=1
                   --onboot 1

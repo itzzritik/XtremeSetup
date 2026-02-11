@@ -34,6 +34,7 @@
           JARVIS_CONFIGS_DIR: '/root/.{{ project }}/configs'
           JARVIS_ADMIN_USERNAME: 'root'
           JARVIS_NETWORK_PREFIX: '192.168.68'
+          JARVIS_MAC_PREFIX: '02:4A:61:72:76'
           JARVIS_GATEWAY: '{{ local_config.JARVIS_NETWORK_PREFIX }}.1'
           JARVIS_DNS_SERVERS: ['8.8.8.8', '8.8.4.4']
           JARVIS_TZ: 'Asia/Kolkata'
