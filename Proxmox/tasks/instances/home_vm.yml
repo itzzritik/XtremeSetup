@@ -33,7 +33,7 @@
                   executable: /bin/bash
 
             - name: '{{ instance.hostname | upper }}: Restart Proxmox Host'
-              include_tasks: ../../system/restart.yml
+              include_tasks: ../system/restart.yml
 
             - name: '{{ instance.hostname | upper }}: Create temporary directory for installation'
               tempfile:
@@ -71,12 +71,22 @@
               delay: 10
               until: haos_install.rc == 0
 
+            - name: '{{ instance.hostname | upper }}: Stop VM for Configuration'
+              command: qm stop {{ id }}
+              failed_when: false
+              changed_when: false
+
             - name: '{{ instance.hostname | upper }}: Configure MAC Address'
               shell: qm set {{ id }} --net0 model=virtio,macaddr={{ instance.mac }},bridge={{ instance.bridge }}
 
             - name: '{{ instance.hostname | upper }}: Show install output'
               debug:
                   var: haos_install.stdout_lines
+
+            - name: '{{ instance.hostname | upper }}: Start VM'
+              command: qm start {{ id }}
+              failed_when: false
+              changed_when: false
 
             - name: '{{ instance.hostname | upper }}: Wait for QEMU guest agent'
               shell: qm agent {{ id }} ping
@@ -145,15 +155,35 @@
 
       - name: '{{ instance.hostname | upper }}: Restore backup from Google Drive'
         block:
-            - name: '{{ instance.hostname | upper }}: Wait for onboarding endpoint to be ready'
+            - name: '{{ instance.hostname | upper }}: Wait for onboarding endpoint'
               uri:
                   url: 'http://{{ instance.ip }}:{{ instance.port }}/api/onboarding'
                   status_code: [200, 404]
-              register: onboarding_check
-              retries: 30
-              delay: 20
-              until: onboarding_check.status in [200, 404]
-              failed_when: false
+              register: onboarding_attempt1
+              retries: 12
+              delay: 30
+              until: onboarding_attempt1.status in [200, 404]
+              ignore_errors: true
+
+            - name: '{{ instance.hostname | upper }}: Check failed, Restart VM & Retry onboarding again'
+              block:
+                  - shell: qm stop {{ id }}; sleep 30; qm start {{ id }}
+                  - uri:
+                        url: 'http://{{ instance.ip }}:{{ instance.port }}/api/onboarding'
+                        status_code: [200, 404]
+                    register: onboarding_attempt2
+                    retries: 12
+                    delay: 30
+                    until: onboarding_attempt2.status in [200, 404]
+                    failed_when: false
+              when: onboarding_attempt1 is failed
+
+            - set_fact:
+                  onboarding_check: "{{ onboarding_attempt2 if (onboarding_attempt1 is failed and onboarding_attempt2 is not skipped) else onboarding_attempt1 }}"
+
+            - fail:
+                  msg: 'Onboarding endpoint unreachable after 2 attempts'
+              when: onboarding_check is failed or onboarding_check.status is not defined
 
             - name: '{{ instance.hostname | upper }}: Debug onboarding status'
               debug:
@@ -194,12 +224,15 @@
 
             - name: '{{ instance.hostname | upper }}: Download & Restore Backup'
               shell: |
-                  qm guest exec {{ id }} --timeout 600 -- bash -c "set -e; \
+                  qm guest exec {{ id }} --timeout 1200 -- bash -c "set -e; \
+                  ha supervisor repair; \
                   curl -sL -o \"/mnt/data/supervisor/backup/{{ (gdrive_backup.json.files | first).name }}\" \"https://www.googleapis.com/drive/v3/files/{{ (gdrive_backup.json.files | first).id }}?alt=media\" -H \"Authorization: Bearer {{ env.JARVIS_GDRIVE_ACCESS_TOKEN }}\"; \
                   ha backups reload; \
+                  sleep 10; \
                   SLUG=\$(ha backups list --raw-json | jq -r '.data.backups | sort_by(.date) | reverse | .[0].slug'); \
                   [ -z \"\$SLUG\" ] && exit 1; \
                   KEY='{{ env.JARVIS_HA_DECRYPT_KEY }}'; INFO=\$(ha backups info \"\$SLUG\" --raw-json); \
+                  echo \"Buffer time for Supervisor...\" && sleep 10; \
                   if [ \"\$(echo \"\$INFO\" | jq -r .data.type)\" == \"full\" ]; then \
                     ha backups restore \"\$SLUG\" --password \"\$KEY\"; \
                   else \

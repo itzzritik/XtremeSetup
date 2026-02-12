@@ -2,7 +2,9 @@
   when: run_vms | default(false)
   block:
       - name: Trigger hard reboot
-        shell: reboot
+        shell: |
+            echo 1 > /proc/sys/kernel/sysrq
+            echo b > /proc/sysrq-trigger
         async: 1
         poll: 0
         ignore_errors: true

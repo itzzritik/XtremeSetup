@@ -28,6 +28,9 @@
           - JARVIS_GITHUB_TOKEN_SSH
           - JARVIS_HA_DECRYPT_KEY
           - JARVIS_POSTGRES_PASSWORD
+          - JARVIS_BOT_TELEGRAM_KEY
+          - JARVIS_AI_MOONSHOT_KEY
+          - JARVIS_AI_NVIDIA_KEY
       local_config:
           JARVIS_BOT_NAME: '{{ project | title }}'
           JARVIS_DIR: '/root/.{{ project }}'

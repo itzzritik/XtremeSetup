@@ -50,6 +50,7 @@
             - home_vm
             - docker_lxc
             - storage_lxc
+            - openclaw_lxc
             - jellyfin_lxc
             - pihole_lxc
         when: not (item.endswith('_vm') and not run_vms)

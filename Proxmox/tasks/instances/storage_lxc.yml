@@ -102,6 +102,12 @@
               retries: 10
               delay: 3
 
+            - name: '{{ instance.hostname | upper }}: Enable Console Autologin'
+              shell: >
+                  pct exec {{ id }} -- bash -c "mkdir -p /etc/systemd/system/container-getty@1.service.d &&
+                  echo -e '[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 \$TERM' > /etc/systemd/system/container-getty@1.service.d/override.conf &&
+                  systemctl daemon-reload && systemctl restart container-getty@1.service"
+
       - name: '{{ instance.hostname | upper }}: SMB Setup'
         when: instance_check.rc != 0 or (smb_check is defined and smb_check.rc != 0)
         block:
