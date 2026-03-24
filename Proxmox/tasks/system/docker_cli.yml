@@ -1,0 +1,40 @@
+---
+- set_fact:
+      prefix: 'DOCKER CLI'
+      docker_host: 'tcp://{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.docker.id }}:2375'
+
+- name: '{{ prefix }}: Check if Docker CLI is installed'
+  command: docker --version
+  register: docker_cli
+  failed_when: false
+  changed_when: false
+
+- name: '{{ prefix }}: Add Docker APT Repository'
+  when: docker_cli.rc != 0
+  shell: |
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      chmod a+r /etc/apt/keyrings/docker.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+      apt-get update
+  args:
+      creates: /etc/apt/sources.list.d/docker.list
+
+- name: '{{ prefix }}: Install Docker CLI'
+  apt:
+      name: docker-ce-cli
+      state: present
+  when: docker_cli.rc != 0
+
+- name: '{{ prefix }}: Configure DOCKER_HOST'
+  lineinfile:
+      path: /root/.bashrc
+      line: 'export DOCKER_HOST={{ docker_host }}'
+      regexp: '^export DOCKER_HOST='
+      state: present
+
+- name: '{{ prefix }}: Verify Connectivity'
+  command: docker info
+  environment:
+      DOCKER_HOST: '{{ docker_host }}'
+  changed_when: false

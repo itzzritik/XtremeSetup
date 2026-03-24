@@ -1,0 +1,314 @@
+- vars:
+      app_name: openclaw
+      id: '{{ env.JARVIS_SERVICES.openclaw.id }}'
+      instance:
+          hostname: openclaw
+          memory: 4096
+          swap: 1024
+          cores: 2
+          storage: local-lvm
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+          mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}'
+            timeout: 5
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Create Config Directory on Host'
+        file:
+            path: '{{ dir_item }}'
+            state: directory
+            owner: '100000'
+            group: '100000'
+            mode: '0700'
+        loop:
+            - '{{ env.JARVIS_CONFIGS_DIR }}/openclaw'
+            - '{{ env.JARVIS_CONFIGS_DIR }}/openclaw/config'
+        loop_control:
+            loop_var: dir_item
+
+      - name: '{{ instance.hostname | upper }}: Create OpenClaw Config File'
+        no_log: true
+        copy:
+            dest: '{{ env.JARVIS_CONFIGS_DIR }}/openclaw/openclaw.json'
+            content: |
+                {
+                  "gateway": {
+                    "bind": "lan",
+                    "port": {{ env.JARVIS_SERVICES[app_name].port }},
+                    "auth": {
+                      "mode": "token",
+                      "token": {{ env.JARVIS_OPENCLAW_GATEWAY_TOKEN | to_json }}
+                    },
+                    "controlUi": {
+                      "allowInsecureAuth": true
+                    },
+                    "trustedProxies": [
+                      "{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.traefik.id }}"
+                    ]
+                  },
+                  "auth": {
+                    "profiles": {
+                      "nvidia:default": {
+                        "provider": "nvidia",
+                        "mode": "api_key"
+                      }
+                    }
+                  },
+                  "models": {
+                    "mode": "merge",
+                    "providers": {
+                      "nvidia": {
+                        "baseUrl": "https://integrate.api.nvidia.com/v1",
+                        "apiKey": {{ env.JARVIS_AI_NVIDIA_KEY | to_json }},
+                        "api": "openai-completions",
+                        "models": [
+                          {
+                            "id": "moonshotai/kimi-k2.5",
+                            "name": "kimi-k2.5",
+                            "reasoning": false,
+                            "input": [
+                              "text"
+                            ],
+                            "cost": {
+                              "input": 0,
+                              "output": 0,
+                              "cacheRead": 0,
+                              "cacheWrite": 0
+                            },
+                            "contextWindow": 256000,
+                            "maxTokens": 81920
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "agents": {
+                    "defaults": {
+                      "model": {
+                        "primary": "nvidia/moonshotai/kimi-k2.5"
+                      },
+                      "models": {
+                        "nvidia/moonshotai/kimi-k2.5": {}
+                      },
+                      "maxConcurrent": 2,
+                      "timeoutSeconds": 180,
+                      "heartbeat": {
+                          "every": "0m"
+                      },
+                      "subagents": {
+                        "maxConcurrent": 2
+                      }
+                    }
+                  },
+                  "plugins": {
+                    "entries": {
+                      "telegram": {
+                        "enabled": true
+                      }
+                    }
+                  },
+                  "channels": {
+                    "telegram": {
+                      "enabled": true,
+                      "botToken": {{ env.JARVIS_BOT_TELEGRAM_KEY | to_json }}
+                    }
+                  },
+                  "session": {
+                    "dmScope": "per-channel-peer"
+                  }
+                }
+            force: false
+            owner: '100000'
+            group: '100000'
+            mode: '0600'
+
+      - name: '{{ instance.hostname | upper }}: Provision Infrastructure'
+        when: instance_check.status | default(0) != 200
+        block:
+            - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
+              shell: pct stop {{ id }}; pct destroy {{ id }}
+              failed_when: false
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Download Latest Template'
+              shell: |
+                  pveam update >&2
+                  TEMPLATE=$(pveam available | grep -oP 'ubuntu-(2[024-9]|[3-9][0-9])\.04-standard[^\s]+' | sort -V | tail -1)
+                  pveam download local "$TEMPLATE" >&2 || true
+                  echo "$TEMPLATE"
+              register: template_result
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Create LXC'
+              command: >
+                  pct create {{ id }} local:vztmpl/{{ template_result.stdout | trim }}
+                  --hostname {{ instance.hostname }}
+                  --cores {{ instance.cores }}
+                  --memory {{ instance.memory }}
+                  --swap {{ instance.swap }}
+                  --rootfs {{ instance.storage }}:20
+                  --net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
+                  --unprivileged 1
+                  --features nesting=1
+                  --onboot 1
+
+            - name: '{{ instance.hostname | upper }}: Configure Bind Mount'
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ id }}.conf'
+                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
+                  block: |
+                      mp0: {{ env.JARVIS_CONFIGS_DIR }}/openclaw,mp=/root/.openclaw
+                      mp1: {{ env.JARVIS_CONFIGS_DIR }}/openclaw/config,mp=/root/.config
+
+            - name: '{{ instance.hostname | upper }}: Start LXC'
+              command: pct start {{ id }}
+
+            - name: '{{ instance.hostname | upper }}: Wait for Network'
+              shell: pct exec {{ id }} -- ping -c 1 -W 2 {{ env.JARVIS_DNS_SERVERS[0] }}
+              register: network_check
+              until: network_check.rc == 0
+              retries: 10
+              delay: 3
+
+            - name: '{{ instance.hostname | upper }}: Enable Console Autologin'
+              shell: >
+                  pct exec {{ id }} -- bash -c "mkdir -p /etc/systemd/system/container-getty@1.service.d &&
+                  echo -e '[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 \$TERM' > /etc/systemd/system/container-getty@1.service.d/override.conf &&
+                  systemctl daemon-reload && systemctl restart container-getty@1.service"
+
+            - name: '{{ instance.hostname | upper }}: Install NodeJS Latest LTS & Dependencies'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  export DEBIAN_FRONTEND=noninteractive
+                  apt-get update && apt-get install -y curl
+                  curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+                  apt-get install -y nodejs build-essential iptables-persistent git procps file
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Install Homebrew'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  set -e
+                  id -u linuxbrew >/dev/null 2>&1 || useradd -m -d /home/linuxbrew -s /bin/bash linuxbrew
+                  if [ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
+                    curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o /tmp/homebrew-install.sh
+                    su - linuxbrew -c "NONINTERACTIVE=1 /bin/bash /tmp/homebrew-install.sh"
+                    rm -f /tmp/homebrew-install.sh
+                  fi
+                  printf '%s\n' 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' > /etc/profile.d/homebrew.sh
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Install OpenClaw'
+              shell: pct exec {{ id }} -- bash -c 'npm install -g openclaw@latest'
+
+            - name: '{{ instance.hostname | upper }}: Build OpenClaw Control UI Assets'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  set -e
+                  command -v pnpm >/dev/null 2>&1 || npm install -g pnpm
+                  OPENCLAW_DIR="$(npm root -g)/openclaw"
+                  [ -d "$OPENCLAW_DIR" ] || exit 1
+                  [ -d "$OPENCLAW_DIR/dist/control-ui" ] || (cd "$OPENCLAW_DIR" && pnpm ui:build)
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Locate OpenClaw Binary'
+              shell: pct exec {{ id }} -- bash -c 'which openclaw || npm bin -g | xargs -I {} echo {}/openclaw'
+              register: openclaw_bin_path
+              failed_when: openclaw_bin_path.stdout | length == 0
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Configure Systemd Service'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  cat <<'EOF' > /etc/systemd/system/openclaw.service
+                  [Unit]
+                  Description=OpenClaw AI Assistant
+                  After=network.target
+
+                  [Service]
+                  Type=simple
+                  User=root
+                  WorkingDirectory=/root
+                  ExecStart={{ openclaw_bin_path.stdout | trim }} gateway --allow-unconfigured --port {{ env.JARVIS_SERVICES[app_name].port }} --bind lan
+                  Restart=always
+                  RestartSec=10
+                  Environment=NODE_ENV=production
+                  Environment=PATH=/usr/bin:/usr/local/bin:/bin
+
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+
+                  systemctl daemon-reload
+                  systemctl enable --now openclaw
+                  "
+
+            - name: '{{ instance.hostname | upper }}: Install OpenClaw Restart Helper'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  cat <<'EOF' > /usr/local/bin/openclaw-restart
+                  #!/usr/bin/env bash
+                  systemctl restart openclaw
+                  EOF
+                  chmod +x /usr/local/bin/openclaw-restart
+                  "
+
+            - name: '{{ instance.hostname | upper }}: Configure Firewall (Security Hardening)'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  # Flush existing rules
+                  iptables -F
+                  iptables -X
+                  iptables -Z
+
+                  # Default Policies
+                  iptables -P INPUT DROP
+                  iptables -P FORWARD DROP
+                  iptables -P OUTPUT DROP
+
+                  # Allow Loopback
+                  iptables -A INPUT -i lo -j ACCEPT
+                  iptables -A OUTPUT -o lo -j ACCEPT
+
+                  # Allow Established/Related
+                  iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+                  iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+                  # Allow DNS (UDP/TCP 53) Output
+                  iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+                  iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
+
+                  # Allow HTTP/HTTPS (80/443) Output
+                  iptables -A OUTPUT -p tcp --dport 80 -j ACCEPT
+                  iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
+
+                  # Allow Traefik/Cloudflared (running in Traefik LXC)
+                  iptables -A INPUT -p tcp --dport {{ env.JARVIS_SERVICES[app_name].port }} -s {{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.traefik.id }} -j ACCEPT
+
+                  # Allow Internal Access to Web UI (Port {{ env.JARVIS_SERVICES[app_name].port }})
+                  iptables -A INPUT -p tcp --dport {{ env.JARVIS_SERVICES[app_name].port }} -s {{ env.JARVIS_NETWORK_PREFIX }}.0/24 -j ACCEPT
+
+                  # Save Rules
+                  iptables-save > /etc/iptables/rules.v4
+                  "
+
+      - name: '{{ instance.hostname | upper }}: Verify Service'
+        shell: pct exec {{ id }} -- systemctl is-active openclaw
+        register: service_status
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Show Service Status'
+        debug:
+            msg: 'OpenClaw Status: {{ service_status.stdout }}'
+
+  rescue:
+      - debug:
+            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
+  become: true

@@ -1,0 +1,110 @@
+- vars:
+      app_name: nanobot
+      mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+          local: '{{ instance.configs }}/{{ app_name }}'
+  block:
+      - name: '{{ app_name | upper }}: Check Container Status'
+        shell: pct exec {{ id }} -- docker inspect --format '{{ "{{" }}.State.Running{{ "}}" }}' {{ app_name }}
+        register: nanobot_status
+        failed_when: false
+        changed_when: false
+
+      - set_fact:
+            healthy:
+                app: "{{ nanobot_status.stdout | default('false') | trim == 'true' }}"
+
+      - debug:
+            msg:
+                - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
+
+      - block:
+            - name: '{{ app_name | upper }}: Configure Directories'
+              file:
+                  path: '{{ dir_item }}'
+                  state: directory
+                  mode: '0777'
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  recurse: true
+              loop:
+                  - '{{ config.root }}'
+                  - '{{ config.root }}/data'
+              loop_control:
+                  loop_var: dir_item
+
+            - name: '{{ app_name | upper }}: Create Dockerfile'
+              copy:
+                  dest: '{{ config.root }}/Dockerfile'
+                  content: |
+                      FROM python:3.12-slim-bookworm
+                      
+                      WORKDIR /root/.nanobot
+                      
+                      # Install system dependencies and Node.js
+                      RUN apt-get update && apt-get install -y curl procps git build-essential && \
+                          curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
+                          apt-get install -y nodejs && \
+                          rm -rf /var/lib/apt/lists/*
+                      
+                      # Install nanobot and python dependencies
+                      RUN pip install --no-cache-dir nanobot-ai requests
+                      
+                      # Create configuration directory
+                      RUN mkdir -p /root/.nanobot
+                      
+                      # Create helper scripts
+                      # - restart: kills PID 1 to force container restart (docker will auto-restart it)
+                      RUN echo '#!/bin/bash\n\
+                      echo "Restarting container..."\n\
+                      kill 1\n\
+                      ' > /usr/local/bin/restart && chmod +x /usr/local/bin/restart
+                      
+                      # Create entrypoint script with auto-restart loop
+                      RUN echo '#!/bin/bash\n\
+                      if [ ! -f /root/.nanobot/config.json ]; then\n\
+                        echo "Config not found. Container started in sleep mode."\n\
+                        echo "Please exec into the container and run: nanobot onboard"\n\
+                        exec tail -f /dev/null\n\
+                      else\n\
+                        echo "Config found. Starting nanobot gateway..."\n\
+                        while true; do\n\
+                          nanobot gateway &\n\
+                          GATEWAY_PID=$!\n\
+                          echo "Starting WhatsApp login in background..."\n\
+                          nohup nanobot channels login > /dev/null 2>&1 &\n\
+                          wait $GATEWAY_PID\n\
+                          echo "Nanobot stopped. Restarting in 1s..."\n\
+                          sleep 1\n\
+                        done\n\
+                      fi' > /entrypoint.sh && chmod +x /entrypoint.sh
+                      
+                      CMD ["/entrypoint.sh"]
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
+
+            - name: '{{ app_name | upper }}: Create docker-compose.yml'
+              copy:
+                  dest: '{{ config.root }}/docker-compose.yml'
+                  content: |-
+                      services:
+                        {{ app_name }}:
+                          container_name: {{ app_name }}
+                          build: .
+                          image: nanobot:local
+                          restart: unless-stopped
+                          volumes:
+                            - {{ config.local }}/data:/root/.nanobot
+                          tty: true
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
+
+            - name: '{{ app_name | upper }}: Start Docker Compose'
+              command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d --build"
+              register: nanobot_compose
+              changed_when: "'Created' in nanobot_compose.stderr or 'Recreated' in nanobot_compose.stderr"
+
+        when: not healthy.app

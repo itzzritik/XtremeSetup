@@ -141,6 +141,7 @@
                         {{ app_name }}:
                           container_name: {{ app_name }}
                           image: garethgeorge/backrest
+                          user: "0:0"
                           restart: unless-stopped
                           ports:
                             - "{{ env.JARVIS_SERVICES[app_name].port }}:9898"

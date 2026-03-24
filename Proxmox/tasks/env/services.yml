@@ -175,6 +175,14 @@ JARVIS_SERVICES:
         section: 'Media Server'
         skip_auth: true
 
+    zeroclaw:
+        id: 253
+        name: ZeroClaw
+        subtitle: Autonomous AI Assistant
+        logo: zeroclaw.svg
+        port: 42617
+        subdomains: [zeroclaw]
+
     alist:
         id: 253
         name: Files
@@ -182,4 +190,3 @@ JARVIS_SERVICES:
         logo: filebrowser-quantum.svg
         port: 5244
         subdomains: [files]
-

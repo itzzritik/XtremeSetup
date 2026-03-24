@@ -9,6 +9,7 @@
       doppler_required_secrets:
           - JARVIS_ADMIN_EMAIL
           - JARVIS_ADMIN_NAME
+          - JARVIS_AI_GROQ_KEY
           - JARVIS_ADMIN_PASSWORD
           - JARVIS_AUTH_GITHUB_CLIENT_ID
           - JARVIS_AUTH_GITHUB_CLIENT_SECRET
@@ -17,8 +18,8 @@
           - JARVIS_AUTH_GOOGLE_CLIENT_SECRET
           - JARVIS_AUTH_X_CLIENT_ID
           - JARVIS_AUTH_X_CLIENT_SECRET
-          - JARVIS_VOIDAUTH_STORAGE_KEY
           - JARVIS_BOT_EMAIL
+          - JARVIS_BOT_TELEGRAM_KEY
           - JARVIS_CF_DNS_API_TOKEN
           - JARVIS_CF_TUNNEL_TOKEN
           - JARVIS_CF_R2_ENDPOINT
@@ -27,10 +28,9 @@
           - JARVIS_GOOGLE_SERVICE_JSON
           - JARVIS_GITHUB_TOKEN_SSH
           - JARVIS_HA_DECRYPT_KEY
+          - JARVIS_OPENCLAW_GATEWAY_TOKEN
           - JARVIS_POSTGRES_PASSWORD
-          - JARVIS_BOT_TELEGRAM_KEY
-          - JARVIS_AI_MOONSHOT_KEY
-          - JARVIS_AI_NVIDIA_KEY
+          - JARVIS_VOIDAUTH_STORAGE_KEY
       local_config:
           JARVIS_BOT_NAME: '{{ project | title }}'
           JARVIS_DIR: '/root/.{{ project }}'

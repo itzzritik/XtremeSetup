@@ -56,8 +56,8 @@
                           restart: unless-stopped
                           environment:
                             - TZ={{ env.JARVIS_TZ }}
-                            - PUID={{ docker_user }}
-                            - PGID={{ docker_user }}
+                            - PUID=0
+                            - PGID=0
                             - PWA_APPNAME={{ env.JARVIS_BOT_NAME }} Code
                             - DEFAULT_WORKSPACE=/AppConfigs
                           ports:

@@ -1,0 +1,65 @@
+- vars:
+      app_name: zeroclaw
+      mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+          local: '{{ instance.configs }}/{{ app_name }}'
+  block:
+      - name: '{{ app_name | upper }}: Check Container Status'
+        shell: pct exec {{ id }} -- docker inspect --format '{{ "{{" }}.State.Running{{ "}}" }}' {{ app_name }}
+        register: zeroclaw_status
+        failed_when: false
+        changed_when: false
+
+      - set_fact:
+            healthy:
+                app: "{{ zeroclaw_status.stdout | default('false') | trim == 'true' }}"
+
+      - debug:
+            msg:
+                - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
+
+      - block:
+            - name: '{{ app_name | upper }}: Configure Directories'
+              file:
+                  path: '{{ dir_item }}'
+                  state: directory
+                  mode: '0777'
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  recurse: true
+              loop:
+                  - '{{ config.root }}'
+                  - '{{ config.root }}/data'
+              loop_control:
+                  loop_var: dir_item
+
+            - name: '{{ app_name | upper }}: Create docker-compose.yml'
+              copy:
+                  dest: '{{ config.root }}/docker-compose.yml'
+                  content: |-
+                      services:
+                        {{ app_name }}:
+                          container_name: {{ app_name }}
+                          image: ghcr.io/zeroclaw-labs/zeroclaw:latest
+                          restart: unless-stopped
+                          environment:
+                            - API_KEY={{ env.JARVIS_AI_GROQ_KEY }}
+                            - PROVIDER=groq
+                            - ZEROCLAW_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+                            - ZEROCLAW_ALLOW_PUBLIC_BIND=true
+                            - ZEROCLAW_GATEWAY_PORT=42617
+                          ports:
+                            - "{{ env.JARVIS_SERVICES[app_name].port }}:42617"
+                          volumes:
+                            - {{ config.local }}/data:/zeroclaw-data
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
+
+            - name: '{{ app_name | upper }}: Start Docker Compose'
+              command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
+              register: zeroclaw_compose
+              changed_when: "'Created' in zeroclaw_compose.stderr or 'Recreated' in zeroclaw_compose.stderr"
+
+        when: not healthy.app

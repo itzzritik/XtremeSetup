@@ -27,10 +27,9 @@
         file:
             path: '{{ env.JARVIS_CONFIGS_DIR }}'
             state: directory
-            mode: '0777'
+            mode: '0755'
             owner: '{{ instance.subuid }}'
             group: '{{ instance.subuid }}'
-            recurse: true
 
       - name: '{{ instance.hostname | upper }}: Provision Instance'
         when: instance_check.status | default(0) != 200
@@ -125,6 +124,7 @@
             - code
             - alist
             - media
+            - zeroclaw
         loop_control:
             loop_var: docker_app_item
 
