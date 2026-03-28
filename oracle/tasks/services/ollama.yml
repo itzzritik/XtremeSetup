@@ -1,6 +1,6 @@
 ---
 - vars:
-      port: '11434'
+      ollama_port: '11434'
       models: '{{ env.models.values() | list }}'
   block:
       - name: 'OLLAMA: Check if Installed'
@@ -46,7 +46,7 @@
 
       - name: 'OLLAMA: Wait for API'
         uri:
-            url: 'http://127.0.0.1:{{ port }}/api/tags'
+            url: 'http://127.0.0.1:{{ ollama_port }}/api/tags'
             method: GET
             status_code: 200
         register: ollama_api
@@ -55,15 +55,18 @@
         delay: 5
 
       - name: 'OLLAMA: Check Installed Models'
-        command: 'ollama show {{ item }} --modelfile'
+        command: 'ollama show {{ model }} --modelfile'
         loop: '{{ models }}'
+        loop_control:
+            loop_var: model
         register: model_check
         failed_when: false
         changed_when: false
 
       - name: 'OLLAMA: Pull Missing Models'
-        command: 'ollama pull {{ item.item }}'
+        command: 'ollama pull {{ result.model }}'
         loop: '{{ model_check.results }}'
-        when: item.rc != 0
         loop_control:
-            label: '{{ item.item }}'
+            loop_var: result
+            label: '{{ result.model }}'
+        when: result.rc != 0

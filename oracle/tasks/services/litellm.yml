@@ -1,7 +1,7 @@
 ---
 - vars:
       app_name: litellm
-      port: '4000'
+      litellm_port: '4000'
       ollama_port: '11434'
       config:
           root: '{{ env.JARVIS_DIR }}/configs/{{ app_name }}'
@@ -59,11 +59,11 @@
                     image: ghcr.io/berriai/litellm:main-stable
                     network_mode: host
                     restart: unless-stopped
-                    command: ["--config", "/app/config.yaml", "--port", "{{ port }}"]
+                    command: ["--config", "/app/config.yaml", "--port", "{{ litellm_port }}"]
                     volumes:
                       - ./config.yaml:/app/config.yaml
                     healthcheck:
-                      test: ["CMD", "curl", "-f", "http://127.0.0.1:{{ port }}/health"]
+                      test: ["CMD", "curl", "-f", "http://127.0.0.1:{{ litellm_port }}/health"]
                       interval: 30s
                       timeout: 10s
                       retries: 3

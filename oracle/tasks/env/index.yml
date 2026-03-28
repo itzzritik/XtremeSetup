@@ -3,11 +3,15 @@
       project: jarvis
       doppler_required_secrets:
           - JARVIS_AI_SERVER_KEY
+          - JARVIS_DOMAIN
       local_config:
           JARVIS_DIR: '/home/ubuntu/.{{ project }}'
           models:
               weak: 'llama3.2'
               strong: 'qwen3.5:9b'
+          domain: '{{ JARVIS_DOMAIN }}'
+          sites:
+              ai: 'ai.{{ JARVIS_DOMAIN }}'
 
   block:
       - name: Ensure Doppler is Installed

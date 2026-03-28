@@ -1,0 +1,57 @@
+---
+- vars:
+      app_name: caddy
+      config:
+          root: '{{ env.JARVIS_DIR }}/configs/{{ app_name }}'
+  block:
+      - name: '{{ app_name | upper }}: Configure Directories'
+        file:
+            path: '{{ config.root }}'
+            state: directory
+            mode: '0755'
+
+      - name: '{{ app_name | upper }}: Create Caddyfile'
+        copy:
+            dest: '{{ config.root }}/Caddyfile'
+            content: |-
+                {{ env.sites.ai }} {
+                    reverse_proxy localhost:4000
+                }
+            mode: '0644'
+        register: caddy_config
+
+      - name: '{{ app_name | upper }}: Create docker-compose.yml'
+        copy:
+            dest: '{{ config.root }}/docker-compose.yml'
+            content: |-
+                services:
+                  {{ app_name }}:
+                    container_name: {{ app_name }}
+                    image: caddy:2-alpine
+                    network_mode: host
+                    restart: unless-stopped
+                    volumes:
+                      - ./Caddyfile:/etc/caddy/Caddyfile
+                      - caddy_data:/data
+                      - caddy_config:/config
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
+                volumes:
+                  caddy_data:
+                  caddy_config:
+            mode: '0644'
+        register: caddy_compose
+
+      - name: '{{ app_name | upper }}: Deploy Container'
+        command: docker compose up -d
+        args:
+            chdir: '{{ config.root }}'
+        register: caddy_deploy
+        changed_when: "'Created' in caddy_deploy.stderr or 'Recreated' in caddy_deploy.stderr"
+
+      - name: '{{ app_name | upper }}: Reload on Config Change'
+        command: docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+        when: caddy_config is changed and caddy_deploy is not changed
