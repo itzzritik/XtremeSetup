@@ -41,6 +41,7 @@ JARVIS_SERVICES:
         logo: streamyfin.svg
         port: 8096
         subdomains: [media, jellyfin]
+        skip_auth: true
 
     home:
         id: 250

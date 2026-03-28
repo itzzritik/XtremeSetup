@@ -24,7 +24,7 @@
             dest: /etc/systemd/system/ollama.service.d/override.conf
             content: |
                 [Service]
-                Environment="OLLAMA_HOST=0.0.0.0"
+                Environment="OLLAMA_HOST=127.0.0.1"
                 Environment="OLLAMA_MAX_LOADED_MODELS=2"
             mode: '0644'
         register: ollama_override

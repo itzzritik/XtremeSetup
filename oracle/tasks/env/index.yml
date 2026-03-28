@@ -2,7 +2,7 @@
 - vars:
       project: jarvis
       doppler_required_secrets:
-          - JARVIS_ADMIN_PASSWORD
+          - JARVIS_AI_SERVER_KEY
       local_config:
           JARVIS_DIR: '/home/ubuntu/.{{ project }}'
           models:

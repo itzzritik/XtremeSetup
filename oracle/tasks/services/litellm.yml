@@ -6,94 +6,85 @@
       config:
           root: '{{ env.JARVIS_DIR }}/configs/{{ app_name }}'
   block:
-      - name: '{{ app_name | upper }}: Check Container Status'
-        command: docker inspect --format '{{ "{{" }}.State.Running{{ "}}" }}' {{ app_name }}
-        register: litellm_status
-        failed_when: false
-        changed_when: false
+      - name: '{{ app_name | upper }}: Configure Directories'
+        file:
+            path: '{{ config.root }}'
+            state: directory
+            mode: '0755'
 
-      - set_fact:
-            healthy:
-                app: "{{ litellm_status.stdout | default('false') | trim == 'true' }}"
+      - name: '{{ app_name | upper }}: Create Proxy Config'
+        copy:
+            dest: '{{ config.root }}/config.yaml'
+            content: |-
+                model_list:
+                  - model_name: "ollama_chat/*"
+                    litellm_params:
+                      model: "ollama_chat/*"
+                      api_base: "http://127.0.0.1:{{ ollama_port }}"
 
-      - debug:
-            msg:
-                - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
+                  - model_name: weak
+                    litellm_params:
+                      model: ollama_chat/{{ env.models.weak }}
+                      api_base: "http://127.0.0.1:{{ ollama_port }}"
 
-      - block:
-            - name: '{{ app_name | upper }}: Configure Directories'
-              file:
-                  path: '{{ config.root }}'
-                  state: directory
-                  mode: '0755'
+                  - model_name: strong
+                    litellm_params:
+                      model: ollama_chat/{{ env.models.strong }}
+                      api_base: "http://127.0.0.1:{{ ollama_port }}"
 
-            - name: '{{ app_name | upper }}: Create Proxy Config'
-              copy:
-                  dest: '{{ config.root }}/config.yaml'
-                  content: |-
-                      model_list:
-                        - model_name: "ollama_chat/*"
-                          litellm_params:
-                            model: "ollama_chat/*"
-                            api_base: "http://127.0.0.1:{{ ollama_port }}"
+                  - model_name: auto
+                    litellm_params:
+                      model: auto_router/complexity_router
+                      complexity_router_config:
+                        tiers:
+                          SIMPLE: weak
+                          MEDIUM: strong
+                          COMPLEX: strong
+                          REASONING: strong
+                      complexity_router_default_model: weak
 
-                        - model_name: weak
-                          litellm_params:
-                            model: ollama_chat/{{ env.models.weak }}
-                            api_base: "http://127.0.0.1:{{ ollama_port }}"
+                general_settings:
+                  master_key: "{{ env.JARVIS_AI_SERVER_KEY }}"
+            mode: '0644'
+        no_log: true
+        register: litellm_config
 
-                        - model_name: strong
-                          litellm_params:
-                            model: ollama_chat/{{ env.models.strong }}
-                            api_base: "http://127.0.0.1:{{ ollama_port }}"
+      - name: '{{ app_name | upper }}: Create docker-compose.yml'
+        copy:
+            dest: '{{ config.root }}/docker-compose.yml'
+            content: |-
+                services:
+                  {{ app_name }}:
+                    container_name: {{ app_name }}
+                    image: ghcr.io/berriai/litellm:main-stable
+                    network_mode: host
+                    restart: unless-stopped
+                    command: ["--config", "/app/config.yaml", "--port", "{{ port }}"]
+                    volumes:
+                      - ./config.yaml:/app/config.yaml
+                    healthcheck:
+                      test: ["CMD", "curl", "-f", "http://127.0.0.1:{{ port }}/health"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 60s
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
+            mode: '0644'
+        register: litellm_compose
 
-                        - model_name: auto
-                          litellm_params:
-                            model: auto_router/complexity_router
-                            complexity_router_config:
-                              tiers:
-                                SIMPLE: weak
-                                MEDIUM: strong
-                                COMPLEX: strong
-                                REASONING: strong
-                            complexity_router_default_model: weak
+      - name: '{{ app_name | upper }}: Deploy Container'
+        command: docker compose up -d
+        args:
+            chdir: '{{ config.root }}'
+        register: litellm_deploy
+        changed_when: "'Created' in litellm_deploy.stderr or 'Recreated' in litellm_deploy.stderr"
 
-                      general_settings:
-                        master_key: "{{ env.JARVIS_ADMIN_PASSWORD }}"
-                  mode: '0644'
-              no_log: true
-
-            - name: '{{ app_name | upper }}: Create docker-compose.yml'
-              copy:
-                  dest: '{{ config.root }}/docker-compose.yml'
-                  content: |-
-                      services:
-                        {{ app_name }}:
-                          container_name: {{ app_name }}
-                          image: ghcr.io/berriai/litellm:main-latest
-                          network_mode: host
-                          restart: unless-stopped
-                          command: ["--config", "/app/config.yaml", "--port", "{{ port }}"]
-                          volumes:
-                            - ./config.yaml:/app/config.yaml
-                          healthcheck:
-                            test: ["CMD", "curl", "-f", "http://127.0.0.1:{{ port }}/health"]
-                            interval: 30s
-                            timeout: 10s
-                            retries: 3
-                            start_period: 60s
-                          logging:
-                            driver: "json-file"
-                            options:
-                              max-size: "10m"
-                              max-file: "3"
-                  mode: '0644'
-
-            - name: '{{ app_name | upper }}: Start Docker Compose'
-              command: docker compose up -d
-              args:
-                  chdir: '{{ config.root }}'
-              register: litellm_compose
-              changed_when: "'Created' in litellm_compose.stderr or 'Recreated' in litellm_compose.stderr"
-
-        when: not healthy.app
+      - name: '{{ app_name | upper }}: Restart on Config Change'
+        command: docker compose restart
+        args:
+            chdir: '{{ config.root }}'
+        when: litellm_config is changed and litellm_deploy is not changed

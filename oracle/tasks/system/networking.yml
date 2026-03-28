@@ -8,6 +8,17 @@
   environment:
       DEBIAN_FRONTEND: noninteractive
 
+- name: 'NETWORKING: Check SSH Safety Rule'
+  command: iptables -C INPUT -p tcp --dport 22 -j ACCEPT
+  register: ssh_check
+  failed_when: false
+  changed_when: false
+
+- name: 'NETWORKING: Ensure SSH Access'
+  command: iptables -I INPUT -p tcp --dport 22 -j ACCEPT
+  when: ssh_check.rc != 0
+  register: ssh_added
+
 - name: 'NETWORKING: Check INPUT Rule for TCP 3000-9000'
   command: iptables -C INPUT -p tcp --dport 3000:9000 -j ACCEPT
   register: input_check
@@ -21,4 +32,4 @@
 
 - name: 'NETWORKING: Persist Rules'
   command: netfilter-persistent save
-  when: input_added is changed
+  when: ssh_added is changed or input_added is changed
