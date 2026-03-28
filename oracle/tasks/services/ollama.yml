@@ -1,0 +1,69 @@
+---
+- vars:
+      port: '11434'
+      models: '{{ env.models.values() | list }}'
+  block:
+      - name: 'OLLAMA: Check if Installed'
+        command: ollama --version
+        register: ollama_check
+        failed_when: false
+        changed_when: false
+
+      - name: 'OLLAMA: Install'
+        shell: curl -fsSL https://ollama.com/install.sh | sh
+        when: ollama_check.rc != 0
+
+      - name: 'OLLAMA: Create Systemd Override Directory'
+        file:
+            path: /etc/systemd/system/ollama.service.d
+            state: directory
+            mode: '0755'
+
+      - name: 'OLLAMA: Configure Bind Address and Concurrency'
+        copy:
+            dest: /etc/systemd/system/ollama.service.d/override.conf
+            content: |
+                [Service]
+                Environment="OLLAMA_HOST=0.0.0.0"
+                Environment="OLLAMA_MAX_LOADED_MODELS=2"
+            mode: '0644'
+        register: ollama_override
+
+      - name: 'OLLAMA: Reload and Restart'
+        block:
+            - systemd:
+                  daemon_reload: yes
+            - systemd:
+                  name: ollama
+                  state: restarted
+        when: ollama_override is changed
+
+      - name: 'OLLAMA: Ensure Running'
+        systemd:
+            name: ollama
+            state: started
+            enabled: yes
+
+      - name: 'OLLAMA: Wait for API'
+        uri:
+            url: 'http://127.0.0.1:{{ port }}/api/tags'
+            method: GET
+            status_code: 200
+        register: ollama_api
+        until: ollama_api.status == 200
+        retries: 12
+        delay: 5
+
+      - name: 'OLLAMA: Check Installed Models'
+        command: 'ollama show {{ item }} --modelfile'
+        loop: '{{ models }}'
+        register: model_check
+        failed_when: false
+        changed_when: false
+
+      - name: 'OLLAMA: Pull Missing Models'
+        command: 'ollama pull {{ item.item }}'
+        loop: '{{ model_check.results }}'
+        when: item.rc != 0
+        loop_control:
+            label: '{{ item.item }}'

@@ -1,0 +1,48 @@
+---
+- name: Setup Local Environment
+  hosts: local
+  connection: local
+  gather_facts: true
+  tasks:
+      - name: Install Ansible Requirements
+        command: ansible-galaxy collection install -r requirements.yml --upgrade
+        args:
+            chdir: '{{ playbook_dir }}'
+        register: galaxy_install
+        changed_when: "'Installing' in galaxy_install.stdout"
+
+      - name: Environment Setup
+        include_tasks: tasks/env/index.yml
+
+- name: Configure Oracle Server
+  hosts: oracle
+  gather_facts: false
+
+  pre_tasks:
+      - name: Restore Environment Variables
+        set_fact:
+            env: '{{ hostvars["local"]["env"] }}'
+        no_log: true
+
+      - name: Ensure Base Directories
+        file:
+            path: '{{ item }}'
+            state: directory
+            mode: '0755'
+        loop:
+            - '{{ env.JARVIS_DIR }}'
+            - '{{ env.JARVIS_DIR }}/configs'
+
+  tasks:
+      - name: Execute System Tasks
+        include_tasks: 'tasks/system/{{ item }}.yml'
+        loop:
+            - update
+            - networking
+            - docker
+
+      - name: Deploy Services
+        include_tasks: 'tasks/services/{{ item }}.yml'
+        loop:
+            - ollama
+            - litellm

@@ -1,0 +1,24 @@
+---
+- name: 'NETWORKING: Install iptables-persistent'
+  apt:
+      name:
+          - iptables-persistent
+          - netfilter-persistent
+      state: present
+  environment:
+      DEBIAN_FRONTEND: noninteractive
+
+- name: 'NETWORKING: Check INPUT Rule for TCP 3000-9000'
+  command: iptables -C INPUT -p tcp --dport 3000:9000 -j ACCEPT
+  register: input_check
+  failed_when: false
+  changed_when: false
+
+- name: 'NETWORKING: Allow TCP Ports 3000-9000'
+  command: iptables -I INPUT -p tcp --dport 3000:9000 -j ACCEPT
+  when: input_check.rc != 0
+  register: input_added
+
+- name: 'NETWORKING: Persist Rules'
+  command: netfilter-persistent save
+  when: input_added is changed

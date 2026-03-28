@@ -1,0 +1,49 @@
+---
+- vars:
+      project: jarvis
+      doppler_required_secrets:
+          - JARVIS_ADMIN_PASSWORD
+      local_config:
+          JARVIS_DIR: '/home/ubuntu/.{{ project }}'
+          models:
+              weak: 'llama3.2'
+              strong: 'qwen3.5:9b'
+
+  block:
+      - name: Ensure Doppler is Installed
+        homebrew:
+            name: dopplerhq/cli/doppler
+            state: present
+
+      - name: Retrieve Doppler Secrets
+        block:
+            - name: Download Secrets
+              command: doppler secrets download --project {{ project }} --config prd --no-file --format json
+              register: secrets_output
+              changed_when: false
+              no_log: true
+
+        rescue:
+            - name: Doppler Login Required
+              fail:
+                  msg: 'FAILED: `doppler login` required for {{ project }}/prd'
+
+      - name: Parse and Verify Secrets
+        set_fact:
+            doppler_secrets: '{{ secrets_output.stdout | from_json }}'
+        no_log: true
+
+      - name: Validate Required Secrets
+        assert:
+            that: doppler_required_secrets | difference(doppler_secrets.keys()) | length == 0
+            fail_msg: 'Missing: {{ doppler_required_secrets | difference(doppler_secrets.keys()) | join(", ") }}'
+            success_msg: 'All required secrets are present.'
+
+      - name: Construct Global Environment
+        set_fact:
+            env: '{{ doppler_secrets | combine(local_config) }}'
+        no_log: true
+
+      - name: Success Message
+        debug:
+            msg: 'Environment configured successfully. {{ env.keys() | length }} variables loaded.'
