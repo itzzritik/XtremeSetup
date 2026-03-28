@@ -14,9 +14,11 @@
         copy:
             dest: '{{ config.root }}/Caddyfile'
             content: |-
-                {{ env.sites.ai }} {
-                    reverse_proxy localhost:4000
+                {% for name, svc in env.services.items() %}
+                {{ svc.subdomain }}.{{ env.JARVIS_DOMAIN }} {
+                    reverse_proxy localhost:{{ svc.port }}
                 }
+                {% endfor %}
             mode: '0644'
         register: caddy_config
 

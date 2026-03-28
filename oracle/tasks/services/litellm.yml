@@ -1,7 +1,7 @@
 ---
 - vars:
       app_name: litellm
-      litellm_port: '4000'
+      litellm_port: '{{ env.services[app_name].port }}'
       ollama_port: '11434'
       config:
           root: '{{ env.JARVIS_DIR }}/configs/{{ app_name }}'

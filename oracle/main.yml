@@ -15,7 +15,7 @@
         include_tasks: tasks/env/index.yml
 
 - name: Configure Oracle Server
-  hosts: oracle
+  hosts: oracle_machines
   gather_facts: false
 
   pre_tasks:
