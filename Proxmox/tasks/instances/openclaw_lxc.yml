@@ -56,7 +56,7 @@
                     "mode": "merge",
                     "providers": {
                       "jarvis": {
-                        "baseUrl": "https://ai.{{ env.JARVIS_DOMAIN }}/v1",
+                        "baseUrl": "https://ai.{{ env.JARVIS_DOMAIN }}",
                         "apiKey": {{ env.JARVIS_AI_SERVER_KEY | to_json }},
                         "api": "openai-completions",
                         "models": [
@@ -66,26 +66,8 @@
                             "reasoning": false,
                             "input": ["text"],
                             "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-                            "contextWindow": 131072,
-                            "maxTokens": 8192
-                          },
-                          {
-                            "id": "strong",
-                            "name": "Strong",
-                            "reasoning": false,
-                            "input": ["text"],
-                            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-                            "contextWindow": 131072,
-                            "maxTokens": 8192
-                          },
-                          {
-                            "id": "weak",
-                            "name": "Weak",
-                            "reasoning": false,
-                            "input": ["text"],
-                            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-                            "contextWindow": 131072,
-                            "maxTokens": 8192
+                            "contextWindow": 32768,
+                            "maxTokens": 4096
                           }
                         ]
                       }

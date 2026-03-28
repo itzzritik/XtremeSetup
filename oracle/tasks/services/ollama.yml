@@ -26,6 +26,7 @@
                 [Service]
                 Environment="OLLAMA_HOST=127.0.0.1"
                 Environment="OLLAMA_MAX_LOADED_MODELS=2"
+                Environment="OLLAMA_CONTEXT_LENGTH=32768"
             mode: '0644'
         register: ollama_override
 
