@@ -52,37 +52,40 @@
                       "{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.traefik.id }}"
                     ]
                   },
-                  "auth": {
-                    "profiles": {
-                      "nvidia:default": {
-                        "provider": "nvidia",
-                        "mode": "api_key"
-                      }
-                    }
-                  },
                   "models": {
                     "mode": "merge",
                     "providers": {
-                      "nvidia": {
-                        "baseUrl": "https://integrate.api.nvidia.com/v1",
-                        "apiKey": {{ env.JARVIS_AI_NVIDIA_KEY | to_json }},
+                      "jarvis": {
+                        "baseUrl": "https://ai.{{ env.JARVIS_DOMAIN }}/v1",
+                        "apiKey": {{ env.JARVIS_AI_SERVER_KEY | to_json }},
                         "api": "openai-completions",
                         "models": [
                           {
-                            "id": "moonshotai/kimi-k2.5",
-                            "name": "kimi-k2.5",
+                            "id": "auto",
+                            "name": "Auto (Complexity Routed)",
                             "reasoning": false,
-                            "input": [
-                              "text"
-                            ],
-                            "cost": {
-                              "input": 0,
-                              "output": 0,
-                              "cacheRead": 0,
-                              "cacheWrite": 0
-                            },
-                            "contextWindow": 256000,
-                            "maxTokens": 81920
+                            "input": ["text"],
+                            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+                            "contextWindow": 131072,
+                            "maxTokens": 8192
+                          },
+                          {
+                            "id": "strong",
+                            "name": "Strong",
+                            "reasoning": false,
+                            "input": ["text"],
+                            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+                            "contextWindow": 131072,
+                            "maxTokens": 8192
+                          },
+                          {
+                            "id": "weak",
+                            "name": "Weak",
+                            "reasoning": false,
+                            "input": ["text"],
+                            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+                            "contextWindow": 131072,
+                            "maxTokens": 8192
                           }
                         ]
                       }
@@ -91,10 +94,10 @@
                   "agents": {
                     "defaults": {
                       "model": {
-                        "primary": "nvidia/moonshotai/kimi-k2.5"
+                        "primary": "jarvis/auto"
                       },
                       "models": {
-                        "nvidia/moonshotai/kimi-k2.5": {}
+                        "jarvis/auto": {}
                       },
                       "maxConcurrent": 2,
                       "timeoutSeconds": 180,
@@ -123,10 +126,10 @@
                     "dmScope": "per-channel-peer"
                   }
                 }
-            force: false
             owner: '100000'
             group: '100000'
             mode: '0600'
+        register: openclaw_config
 
       - name: '{{ instance.hostname | upper }}: Provision Infrastructure'
         when: instance_check.status | default(0) != 200
@@ -249,14 +252,14 @@
                   systemctl enable --now openclaw
                   "
 
-            - name: '{{ instance.hostname | upper }}: Install OpenClaw Restart Helper'
+            - name: '{{ instance.hostname | upper }}: Install Restart Helper'
               shell: |
                   pct exec {{ id }} -- bash -c "
-                  cat <<'EOF' > /usr/local/bin/openclaw-restart
+                  cat <<'EOF' > /usr/local/bin/ocr
                   #!/usr/bin/env bash
                   systemctl restart openclaw
                   EOF
-                  chmod +x /usr/local/bin/openclaw-restart
+                  chmod +x /usr/local/bin/ocr
                   "
 
             - name: '{{ instance.hostname | upper }}: Configure Firewall (Security Hardening)'
@@ -297,6 +300,10 @@
                   # Save Rules
                   iptables-save > /etc/iptables/rules.v4
                   "
+
+      - name: '{{ instance.hostname | upper }}: Restart on Config Change'
+        shell: pct exec {{ id }} -- systemctl restart openclaw
+        when: openclaw_config is changed and instance_check.status | default(0) == 200
 
       - name: '{{ instance.hostname | upper }}: Verify Service'
         shell: pct exec {{ id }} -- systemctl is-active openclaw
