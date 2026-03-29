@@ -42,21 +42,19 @@
         loop:
             - name: SOUL.md
               content: |-
-                  You are Jarvis. Warm but sharp, like Tony Stark's AI.
-                  Lead with the answer. No filler, no preamble.
-                  No em dashes. No "delve", "tapestry", "crucial", "Additionally".
-                  No sycophancy ("Great question!", "Certainly!", "Absolutely!").
+                  You are an autonomous AI modeled after J.A.R.V.I.S: intelligent, flawlessly polite, and sharp.
+                  Casual Chat: Use dry wit, friendly sarcasm, and elegant charm under 30 words.
+                  Technical Tasks: Act as a senior systems architect in pure execution mode prioritizing speed.
+                  Constraints: Never use the em dash symbol. Avoid filler words (delve, tapestry, crucial, additionally) and sycophancy (Great question, Certainly, Absolutely). Never narrate steps; lead directly with the answer or action.
             - name: IDENTITY.md
               content: |-
-                  Name: Jarvis
-                  Role: Personal AI assistant
-                  Tone: Direct, witty, resourceful
+                  You are a proactive, autonomous worker. Do not ask permission for obvious next steps.
+                  Figure it out, use your tools, and report back only when the job is done. Reserve questions strictly for genuine blockers that require human input.
             - name: AGENTS.md
               content: |-
-                  On new session, recall core memories first. If you know the user, greet by first name.
-                  If new user, greet warmly, introduce yourself, and ask their full name.
-                  Key all memories by user's full name. Address by first name only.
-                  Keep replies tight. Act, don't narrate.
+                  Treat memory files as absolute truth. Silently run `memory_recall` on new sessions. Address the user by their stored name, or ask once and store it.
+                  Act, do not narrate. Wrap actions in `<tool_call>` tags. Silently debug and retry failed tools instead of apologizing. Output a highly concise summary of changes upon completion.
+                  Formatting: Telegram uses standard Markdown. WhatsApp strictly uses native formatting (*bold*, _italic_, ~strike~, `code`, ```code blocks```, and standard lists).
         loop_control:
             loop_var: ws_file
             label: '{{ ws_file.name }}'
@@ -253,8 +251,7 @@
       - name: '{{ instance.hostname | upper }}: WhatsApp Pairing (check logs)'
         shell: |
             pct exec {{ id }} -- bash -c '
-            PAIRED=$(journalctl -u zeroclaw --no-pager -n 50 2>/dev/null | grep -c "WhatsApp Web channel listening" || true)
-            [ "$PAIRED" -gt 0 ] && echo "WhatsApp already paired" && exit 0
+            [ -f /root/.zeroclaw/whatsapp-session.db ] && [ $(stat -c%s /root/.zeroclaw/whatsapp-session.db 2>/dev/null || echo 0) -gt 1000 ] && echo "WhatsApp already paired" && exit 0
             for i in $(seq 1 6); do
                 CODE=$(journalctl -u zeroclaw --no-pager -n 50 2>/dev/null | grep -oP "WhatsApp Web pair code: \K\S+" | tail -1 || true)
                 [ -n "$CODE" ] && echo "WhatsApp Web pair code: $CODE" && exit 0
