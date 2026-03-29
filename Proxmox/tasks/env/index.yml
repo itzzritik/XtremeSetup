@@ -12,6 +12,8 @@
           - JARVIS_AI_CEREBRAS_KEY
           - JARVIS_AI_GEMINI_KEY
           - JARVIS_AI_GROQ_KEY
+          - JARVIS_AI_OPENAI_KEY
+          - JARVIS_AI_OPENROUTER_KEY
           - JARVIS_AI_MISTRAL_KEY
           - JARVIS_AI_SAMBANOVA_KEY
           - JARVIS_AI_SERVER_KEY
@@ -35,7 +37,11 @@
           - JARVIS_HA_DECRYPT_KEY
           - JARVIS_OPENCLAW_GATEWAY_TOKEN
           - JARVIS_POSTGRES_PASSWORD
+          - JARVIS_QDRANT_KEY
+          - JARVIS_QDRANT_URL
           - JARVIS_VOIDAUTH_STORAGE_KEY
+          - JARVIS_WHATSAPP_ADMIN_PHONE
+          - JARVIS_WHATSAPP_BOT_PHONE
       local_config:
           JARVIS_BOT_NAME: '{{ project | title }}'
           JARVIS_DIR: '/root/.{{ project }}'

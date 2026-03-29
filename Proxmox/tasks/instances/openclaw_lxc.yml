@@ -52,50 +52,30 @@
                       "{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.traefik.id }}"
                     ]
                   },
-                  "models": {
-                    "mode": "merge",
-                    "providers": {
-                      "jarvis": {
-                        "baseUrl": "https://ai.{{ env.JARVIS_DOMAIN }}",
-                        "apiKey": {{ env.JARVIS_AI_SERVER_KEY | to_json }},
-                        "api": "openai-completions",
-                        "models": [
-                          {
-                            "id": "auto",
-                            "name": "Auto (Complexity Routed)",
-                            "reasoning": false,
-                            "input": ["text"],
-                            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-                            "contextWindow": 131072,
-                            "maxTokens": 8192
-                          }
-                        ]
-                      }
-                    }
-                  },
                   "agents": {
                     "defaults": {
                       "model": {
-                        "primary": "jarvis/auto"
+                        "primary": "openai/gpt-5-nano"
                       },
                       "models": {
-                        "jarvis/auto": {}
+                        "openai/gpt-5-nano": {}
                       },
+                      "contextTokens": 50000,
                       "maxConcurrent": 2,
-                      "timeoutSeconds": 180,
+                      "timeoutSeconds": 300,
                       "heartbeat": {
-                          "every": "0m"
+                          "every": "55m"
                       },
                       "subagents": {
                         "maxConcurrent": 2
-                      }
+                      },
                     }
                   },
                   "plugins": {
                     "entries": {
                       "telegram": {
                         "enabled": true
-                      }
+                      },
                     }
                   },
                   "channels": {
@@ -105,7 +85,8 @@
                     }
                   },
                   "session": {
-                    "dmScope": "per-channel-peer"
+                    "dmScope": "per-channel-peer",
+                    "reset": { "mode": "daily", "atHour": 4 }
                   }
                 }
             owner: '100000'
@@ -202,90 +183,72 @@
                   [ -d "$OPENCLAW_DIR/dist/control-ui" ] || (cd "$OPENCLAW_DIR" && pnpm ui:build)
                   '
 
-            - name: '{{ instance.hostname | upper }}: Locate OpenClaw Binary'
-              shell: pct exec {{ id }} -- bash -c 'which openclaw || npm bin -g | xargs -I {} echo {}/openclaw'
-              register: openclaw_bin_path
-              failed_when: openclaw_bin_path.stdout | length == 0
-              changed_when: false
+      - name: '{{ instance.hostname | upper }}: Locate OpenClaw Binary'
+        shell: pct exec {{ id }} -- bash -c 'which openclaw || npm bin -g | xargs -I {} echo {}/openclaw'
+        register: openclaw_bin_path
+        failed_when: openclaw_bin_path.stdout | length == 0
+        changed_when: false
 
-            - name: '{{ instance.hostname | upper }}: Configure Systemd Service'
-              shell: |
-                  pct exec {{ id }} -- bash -c "
-                  cat <<'EOF' > /etc/systemd/system/openclaw.service
-                  [Unit]
-                  Description=OpenClaw AI Assistant
-                  After=network.target
+      - name: '{{ instance.hostname | upper }}: Configure Systemd Service'
+        shell: |
+            pct exec {{ id }} -- bash -c "
+            cat <<'EOF' > /etc/systemd/system/openclaw.service
+            [Unit]
+            Description=OpenClaw AI Assistant
+            After=network.target
 
-                  [Service]
-                  Type=simple
-                  User=root
-                  WorkingDirectory=/root
-                  ExecStart={{ openclaw_bin_path.stdout | trim }} gateway --allow-unconfigured --port {{ env.JARVIS_SERVICES[app_name].port }} --bind lan
-                  Restart=always
-                  RestartSec=10
-                  Environment=NODE_ENV=production
-                  Environment=PATH=/usr/bin:/usr/local/bin:/bin
+            [Service]
+            Type=simple
+            User=root
+            WorkingDirectory=/root
+            ExecStart={{ openclaw_bin_path.stdout | trim }} gateway --allow-unconfigured --port {{ env.JARVIS_SERVICES[app_name].port }} --bind lan
+            Restart=always
+            RestartSec=10
+            Environment=NODE_ENV=production
+            Environment=NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache
+            Environment=OPENCLAW_NO_RESPAWN=1
+            Environment=OPENAI_API_KEY={{ env.JARVIS_AI_OPENAI_KEY }}
+            Environment=PATH=/usr/bin:/usr/local/bin:/bin
 
-                  [Install]
-                  WantedBy=multi-user.target
-                  EOF
+            [Install]
+            WantedBy=multi-user.target
+            EOF
 
-                  systemctl daemon-reload
-                  systemctl enable --now openclaw
-                  "
+            systemctl daemon-reload
+            systemctl enable --now openclaw
+            "
+        register: openclaw_service
 
-            - name: '{{ instance.hostname | upper }}: Install Restart Helper'
-              shell: |
-                  pct exec {{ id }} -- bash -c "
-                  cat <<'EOF' > /usr/local/bin/ocr
-                  #!/usr/bin/env bash
-                  systemctl restart openclaw
-                  EOF
-                  chmod +x /usr/local/bin/ocr
-                  "
+      - name: '{{ instance.hostname | upper }}: Install Restart Helper'
+        shell: |
+            pct exec {{ id }} -- bash -c "
+            cat <<'EOF' > /usr/local/bin/re
+            #!/usr/bin/env bash
+            systemctl restart openclaw
+            EOF
+            chmod +x /usr/local/bin/re
+            "
+        changed_when: false
 
-            - name: '{{ instance.hostname | upper }}: Configure Firewall (Security Hardening)'
-              shell: |
-                  pct exec {{ id }} -- bash -c "
-                  # Flush existing rules
-                  iptables -F
-                  iptables -X
-                  iptables -Z
+      - name: '{{ instance.hostname | upper }}: Configure OpenClaw Settings'
+        shell: |
+            pct exec {{ id }} -- bash -c '
+            openclaw config set gateway.mode local
+            openclaw config set agents.defaults.memorySearch.enabled false
+            '
+        changed_when: false
 
-                  # Default Policies
-                  iptables -P INPUT DROP
-                  iptables -P FORWARD DROP
-                  iptables -P OUTPUT DROP
-
-                  # Allow Loopback
-                  iptables -A INPUT -i lo -j ACCEPT
-                  iptables -A OUTPUT -o lo -j ACCEPT
-
-                  # Allow Established/Related
-                  iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-                  iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-
-                  # Allow DNS (UDP/TCP 53) Output
-                  iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
-                  iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
-
-                  # Allow HTTP/HTTPS (80/443) Output
-                  iptables -A OUTPUT -p tcp --dport 80 -j ACCEPT
-                  iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
-
-                  # Allow Traefik/Cloudflared (running in Traefik LXC)
-                  iptables -A INPUT -p tcp --dport {{ env.JARVIS_SERVICES[app_name].port }} -s {{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.traefik.id }} -j ACCEPT
-
-                  # Allow Internal Access to Web UI (Port {{ env.JARVIS_SERVICES[app_name].port }})
-                  iptables -A INPUT -p tcp --dport {{ env.JARVIS_SERVICES[app_name].port }} -s {{ env.JARVIS_NETWORK_PREFIX }}.0/24 -j ACCEPT
-
-                  # Save Rules
-                  iptables-save > /etc/iptables/rules.v4
-                  "
+      - name: '{{ instance.hostname | upper }}: Configure Startup Optimization'
+        shell: |
+            pct exec {{ id }} -- bash -c '
+            mkdir -p /var/tmp/openclaw-compile-cache
+            grep -q NODE_COMPILE_CACHE /etc/environment 2>/dev/null || echo "NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache" >> /etc/environment
+            grep -q OPENCLAW_NO_RESPAWN /etc/environment 2>/dev/null || echo "OPENCLAW_NO_RESPAWN=1" >> /etc/environment
+            '
 
       - name: '{{ instance.hostname | upper }}: Restart on Config Change'
         shell: pct exec {{ id }} -- systemctl restart openclaw
-        when: openclaw_config is changed and instance_check.status | default(0) == 200
+        when: (openclaw_config is changed or openclaw_service is changed) and instance_check.status | default(0) == 200
 
       - name: '{{ instance.hostname | upper }}: Verify Service'
         shell: pct exec {{ id }} -- systemctl is-active openclaw

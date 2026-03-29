@@ -3,11 +3,6 @@
   hosts: local
   connection: local
   gather_facts: true
-  vars_prompt:
-      - name: run_vms_input
-        prompt: 'Do you want to install VMs? (y/n)'
-        private: no
-        default: 'n'
   tasks:
       - name: Install Ansible Requirements
         command: ansible-galaxy collection install -r requirements.yml --upgrade

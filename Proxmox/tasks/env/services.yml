@@ -177,7 +177,7 @@ JARVIS_SERVICES:
         skip_auth: true
 
     zeroclaw:
-        id: 253
+        id: 247
         name: ZeroClaw
         subtitle: Autonomous AI Assistant
         logo: zeroclaw.svg
