@@ -17,31 +17,93 @@
             dest: '{{ config.root }}/config.yaml'
             content: |-
                 model_list:
-                  - model_name: "ollama_chat/*"
+                  # ── Local Ollama (direct access) ──
+                  - model_name: local
                     litellm_params:
-                      model: "ollama_chat/*"
+                      model: ollama_chat/llama3.2
                       api_base: "http://127.0.0.1:{{ ollama_port }}"
 
-                  - model_name: weak
+                  # ── Simple: concise models, high volume ──
+                  - model_name: simple
                     litellm_params:
-                      model: ollama_chat/{{ env.models.weak }}
+                      model: mistral/mistral-small-latest
+                      api_key: "{{ env.JARVIS_AI_MISTRAL_KEY }}"
+                  - model_name: simple
+                    litellm_params:
+                      model: gemini/gemini-flash-lite-latest
+                      api_key: "{{ env.JARVIS_AI_GEMINI_KEY }}"
+                  - model_name: simple
+                    litellm_params:
+                      model: groq/llama-3.1-8b-instant
+                      api_key: "{{ env.JARVIS_AI_GROQ_KEY }}"
+                  - model_name: simple
+                    litellm_params:
+                      model: ollama_chat/llama3.2
                       api_base: "http://127.0.0.1:{{ ollama_port }}"
 
-                  - model_name: strong
+                  # ── Medium: capable models, balanced ──
+                  - model_name: medium
                     litellm_params:
-                      model: ollama_chat/{{ env.models.strong }}
+                      model: groq/openai/gpt-oss-120b
+                      api_key: "{{ env.JARVIS_AI_GROQ_KEY }}"
+                  - model_name: medium
+                    litellm_params:
+                      model: cerebras/qwen-3-235b-a22b-instruct-2507
+                      api_key: "{{ env.JARVIS_AI_CEREBRAS_KEY }}"
+                  - model_name: medium
+                    litellm_params:
+                      model: mistral/mistral-large-latest
+                      api_key: "{{ env.JARVIS_AI_MISTRAL_KEY }}"
+                  - model_name: medium
+                    litellm_params:
+                      model: gemini/gemini-flash-lite-latest
+                      api_key: "{{ env.JARVIS_AI_GEMINI_KEY }}"
+                  - model_name: medium
+                    litellm_params:
+                      model: ollama_chat/llama3.2
                       api_base: "http://127.0.0.1:{{ ollama_port }}"
 
+                  # ── Complex: strongest models, reasoning ──
+                  - model_name: complex
+                    litellm_params:
+                      model: sambanova/DeepSeek-V3.1
+                      api_key: "{{ env.JARVIS_AI_SAMBANOVA_KEY }}"
+                  - model_name: complex
+                    litellm_params:
+                      model: groq/openai/gpt-oss-120b
+                      api_key: "{{ env.JARVIS_AI_GROQ_KEY }}"
+                  - model_name: complex
+                    litellm_params:
+                      model: cerebras/qwen-3-235b-a22b-instruct-2507
+                      api_key: "{{ env.JARVIS_AI_CEREBRAS_KEY }}"
+                  - model_name: complex
+                    litellm_params:
+                      model: mistral/mistral-large-latest
+                      api_key: "{{ env.JARVIS_AI_MISTRAL_KEY }}"
+                  - model_name: complex
+                    litellm_params:
+                      model: ollama_chat/llama3.2
+                      api_base: "http://127.0.0.1:{{ ollama_port }}"
+
+                  # ── Complexity Router ──
                   - model_name: auto
                     litellm_params:
                       model: auto_router/complexity_router
                       complexity_router_config:
                         tiers:
-                          SIMPLE: weak
-                          MEDIUM: strong
-                          COMPLEX: strong
-                          REASONING: strong
-                      complexity_router_default_model: weak
+                          SIMPLE: simple
+                          MEDIUM: medium
+                          COMPLEX: complex
+                          REASONING: complex
+                      complexity_router_default_model: simple
+
+                router_settings:
+                  routing_strategy: "usage-based-routing-v2"
+                  enable_pre_call_checks: true
+                  allowed_fails: 2
+                  retry_after: 60
+                  num_retries: 3
+                  timeout: 120
 
                 general_settings:
                   master_key: "{{ env.JARVIS_AI_SERVER_KEY }}"

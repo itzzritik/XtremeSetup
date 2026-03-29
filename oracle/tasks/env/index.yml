@@ -2,13 +2,15 @@
 - vars:
       project: jarvis
       doppler_required_secrets:
+          - JARVIS_AI_CEREBRAS_KEY
+          - JARVIS_AI_GEMINI_KEY
+          - JARVIS_AI_GROQ_KEY
+          - JARVIS_AI_MISTRAL_KEY
+          - JARVIS_AI_SAMBANOVA_KEY
           - JARVIS_AI_SERVER_KEY
           - JARVIS_DOMAIN
       local_config:
           JARVIS_DIR: '/home/ubuntu/.{{ project }}'
-          models:
-              weak: 'llama3.2'
-              strong: 'qwen3.5:9b'
           services:
               litellm:
                   subdomain: ai

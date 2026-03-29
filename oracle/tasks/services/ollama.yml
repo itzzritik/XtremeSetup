@@ -1,7 +1,7 @@
 ---
 - vars:
       ollama_port: '11434'
-      models: '{{ env.models.values() | list }}'
+      ollama_model: 'llama3.2'
   block:
       - name: 'OLLAMA: Check if Installed'
         command: ollama --version
@@ -19,13 +19,12 @@
             state: directory
             mode: '0755'
 
-      - name: 'OLLAMA: Configure Bind Address and Concurrency'
+      - name: 'OLLAMA: Configure Environment'
         copy:
             dest: /etc/systemd/system/ollama.service.d/override.conf
             content: |
                 [Service]
                 Environment="OLLAMA_HOST=127.0.0.1"
-                Environment="OLLAMA_MAX_LOADED_MODELS=2"
                 Environment="OLLAMA_CONTEXT_LENGTH=32768"
             mode: '0644'
         register: ollama_override
@@ -39,10 +38,10 @@
                   state: restarted
         when: ollama_override is changed
 
-      - name: 'OLLAMA: Ensure Running'
+      - name: 'OLLAMA: Restart Clean'
         systemd:
             name: ollama
-            state: started
+            state: restarted
             enabled: yes
 
       - name: 'OLLAMA: Wait for API'
@@ -55,19 +54,36 @@
         retries: 12
         delay: 5
 
-      - name: 'OLLAMA: Check Installed Models'
-        command: 'ollama show {{ model }} --modelfile'
-        loop: '{{ models }}'
-        loop_control:
-            loop_var: model
+      - name: 'OLLAMA: Check Model'
+        command: 'ollama show {{ ollama_model }} --modelfile'
         register: model_check
         failed_when: false
         changed_when: false
 
-      - name: 'OLLAMA: Pull Missing Models'
-        command: 'ollama pull {{ result.model }}'
-        loop: '{{ model_check.results }}'
+      - name: 'OLLAMA: Pull Model'
+        command: 'ollama pull {{ ollama_model }}'
+        when: model_check.rc != 0
+
+      - name: 'OLLAMA: Preload Model'
+        uri:
+            url: 'http://127.0.0.1:{{ ollama_port }}/api/generate'
+            method: POST
+            body_format: json
+            body:
+                model: '{{ ollama_model }}'
+                keep_alive: -1
+            status_code: 200
+            timeout: 120
+        changed_when: false
+
+      - name: 'OLLAMA: List Installed Models'
+        command: ollama list
+        register: installed_models
+        changed_when: false
+
+      - name: 'OLLAMA: Remove Unused Models'
+        command: 'ollama rm {{ unused_model }}'
+        loop: "{{ installed_models.stdout_lines[1:] | map('split') | map('first') | reject('match', '^' + ollama_model + '(:|$)') | list }}"
         loop_control:
-            loop_var: result
-            label: '{{ result.model }}'
-        when: result.rc != 0
+            loop_var: unused_model
+        when: installed_models.stdout_lines | length > 1
