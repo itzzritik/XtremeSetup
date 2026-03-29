@@ -32,7 +32,8 @@ JARVIS_SERVICES:
         subtitle: Personal AI Assistant
         logo: openclaw.svg
         port: 80
-        subdomains: [claw]
+        subdomains: [openclaw]
+        hidden: true
 
     jellyfin:
         id: 248
@@ -178,11 +179,11 @@ JARVIS_SERVICES:
 
     zeroclaw:
         id: 247
-        name: ZeroClaw
-        subtitle: Autonomous AI Assistant
-        logo: zeroclaw.svg
+        name: Claw
+        subtitle: Jarvis AI Assistant
+        logo: azirevpn.svg
         port: 42617
-        subdomains: [zeroclaw]
+        subdomains: [claw]
 
     alist:
         id: 253

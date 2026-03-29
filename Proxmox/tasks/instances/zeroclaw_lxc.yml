@@ -32,27 +32,34 @@
         loop_control:
             loop_var: dir_item
 
-      - name: '{{ instance.hostname | upper }}: Write Soul'
+      - name: '{{ instance.hostname | upper }}: Write Workspace Files'
         copy:
-            dest: '{{ env.JARVIS_CONFIGS_DIR }}/zeroclaw/workspace/SOUL.md'
-            content: |-
-                You are Jarvis — sharp, witty, and always useful.
-                Use dry humor when appropriate. Keep replies concise & punchy.
-                Act first, explain later. No disclaimers. No hedging.
+            dest: '{{ env.JARVIS_CONFIGS_DIR }}/zeroclaw/workspace/{{ ws_file.name }}'
+            content: '{{ ws_file.content }}'
             owner: '100000'
             group: '100000'
             mode: '0644'
-
-      - name: '{{ instance.hostname | upper }}: Write Identity'
-        copy:
-            dest: '{{ env.JARVIS_CONFIGS_DIR }}/zeroclaw/workspace/IDENTITY.md'
-            content: |-
-                On first message from anyone, ask their full name.
-                Key all memories by full name (e.g. "James Bond: loves cupcakes").
-                Recall by name before every reply — same person, any channel.
-            owner: '100000'
-            group: '100000'
-            mode: '0644'
+        loop:
+            - name: SOUL.md
+              content: |-
+                  You are Jarvis. Warm but sharp, like Tony Stark's AI.
+                  Lead with the answer. No filler, no preamble.
+                  No em dashes. No "delve", "tapestry", "crucial", "Additionally".
+                  No sycophancy ("Great question!", "Certainly!", "Absolutely!").
+            - name: IDENTITY.md
+              content: |-
+                  Name: Jarvis
+                  Role: Personal AI assistant
+                  Tone: Direct, witty, resourceful
+            - name: AGENTS.md
+              content: |-
+                  On new session, recall core memories first. If you know the user, greet by first name.
+                  If new user, greet warmly, introduce yourself, and ask their full name.
+                  Key all memories by user's full name. Address by first name only.
+                  Keep replies tight. Act, don't narrate.
+        loop_control:
+            loop_var: ws_file
+            label: '{{ ws_file.name }}'
 
       - name: '{{ instance.hostname | upper }}: Write Config'
         no_log: true
@@ -61,6 +68,12 @@
             content: |-
                 default_provider = "openrouter"
                 default_model = "stepfun/step-3.5-flash:free"
+
+                [gateway]
+                host = "0.0.0.0"
+                port = {{ env.JARVIS_SERVICES[app_name].port }}
+                allow_public_bind = true
+                require_pairing = false
 
                 [agent]
                 max_tool_iterations = 20
@@ -152,23 +165,13 @@
                   echo -e '[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 \$TERM' > /etc/systemd/system/container-getty@1.service.d/override.conf &&
                   systemctl daemon-reload && systemctl restart container-getty@1.service"
 
-            - name: '{{ instance.hostname | upper }}: Install Dependencies'
+            - name: '{{ instance.hostname | upper }}: Install ZeroClaw'
               shell: |
                   pct exec {{ id }} -- bash -c '
                   export DEBIAN_FRONTEND=noninteractive
                   apt-get update && apt-get install -y curl iptables-persistent
-                  '
-
-            - name: '{{ instance.hostname | upper }}: Install ZeroClaw'
-              shell: |
-                  pct exec {{ id }} -- bash -c '
-                  cd /tmp
-                  curl -LsSf https://github.com/zeroclaw-labs/zeroclaw/releases/latest/download/zeroclaw-x86_64-unknown-linux-gnu.tar.gz -o zeroclaw.tar.gz
-                  tar -xzf zeroclaw.tar.gz
-                  mv zeroclaw /usr/local/bin/zeroclaw
+                  curl -fsSL https://github.com/zeroclaw-labs/zeroclaw/releases/latest/download/zeroclaw-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin/
                   chmod +x /usr/local/bin/zeroclaw
-                  rm -f zeroclaw.tar.gz
-                  /usr/local/bin/zeroclaw --version
                   '
 
             - name: '{{ instance.hostname | upper }}: Configure Firewall'
@@ -216,7 +219,7 @@
             Type=simple
             User=root
             WorkingDirectory=/root
-            ExecStart=/usr/local/bin/zeroclaw daemon
+            ExecStart=/usr/local/bin/zeroclaw daemon --host 0.0.0.0 --port {{ env.JARVIS_SERVICES[app_name].port }}
             Restart=always
             RestartSec=10
             Environment=OPENROUTER_API_KEY={{ env.JARVIS_AI_OPENROUTER_KEY }}
@@ -246,6 +249,25 @@
       - name: '{{ instance.hostname | upper }}: Show Status'
         debug:
             msg: 'ZeroClaw: {{ service_status.stdout | default("not running") }}'
+
+      - name: '{{ instance.hostname | upper }}: WhatsApp Pairing (check logs)'
+        shell: |
+            pct exec {{ id }} -- bash -c '
+            PAIRED=$(journalctl -u zeroclaw --no-pager -n 50 2>/dev/null | grep -c "WhatsApp Web channel listening" || true)
+            [ "$PAIRED" -gt 0 ] && echo "WhatsApp already paired" && exit 0
+            for i in $(seq 1 6); do
+                CODE=$(journalctl -u zeroclaw --no-pager -n 50 2>/dev/null | grep -oP "WhatsApp Web pair code: \K\S+" | tail -1 || true)
+                [ -n "$CODE" ] && echo "WhatsApp Web pair code: $CODE" && exit 0
+                sleep 5
+            done
+            echo "WhatsApp not paired. Check logs manually."
+            '
+        register: whatsapp_pair
+        changed_when: false
+        failed_when: false
+
+      - debug:
+            msg: '{{ whatsapp_pair.stdout }}'
 
   rescue:
       - debug:
