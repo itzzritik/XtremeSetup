@@ -9,7 +9,11 @@
         changed_when: false
 
       - name: '{{ app_name | upper }}: Install'
-        shell: curl -fsSL https://code-server.dev/install.sh | sh
+        shell: |
+            set -eo pipefail
+            curl -fsSL https://code-server.dev/install.sh | sh
+        args:
+            executable: /bin/bash
         when: cs_check.rc != 0
 
       - name: '{{ app_name | upper }}: Ensure Config Directory'
@@ -26,12 +30,13 @@
             content: |-
                 bind-addr: 127.0.0.1:{{ env.JARVIS_SERVICES['code-server'].port }}
                 auth: password
-                password: {{ env.JARVIS_CODE_PASSWORD }}
+                password: "{{ env.JARVIS_CODE_PASSWORD }}"
                 cert: false
             mode: '0600'
             owner: ubuntu
             group: ubuntu
         register: cs_config
+        no_log: true
 
       - name: '{{ app_name | upper }}: Create Systemd Override Directory'
         file:
@@ -49,15 +54,13 @@
             mode: '0644'
         register: cs_override
 
-      - name: '{{ app_name | upper }}: Enable Service'
+      - name: '{{ app_name | upper }}: Daemon Reload'
         systemd:
-            name: 'code-server@ubuntu'
-            state: started
-            enabled: true
             daemon_reload: true
+        when: cs_override is changed
 
-      - name: '{{ app_name | upper }}: Restart on Config Change'
+      - name: '{{ app_name | upper }}: Enable and Start Service'
         systemd:
             name: 'code-server@ubuntu'
-            state: restarted
-        when: cs_config is changed or cs_override is changed
+            state: "{{ 'restarted' if (cs_config is changed or cs_override is changed) else 'started' }}"
+            enabled: true

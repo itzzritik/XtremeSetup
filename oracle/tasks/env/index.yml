@@ -4,8 +4,8 @@
       doppler_required_secrets:
           - JARVIS_DOMAIN
           - JARVIS_CODE_PASSWORD
-          - JARVIS_ANTHROPIC_KEY
           - JARVIS_OPENAI_KEY
+          - JARVIS_OPENROUTER_KEY
           - JARVIS_CF_TUNNEL_TOKEN
       local_config:
           JARVIS_DIR: '/home/ubuntu/.jarvis'
@@ -45,10 +45,11 @@
       - name: Load Service Definitions
         include_vars:
             file: services.yml
+            name: service_defs
 
       - name: Construct Global Environment
         set_fact:
-            env: '{{ doppler_secrets | combine(local_config) | combine({"JARVIS_SERVICES": JARVIS_SERVICES}) }}'
+            env: '{{ doppler_secrets | combine(local_config) | combine({"JARVIS_SERVICES": service_defs.JARVIS_SERVICES}) }}'
         no_log: true
 
       - name: Success Message

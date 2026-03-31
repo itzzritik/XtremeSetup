@@ -29,6 +29,7 @@
         command: cloudflared service install {{ env.JARVIS_CF_TUNNEL_TOKEN }}
         args:
             creates: /etc/systemd/system/cloudflared.service
+        no_log: true
 
       - name: '{{ app_name | upper }}: Ensure Running'
         systemd:

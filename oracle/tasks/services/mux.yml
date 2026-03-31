@@ -7,22 +7,41 @@
             path: /usr/local/bin/mux
         register: mux_check
 
-      - name: '{{ app_name | upper }}: Download ARM64 AppImage'
-        get_url:
-            url: 'https://github.com/coder/mux/releases/latest/download/Mux-linux-arm64.AppImage'
-            dest: /tmp/mux.AppImage
-            mode: '0755'
-        when: not mux_check.stat.exists
-
-      - name: '{{ app_name | upper }}: Extract AppImage (headless compatible)'
+      - name: '{{ app_name | upper }}: Install from AppImage'
         shell: |
             cd /tmp
+            curl -fsSL -o mux.AppImage \
+              'https://github.com/coder/mux/releases/latest/download/Mux-linux-arm64.AppImage'
             chmod +x mux.AppImage
             ./mux.AppImage --appimage-extract
+            rm -rf /opt/mux
             mv squashfs-root /opt/mux
-            ln -sf /opt/mux/mux /usr/local/bin/mux
+            ln -sf /opt/mux/AppRun /usr/local/bin/mux
             rm -f mux.AppImage
         when: not mux_check.stat.exists
+
+      - name: '{{ app_name | upper }}: Ensure Directories'
+        file:
+            path: '{{ item }}'
+            state: directory
+            mode: '0755'
+            owner: ubuntu
+            group: ubuntu
+        loop:
+            - /home/ubuntu/.mux
+            - '{{ env.JARVIS_DIR }}/scripts'
+
+      - name: '{{ app_name | upper }}: Write Env File'
+        copy:
+            dest: /home/ubuntu/.mux/env
+            content: |
+                OPENAI_API_KEY={{ env.JARVIS_OPENAI_KEY }}
+                OPENROUTER_API_KEY={{ env.JARVIS_OPENROUTER_KEY }}
+            mode: '0600'
+            owner: ubuntu
+            group: ubuntu
+        no_log: true
+        register: mux_env
 
       - name: '{{ app_name | upper }}: Create Systemd Service'
         copy:
@@ -35,9 +54,8 @@
                 [Service]
                 Type=simple
                 User=ubuntu
+                EnvironmentFile=/home/ubuntu/.mux/env
                 Environment=MUX_PORT={{ env.JARVIS_SERVICES.mux.port }}
-                Environment=ANTHROPIC_API_KEY={{ env.JARVIS_ANTHROPIC_KEY }}
-                Environment=OPENAI_API_KEY={{ env.JARVIS_OPENAI_KEY }}
                 ExecStart=/usr/local/bin/mux --server
                 Restart=always
                 RestartSec=5
@@ -48,15 +66,79 @@
             mode: '0644'
         register: mux_service
 
-      - name: '{{ app_name | upper }}: Enable Service'
-        systemd:
-            name: mux
-            state: started
-            enabled: true
-            daemon_reload: true
+      - name: '{{ app_name | upper }}: Create Models Sync Script'
+        copy:
+            dest: '{{ env.JARVIS_DIR }}/scripts/sync-mux-models.sh'
+            content: |
+                #!/bin/bash
+                set -uo pipefail
+                PROVIDERS_FILE="$HOME/.mux/providers.jsonc"
+                ENV_FILE="$HOME/.mux/env"
+                TIMEOUT=30
+                TMPDIR=$(mktemp -d)
+                trap 'rm -rf "$TMPDIR"' EXIT
 
-      - name: '{{ app_name | upper }}: Restart on Config Change'
+                [ -f "$ENV_FILE" ] && set -a && . "$ENV_FILE" && set +a
+
+                # Fetch in parallel using temp files (backgrounded command substitution
+                # cannot capture output -- the assignment completes before the subshell)
+                curl -sf --max-time "$TIMEOUT" "https://openrouter.ai/api/v1/models" \
+                    | jq -r '[.data[] | select(.pricing.prompt == "0" and .pricing.completion == "0") | .id] | sort' \
+                    > "$TMPDIR/or.json" 2>/dev/null &
+                OR_PID=$!
+
+                OAI_PID=""
+                if [ -n "${OPENAI_API_KEY:-}" ]; then
+                    curl -sf --max-time "$TIMEOUT" "https://api.openai.com/v1/models" \
+                        -H "Authorization: Bearer $OPENAI_API_KEY" \
+                        | jq -r '[.data[].id | select((startswith("whisper-") or startswith("tts-") or startswith("dall-e-") or startswith("text-embedding-") or startswith("text-moderation-") or startswith("babbage-") or startswith("davinci-") or contains(":")) | not)] | sort' \
+                        > "$TMPDIR/oai.json" 2>/dev/null &
+                    OAI_PID=$!
+                fi
+
+                wait "$OR_PID" || true
+                [ -n "$OAI_PID" ] && { wait "$OAI_PID" || true; }
+
+                OR_MODELS=$(cat "$TMPDIR/or.json" 2>/dev/null) || OR_MODELS="[]"
+                OAI_MODELS=$(cat "$TMPDIR/oai.json" 2>/dev/null) || OAI_MODELS="[]"
+
+                RESULT=$(jq -n \
+                    --argjson or_models "${OR_MODELS:-[]}" \
+                    --argjson oai_models "${OAI_MODELS:-[]}" \
+                    '(if ($or_models | length) > 0 then {openrouter: {models: $or_models}} else {} end)
+                   + (if ($oai_models | length) > 0 then {openai: {models: $oai_models}} else {} end)')
+
+                [ "$RESULT" = "{}" ] && exit 0
+
+                if [ -f "$PROVIDERS_FILE" ] && [ "$(cat "$PROVIDERS_FILE")" = "$RESULT" ]; then
+                    exit 0
+                fi
+
+                printf '%s\n' "$RESULT" > "$PROVIDERS_FILE"
+            mode: '0755'
+            owner: ubuntu
+            group: ubuntu
+
+      - name: '{{ app_name | upper }}: Run Initial Models Sync'
+        shell: bash {{ env.JARVIS_DIR }}/scripts/sync-mux-models.sh
+        become: true
+        become_user: ubuntu
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Schedule Hourly Models Sync'
+        cron:
+            name: 'Sync Mux models'
+            minute: '0'
+            job: 'bash {{ env.JARVIS_DIR }}/scripts/sync-mux-models.sh 2>> /home/ubuntu/.mux/sync.log'
+            user: ubuntu
+
+      - name: '{{ app_name | upper }}: Daemon Reload'
+        systemd:
+            daemon_reload: true
+        when: mux_service is changed
+
+      - name: '{{ app_name | upper }}: Enable and Start Service'
         systemd:
             name: mux
-            state: restarted
-        when: mux_service is changed
+            state: "{{ 'restarted' if (mux_service is changed or mux_env is changed) else 'started' }}"
+            enabled: true

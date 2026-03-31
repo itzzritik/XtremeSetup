@@ -1,23 +1,21 @@
 ---
-- name: 'HARDENING: Disable SSH Password Auth'
+- name: 'HARDENING: Secure SSH Configuration'
   lineinfile:
       path: /etc/ssh/sshd_config
-      regexp: '^#?PasswordAuthentication'
-      line: 'PasswordAuthentication no'
-  register: ssh_password
-
-- name: 'HARDENING: Disable SSH Root Login'
-  lineinfile:
-      path: /etc/ssh/sshd_config
-      regexp: '^#?PermitRootLogin'
-      line: 'PermitRootLogin no'
-  register: ssh_root
+      regexp: '{{ item.regexp }}'
+      line: '{{ item.line }}'
+  loop:
+      - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+      - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+  loop_control:
+      label: '{{ item.line }}'
+  register: ssh_settings
 
 - name: 'HARDENING: Restart SSH'
   systemd:
       name: sshd
       state: restarted
-  when: ssh_password is changed or ssh_root is changed
+  when: ssh_settings.results | selectattr('changed', 'true') | list | length > 0
 
 - name: 'HARDENING: Install fail2ban'
   apt:
@@ -42,11 +40,5 @@
 - name: 'HARDENING: Enable fail2ban'
   systemd:
       name: fail2ban
-      state: started
+      state: "{{ 'restarted' if f2b_config is changed else 'started' }}"
       enabled: true
-
-- name: 'HARDENING: Restart fail2ban'
-  systemd:
-      name: fail2ban
-      state: restarted
-  when: f2b_config is changed

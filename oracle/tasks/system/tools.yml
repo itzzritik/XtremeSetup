@@ -1,111 +1,124 @@
 ---
-# ── Shell ──
+- vars:
+      nvm_init: 'export NVM_DIR=/home/ubuntu/.nvm && source /home/ubuntu/.nvm/nvm.sh'
+  block:
+      # ── Shell ──
 
-- name: 'TOOLS: Install zsh'
-  apt:
-      name: zsh
-      state: present
+      - name: 'TOOLS: Install zsh'
+        apt:
+            name: zsh
+            state: present
 
-- name: 'TOOLS: Set zsh as default shell'
-  user:
-      name: ubuntu
-      shell: /usr/bin/zsh
+      - name: 'TOOLS: Set zsh as default shell'
+        user:
+            name: ubuntu
+            shell: /usr/bin/zsh
 
-- name: 'TOOLS: Check oh-my-zsh'
-  stat:
-      path: /home/ubuntu/.oh-my-zsh
-  register: omz_check
+      - name: 'TOOLS: Check oh-my-zsh'
+        stat:
+            path: /home/ubuntu/.oh-my-zsh
+        register: omz_check
 
-- name: 'TOOLS: Install oh-my-zsh'
-  shell: >
-      curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh
-      | sh -s -- --unattended
-  become_user: ubuntu
-  when: not omz_check.stat.exists
+      - name: 'TOOLS: Install oh-my-zsh'
+        shell: >
+            curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh
+            | sh -s -- --unattended
+        when: not omz_check.stat.exists
+        become: true
+        become_user: ubuntu
 
-- name: 'TOOLS: Configure oh-my-zsh plugins'
-  lineinfile:
-      path: /home/ubuntu/.zshrc
-      regexp: '^plugins='
-      line: 'plugins=(git z)'
-  become_user: ubuntu
+      - name: 'TOOLS: Configure oh-my-zsh plugins'
+        lineinfile:
+            path: /home/ubuntu/.zshrc
+            regexp: '^plugins='
+            line: 'plugins=(git z)'
+        become: true
+        become_user: ubuntu
 
-# ── System Packages ──
+      # ── System Packages ──
 
-- name: 'TOOLS: Install apt packages'
-  apt:
-      name:
-          - git
-          - build-essential
-          - curl
-          - unzip
-          - htop
-      state: present
+      - name: 'TOOLS: Install apt packages'
+        apt:
+            name:
+                - git
+                - build-essential
+                - curl
+                - unzip
+                - htop
+                - jq
+            state: present
 
-# ── nvm + Node.js ──
+      # ── nvm + Node.js ──
 
-- name: 'TOOLS: Check nvm'
-  stat:
-      path: /home/ubuntu/.nvm/nvm.sh
-  register: nvm_check
+      - name: 'TOOLS: Check nvm'
+        stat:
+            path: /home/ubuntu/.nvm/nvm.sh
+        register: nvm_check
 
-- name: 'TOOLS: Install nvm'
-  shell: >
-      curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash
-  become_user: ubuntu
-  when: not nvm_check.stat.exists
+      - name: 'TOOLS: Install nvm'
+        shell: >
+            curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash
+        when: not nvm_check.stat.exists
+        become: true
+        become_user: ubuntu
 
-- name: 'TOOLS: Ensure nvm sourced in zshrc'
-  blockinfile:
-      path: /home/ubuntu/.zshrc
-      marker: '# {mark} NVM'
-      block: |
-          export NVM_DIR="$HOME/.nvm"
-          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-          [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
-  become_user: ubuntu
+      - name: 'TOOLS: Ensure nvm sourced in zshrc'
+        blockinfile:
+            path: /home/ubuntu/.zshrc
+            marker: '# {mark} NVM'
+            block: |
+                export NVM_DIR="$HOME/.nvm"
+                [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+                [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+        become: true
+        become_user: ubuntu
 
-- name: 'TOOLS: Install Node.js LTS'
-  shell: |
-      source ~/.nvm/nvm.sh
-      nvm install --lts
-      nvm alias default lts/*
-  args:
-      executable: /bin/bash
-  become_user: ubuntu
-  register: node_install
-  changed_when: "'is already installed' not in node_install.stderr"
+      - name: 'TOOLS: Install Node.js LTS'
+        shell: |
+            {{ nvm_init }}
+            nvm install --lts
+            nvm alias default lts/*
+        args:
+            executable: /bin/bash
+        register: node_install
+        changed_when: "'is already installed' not in node_install.stderr"
+        become: true
+        become_user: ubuntu
 
-# ── AI CLIs ──
+      # ── AI CLIs ──
 
-- name: 'TOOLS: Check Claude Code'
-  shell: source ~/.nvm/nvm.sh && claude --version
-  args:
-      executable: /bin/bash
-  become_user: ubuntu
-  register: claude_check
-  failed_when: false
-  changed_when: false
+      - name: 'TOOLS: Check Claude Code'
+        shell: '{{ nvm_init }} && claude --version'
+        args:
+            executable: /bin/bash
+        register: claude_check
+        failed_when: false
+        changed_when: false
+        become: true
+        become_user: ubuntu
 
-- name: 'TOOLS: Install Claude Code'
-  shell: source ~/.nvm/nvm.sh && npm install -g @anthropic-ai/claude-code
-  args:
-      executable: /bin/bash
-  become_user: ubuntu
-  when: claude_check.rc != 0
+      - name: 'TOOLS: Install Claude Code'
+        shell: '{{ nvm_init }} && npm install -g @anthropic-ai/claude-code'
+        args:
+            executable: /bin/bash
+        when: claude_check.rc != 0
+        become: true
+        become_user: ubuntu
 
-- name: 'TOOLS: Check Codex CLI'
-  shell: source ~/.nvm/nvm.sh && codex --version
-  args:
-      executable: /bin/bash
-  become_user: ubuntu
-  register: codex_check
-  failed_when: false
-  changed_when: false
+      - name: 'TOOLS: Check Codex CLI'
+        shell: '{{ nvm_init }} && codex --version'
+        args:
+            executable: /bin/bash
+        register: codex_check
+        failed_when: false
+        changed_when: false
+        become: true
+        become_user: ubuntu
 
-- name: 'TOOLS: Install Codex CLI'
-  shell: source ~/.nvm/nvm.sh && npm install -g @openai/codex
-  args:
-      executable: /bin/bash
-  become_user: ubuntu
-  when: codex_check.rc != 0
+      - name: 'TOOLS: Install Codex CLI'
+        shell: '{{ nvm_init }} && npm install -g @openai/codex'
+        args:
+            executable: /bin/bash
+        when: codex_check.rc != 0
+        become: true
+        become_user: ubuntu
