@@ -22,8 +22,6 @@
 - name: 'NETWORKING: Check Firewall Rules'
   command: 'iptables -C INPUT -p tcp --dport {{ rule }} -j ACCEPT'
   loop:
-      - '80'
-      - '443'
       - '3000:9000'
   loop_control:
       loop_var: rule

@@ -2,7 +2,7 @@
 - vars:
       app_name: caddy
       config:
-          root: '{{ env.JARVIS_DIR }}/configs/{{ app_name }}'
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
   block:
       - name: '{{ app_name | upper }}: Configure Directories'
         file:
@@ -14,11 +14,27 @@
         copy:
             dest: '{{ config.root }}/Caddyfile'
             content: |-
-                {% for name, svc in env.services.items() %}
-                {{ svc.subdomain }}.{{ env.JARVIS_DOMAIN }} {
-                    reverse_proxy localhost:{{ svc.port }}
+                :80 {
+                    # code-server
+                    @codeserver host code.{{ env.JARVIS_DOMAIN }}
+                    reverse_proxy @codeserver localhost:{{ env.JARVIS_SERVICES['code-server'].port }}
+
+                    # Coder Mux
+                    @mux host ai.code.{{ env.JARVIS_DOMAIN }}
+                    reverse_proxy @mux localhost:{{ env.JARVIS_SERVICES.mux.port }}
+
+                    # Wildcard port preview (ALLOWLISTED: 3000-9000 only)
+                    @port_allowed {
+                        header_regexp portnum Host ^([3-8]\d{3}|9000)\.code\.
+                    }
+                    reverse_proxy @port_allowed localhost:{re.portnum.1}
+
+                    # Block non-allowlisted port requests
+                    @port_blocked {
+                        header_regexp Host ^(\d+)\.code\.
+                    }
+                    respond @port_blocked "Forbidden" 403
                 }
-                {% endfor %}
             mode: '0644'
         register: caddy_config
 

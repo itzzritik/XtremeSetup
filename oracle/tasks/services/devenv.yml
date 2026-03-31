@@ -1,0 +1,41 @@
+---
+- name: 'DEVENV: Create Projects Directory'
+  file:
+      path: '{{ env.JARVIS_PROJECTS_DIR }}'
+      state: directory
+      mode: '0755'
+      owner: ubuntu
+      group: ubuntu
+
+- name: 'DEVENV: Create Config Directory'
+  file:
+      path: /home/ubuntu/.config/devbox
+      state: directory
+      mode: '0755'
+      owner: ubuntu
+      group: ubuntu
+
+- name: 'DEVENV: Write Environment Config'
+  copy:
+      dest: /home/ubuntu/.config/devbox/env.sh
+      content: |
+          export ANTHROPIC_API_KEY="{{ env.JARVIS_ANTHROPIC_KEY }}"
+          export OPENAI_API_KEY="{{ env.JARVIS_OPENAI_KEY }}"
+          alias cc="claude"
+      mode: '0600'
+      owner: ubuntu
+      group: ubuntu
+
+- name: 'DEVENV: Source env in zshrc'
+  lineinfile:
+      path: /home/ubuntu/.zshrc
+      line: '[ -f ~/.config/devbox/env.sh ] && source ~/.config/devbox/env.sh'
+      state: present
+  become_user: ubuntu
+
+- name: 'DEVENV: Anti-reclaim cron job'
+  cron:
+      name: 'Oracle anti-reclaim keepalive'
+      minute: '*/30'
+      job: 'nice -n 19 head -c 1M /dev/urandom | sha256sum > /dev/null 2>&1'
+      user: ubuntu

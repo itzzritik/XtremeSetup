@@ -1,0 +1,9 @@
+JARVIS_SERVICES:
+    code-server:
+        name: Code Server
+        subdomain: code
+        port: '8080'
+    mux:
+        name: Coder Mux
+        subdomain: ai.code
+        port: '4000'

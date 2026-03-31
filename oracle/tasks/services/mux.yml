@@ -1,0 +1,62 @@
+---
+- vars:
+      app_name: mux
+  block:
+      - name: '{{ app_name | upper }}: Check Installation'
+        stat:
+            path: /usr/local/bin/mux
+        register: mux_check
+
+      - name: '{{ app_name | upper }}: Download ARM64 AppImage'
+        get_url:
+            url: 'https://github.com/coder/mux/releases/latest/download/Mux-linux-arm64.AppImage'
+            dest: /tmp/mux.AppImage
+            mode: '0755'
+        when: not mux_check.stat.exists
+
+      - name: '{{ app_name | upper }}: Extract AppImage (headless compatible)'
+        shell: |
+            cd /tmp
+            chmod +x mux.AppImage
+            ./mux.AppImage --appimage-extract
+            mv squashfs-root /opt/mux
+            ln -sf /opt/mux/mux /usr/local/bin/mux
+            rm -f mux.AppImage
+        when: not mux_check.stat.exists
+
+      - name: '{{ app_name | upper }}: Create Systemd Service'
+        copy:
+            dest: /etc/systemd/system/mux.service
+            content: |
+                [Unit]
+                Description=Coder Mux
+                After=network.target
+
+                [Service]
+                Type=simple
+                User=ubuntu
+                Environment=MUX_PORT={{ env.JARVIS_SERVICES.mux.port }}
+                Environment=ANTHROPIC_API_KEY={{ env.JARVIS_ANTHROPIC_KEY }}
+                Environment=OPENAI_API_KEY={{ env.JARVIS_OPENAI_KEY }}
+                ExecStart=/usr/local/bin/mux --server
+                Restart=always
+                RestartSec=5
+                WorkingDirectory={{ env.JARVIS_PROJECTS_DIR }}
+
+                [Install]
+                WantedBy=multi-user.target
+            mode: '0644'
+        register: mux_service
+
+      - name: '{{ app_name | upper }}: Enable Service'
+        systemd:
+            name: mux
+            state: started
+            enabled: true
+            daemon_reload: true
+
+      - name: '{{ app_name | upper }}: Restart on Config Change'
+        systemd:
+            name: mux
+            state: restarted
+        when: mux_service is changed

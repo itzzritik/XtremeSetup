@@ -1,0 +1,52 @@
+---
+- name: 'HARDENING: Disable SSH Password Auth'
+  lineinfile:
+      path: /etc/ssh/sshd_config
+      regexp: '^#?PasswordAuthentication'
+      line: 'PasswordAuthentication no'
+  register: ssh_password
+
+- name: 'HARDENING: Disable SSH Root Login'
+  lineinfile:
+      path: /etc/ssh/sshd_config
+      regexp: '^#?PermitRootLogin'
+      line: 'PermitRootLogin no'
+  register: ssh_root
+
+- name: 'HARDENING: Restart SSH'
+  systemd:
+      name: sshd
+      state: restarted
+  when: ssh_password is changed or ssh_root is changed
+
+- name: 'HARDENING: Install fail2ban'
+  apt:
+      name: fail2ban
+      state: present
+
+- name: 'HARDENING: Configure fail2ban for SSH'
+  copy:
+      dest: /etc/fail2ban/jail.local
+      content: |
+          [sshd]
+          enabled = true
+          port = ssh
+          filter = sshd
+          logpath = /var/log/auth.log
+          maxretry = 5
+          bantime = 3600
+          findtime = 600
+      mode: '0644'
+  register: f2b_config
+
+- name: 'HARDENING: Enable fail2ban'
+  systemd:
+      name: fail2ban
+      state: started
+      enabled: true
+
+- name: 'HARDENING: Restart fail2ban'
+  systemd:
+      name: fail2ban
+      state: restarted
+  when: f2b_config is changed

@@ -14,7 +14,7 @@
       - name: Environment Setup
         include_tasks: tasks/env/index.yml
 
-- name: Configure Oracle Server
+- name: Configure Oracle Dev Server
   hosts: oracle_machines
   gather_facts: false
 
@@ -31,7 +31,7 @@
             mode: '0755'
         loop:
             - '{{ env.JARVIS_DIR }}'
-            - '{{ env.JARVIS_DIR }}/configs'
+            - '{{ env.JARVIS_CONFIGS_DIR }}'
 
   tasks:
       - name: Execute System Tasks
@@ -39,11 +39,16 @@
         loop:
             - update
             - networking
+            - sysctl
             - docker
+            - tools
+            - hardening
 
       - name: Deploy Services
         include_tasks: 'tasks/services/{{ item }}.yml'
         loop:
-            - ollama
-            - litellm
+            - cloudflared
+            - code-server
+            - mux
+            - devenv
             - caddy

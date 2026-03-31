@@ -1,0 +1,63 @@
+---
+- vars:
+      app_name: code-server
+  block:
+      - name: '{{ app_name | upper }}: Check Installation'
+        command: code-server --version
+        register: cs_check
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Install'
+        shell: curl -fsSL https://code-server.dev/install.sh | sh
+        when: cs_check.rc != 0
+
+      - name: '{{ app_name | upper }}: Ensure Config Directory'
+        file:
+            path: /home/ubuntu/.config/code-server
+            state: directory
+            mode: '0755'
+            owner: ubuntu
+            group: ubuntu
+
+      - name: '{{ app_name | upper }}: Configure'
+        copy:
+            dest: /home/ubuntu/.config/code-server/config.yaml
+            content: |-
+                bind-addr: 127.0.0.1:{{ env.JARVIS_SERVICES['code-server'].port }}
+                auth: password
+                password: {{ env.JARVIS_CODE_PASSWORD }}
+                cert: false
+            mode: '0600'
+            owner: ubuntu
+            group: ubuntu
+        register: cs_config
+
+      - name: '{{ app_name | upper }}: Create Systemd Override Directory'
+        file:
+            path: /etc/systemd/system/code-server@ubuntu.service.d
+            state: directory
+            mode: '0755'
+
+      - name: '{{ app_name | upper }}: Configure Memory Limits'
+        copy:
+            dest: /etc/systemd/system/code-server@ubuntu.service.d/override.conf
+            content: |
+                [Service]
+                MemoryMax=6G
+                RuntimeMaxSec=86400
+            mode: '0644'
+        register: cs_override
+
+      - name: '{{ app_name | upper }}: Enable Service'
+        systemd:
+            name: 'code-server@ubuntu'
+            state: started
+            enabled: true
+            daemon_reload: true
+
+      - name: '{{ app_name | upper }}: Restart on Config Change'
+        systemd:
+            name: 'code-server@ubuntu'
+            state: restarted
+        when: cs_config is changed or cs_override is changed

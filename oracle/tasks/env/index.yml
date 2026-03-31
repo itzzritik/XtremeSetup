@@ -2,19 +2,15 @@
 - vars:
       project: jarvis
       doppler_required_secrets:
-          - JARVIS_AI_CEREBRAS_KEY
-          - JARVIS_AI_GEMINI_KEY
-          - JARVIS_AI_GROQ_KEY
-          - JARVIS_AI_MISTRAL_KEY
-          - JARVIS_AI_SAMBANOVA_KEY
-          - JARVIS_AI_SERVER_KEY
           - JARVIS_DOMAIN
+          - JARVIS_CODE_PASSWORD
+          - JARVIS_ANTHROPIC_KEY
+          - JARVIS_OPENAI_KEY
+          - JARVIS_CF_TUNNEL_TOKEN
       local_config:
-          JARVIS_DIR: '/home/ubuntu/.{{ project }}'
-          services:
-              litellm:
-                  subdomain: ai
-                  port: '4000'
+          JARVIS_DIR: '/home/ubuntu/.jarvis'
+          JARVIS_PROJECTS_DIR: '/home/ubuntu/projects'
+          JARVIS_CONFIGS_DIR: '/home/ubuntu/.jarvis/configs'
 
   block:
       - name: Ensure Doppler is Installed
@@ -46,11 +42,15 @@
             fail_msg: 'Missing: {{ doppler_required_secrets | difference(doppler_secrets.keys()) | join(", ") }}'
             success_msg: 'All required secrets are present.'
 
+      - name: Load Service Definitions
+        include_vars:
+            file: services.yml
+
       - name: Construct Global Environment
         set_fact:
-            env: '{{ doppler_secrets | combine(local_config) }}'
+            env: '{{ doppler_secrets | combine(local_config) | combine({"JARVIS_SERVICES": JARVIS_SERVICES}) }}'
         no_log: true
 
       - name: Success Message
         debug:
-            msg: 'Environment configured successfully. {{ env.keys() | length }} variables loaded.'
+            msg: 'Environment configured. {{ env.keys() | length }} variables loaded.'

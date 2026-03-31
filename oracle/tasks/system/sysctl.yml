@@ -1,0 +1,52 @@
+---
+- name: 'SYSCTL: Configure inotify watches'
+  ansible.posix.sysctl:
+      name: fs.inotify.max_user_watches
+      value: '524288'
+      state: present
+      reload: true
+
+- name: 'SYSCTL: Configure inotify instances'
+  ansible.posix.sysctl:
+      name: fs.inotify.max_user_instances
+      value: '256'
+      state: present
+      reload: true
+
+- name: 'SYSCTL: Check Swap'
+  command: swapon --show
+  register: swap_check
+  changed_when: false
+  failed_when: false
+
+- name: 'SYSCTL: Create Swapfile'
+  block:
+      - name: Allocate Swapfile
+        command: fallocate -l 4G /swapfile
+        args:
+            creates: /swapfile
+
+      - name: Set Permissions
+        file:
+            path: /swapfile
+            mode: '0600'
+
+      - name: Format Swapfile
+        command: mkswap /swapfile
+
+      - name: Enable Swapfile
+        command: swapon /swapfile
+
+      - name: Add to fstab
+        lineinfile:
+            path: /etc/fstab
+            line: '/swapfile swap swap defaults 0 0'
+            state: present
+  when: "'/swapfile' not in swap_check.stdout"
+
+- name: 'SYSCTL: Configure swappiness'
+  ansible.posix.sysctl:
+      name: vm.swappiness
+      value: '10'
+      state: present
+      reload: true
