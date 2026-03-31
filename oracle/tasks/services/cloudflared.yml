@@ -1,38 +1,42 @@
 ---
 - vars:
       app_name: cloudflared
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
   block:
-      - name: '{{ app_name | upper }}: Check Installation'
-        command: cloudflared --version
-        register: cf_check
-        failed_when: false
-        changed_when: false
+      - name: '{{ app_name | upper }}: Configure Directories'
+        file:
+            path: '{{ config.root }}'
+            state: directory
+            mode: '0755'
 
-      - name: '{{ app_name | upper }}: Install'
-        block:
-            - name: Download deb
-              get_url:
-                  url: 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64.deb'
-                  dest: /tmp/cloudflared.deb
-
-            - name: Install deb
-              apt:
-                  deb: /tmp/cloudflared.deb
-
-            - name: Cleanup
-              file:
-                  path: /tmp/cloudflared.deb
-                  state: absent
-        when: cf_check.rc != 0
-
-      - name: '{{ app_name | upper }}: Install as Service'
-        command: cloudflared service install {{ env.JARVIS_CF_TUNNEL_TOKEN }}
-        args:
-            creates: /etc/systemd/system/cloudflared.service
+      - name: '{{ app_name | upper }}: Create docker-compose.yml'
+        copy:
+            dest: '{{ config.root }}/docker-compose.yml'
+            content: |-
+                services:
+                  {{ app_name }}:
+                    container_name: {{ app_name }}
+                    image: cloudflare/cloudflared:latest
+                    network_mode: host
+                    restart: unless-stopped
+                    command: tunnel run --token {{ env.RITIK_CF_TUNNEL_TOKEN }}
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
+            mode: '0644'
+        register: cf_compose
         no_log: true
 
-      - name: '{{ app_name | upper }}: Ensure Running'
-        systemd:
-            name: cloudflared
-            state: started
-            enabled: true
+      - name: '{{ app_name | upper }}: Deploy Container'
+        command: docker compose up -d
+        args:
+            chdir: '{{ config.root }}'
+        register: cf_deploy
+        changed_when: "'Created' in cf_deploy.stderr or 'Recreated' in cf_deploy.stderr"
+
+      - name: '{{ app_name | upper }}: Restart on Config Change'
+        command: docker restart {{ app_name }}
+        when: cf_compose is changed and cf_deploy is not changed

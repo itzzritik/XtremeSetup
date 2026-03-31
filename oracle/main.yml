@@ -26,16 +26,18 @@
 
       - name: Ensure Base Directories
         file:
-            path: '{{ item }}'
+            path: '{{ dir }}'
             state: directory
             mode: '0755'
         loop:
             - '{{ env.JARVIS_DIR }}'
             - '{{ env.JARVIS_CONFIGS_DIR }}'
+        loop_control:
+            loop_var: dir
 
   tasks:
       - name: Execute System Tasks
-        include_tasks: 'tasks/system/{{ item }}.yml'
+        include_tasks: 'tasks/system/{{ task }}.yml'
         loop:
             - update
             - networking
@@ -43,12 +45,16 @@
             - docker
             - tools
             - hardening
+        loop_control:
+            loop_var: task
 
       - name: Deploy Services
-        include_tasks: 'tasks/services/{{ item }}.yml'
+        include_tasks: 'tasks/services/{{ service }}.yml'
         loop:
             - cloudflared
             - code-server
             - mux
             - devenv
             - caddy
+        loop_control:
+            loop_var: service

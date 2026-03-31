@@ -2,18 +2,19 @@
 - name: 'HARDENING: Secure SSH Configuration'
   lineinfile:
       path: /etc/ssh/sshd_config
-      regexp: '{{ item.regexp }}'
-      line: '{{ item.line }}'
+      regexp: '{{ ssh_item.regexp }}'
+      line: '{{ ssh_item.line }}'
   loop:
       - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
       - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
   loop_control:
-      label: '{{ item.line }}'
+      loop_var: ssh_item
+      label: '{{ ssh_item.line }}'
   register: ssh_settings
 
 - name: 'HARDENING: Restart SSH'
   systemd:
-      name: sshd
+      name: ssh
       state: restarted
   when: ssh_settings.results | selectattr('changed', 'true') | list | length > 0
 

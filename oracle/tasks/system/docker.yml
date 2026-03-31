@@ -39,7 +39,3 @@
       groups: docker
       append: yes
 
-- name: 'DOCKER: Verify Connectivity'
-  command: docker info
-  changed_when: false
-  when: docker_check.rc != 0

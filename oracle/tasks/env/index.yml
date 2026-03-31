@@ -2,10 +2,10 @@
 - vars:
       project: jarvis
       doppler_required_secrets:
-          - JARVIS_DOMAIN
+          - RITIK_DOMAIN
           - JARVIS_AI_OPENAI_KEY
           - JARVIS_AI_OPENROUTER_KEY
-          - JARVIS_CF_TUNNEL_TOKEN
+          - RITIK_CF_TUNNEL_TOKEN
       local_config:
           JARVIS_DIR: '/home/ubuntu/.jarvis'
           JARVIS_PROJECTS_DIR: '/home/ubuntu/projects'

@@ -5,5 +5,5 @@ JARVIS_SERVICES:
         port: '8080'
     mux:
         name: Coder Mux
-        subdomain: ai.code
+        subdomain: mux
         port: '4000'

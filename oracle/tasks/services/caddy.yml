@@ -15,25 +15,11 @@
             dest: '{{ config.root }}/Caddyfile'
             content: |-
                 :80 {
-                    # code-server
-                    @codeserver host code.{{ env.JARVIS_DOMAIN }}
+                    @codeserver host code.{{ env.RITIK_DOMAIN }}
                     reverse_proxy @codeserver localhost:{{ env.JARVIS_SERVICES['code-server'].port }}
 
-                    # Coder Mux
-                    @mux host ai.code.{{ env.JARVIS_DOMAIN }}
+                    @mux host mux.{{ env.RITIK_DOMAIN }}
                     reverse_proxy @mux localhost:{{ env.JARVIS_SERVICES.mux.port }}
-
-                    # Wildcard port preview (ALLOWLISTED: 3000-9000 only)
-                    @port_allowed {
-                        header_regexp portnum Host ^([3-8]\d{3}|9000)\.code\.
-                    }
-                    reverse_proxy @port_allowed localhost:{re.portnum.1}
-
-                    # Block non-allowlisted port requests
-                    @port_blocked {
-                        header_regexp Host ^(\d+)\.code\.
-                    }
-                    respond @port_blocked "Forbidden" 403
                 }
             mode: '0644'
         register: caddy_config
@@ -49,17 +35,14 @@
                     network_mode: host
                     restart: unless-stopped
                     volumes:
-                      - ./Caddyfile:/etc/caddy/Caddyfile
-                      - caddy_data:/data
-                      - caddy_config:/config
+                      - {{ config.root }}/Caddyfile:/etc/caddy/Caddyfile
+                      - {{ config.root }}/data:/data
+                      - {{ config.root }}/config:/config
                     logging:
                       driver: "json-file"
                       options:
                         max-size: "10m"
                         max-file: "3"
-                volumes:
-                  caddy_data:
-                  caddy_config:
             mode: '0644'
         register: caddy_compose
 
@@ -70,6 +53,6 @@
         register: caddy_deploy
         changed_when: "'Created' in caddy_deploy.stderr or 'Recreated' in caddy_deploy.stderr"
 
-      - name: '{{ app_name | upper }}: Reload on Config Change'
-        command: docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+      - name: '{{ app_name | upper }}: Restart on Config Change'
+        command: docker restart {{ app_name }}
         when: caddy_config is changed and caddy_deploy is not changed
