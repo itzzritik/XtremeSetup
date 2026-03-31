@@ -1,0 +1,287 @@
+- vars:
+      app_name: moltis
+      id: '{{ env.JARVIS_SERVICES.moltis.id }}'
+      instance:
+          hostname: moltis
+          memory: 512
+          swap: 256
+          cores: 1
+          storage: local-lvm
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+          mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/health'
+            timeout: 5
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Create Config Directories'
+        file:
+            path: '{{ dir_item }}'
+            state: directory
+            owner: '100000'
+            group: '100000'
+            mode: '0700'
+        loop:
+            - '{{ env.JARVIS_CONFIGS_DIR }}/moltis'
+            - '{{ env.JARVIS_CONFIGS_DIR }}/moltis/config'
+            - '{{ env.JARVIS_CONFIGS_DIR }}/moltis/data'
+        loop_control:
+            loop_var: dir_item
+
+      - name: '{{ instance.hostname | upper }}: Write Config'
+        no_log: true
+        copy:
+            dest: '{{ env.JARVIS_CONFIGS_DIR }}/moltis/config/moltis.toml'
+            content: |-
+                [server]
+                port = {{ env.JARVIS_SERVICES[app_name].port }}
+                bind = "0.0.0.0"
+
+                [identity]
+                name = "Jarvis"
+
+                [tools]
+                agent_timeout_secs = 600
+                agent_max_iterations = 25
+
+                [tools.exec]
+                host = "local"
+
+                [tools.exec.sandbox]
+                mode = "off"
+
+                [tools.web.search]
+                enabled = true
+                provider = "brave"
+                max_results = 5
+
+                [providers]
+                offered = ["openrouter"]
+
+                [providers.openrouter]
+                enabled = true
+
+                [chat]
+                priority_models = ["anthropic/claude-sonnet-4", "openai/gpt-4o", "google/gemini-2.5-flash"]
+
+                [memory]
+                backend = "builtin"
+                provider = "openrouter"
+                model = "openai/text-embedding-3-small"
+
+                [auth]
+                disabled = true
+
+                [tls]
+                enabled = false
+
+                [metrics]
+                enabled = true
+                prometheus_endpoint = true
+
+                [channels]
+                offered = ["telegram", "whatsapp"]
+
+                [channels.telegram.jarvis]
+                token = {{ env.JARVIS_BOT_TELEGRAM_KEY | to_json }}
+                dm_policy = "allowlist"
+                allowlist = ["*"]
+                mention_mode = "always"
+                stream_mode = "edit_in_place"
+
+                [channels.whatsapp.jarvis]
+                dm_policy = "allowlist"
+                allowlist = [{{ env.JARVIS_WHATSAPP_ADMIN_PHONE | to_json }}]
+                group_policy = "disabled"
+                mention_mode = "always"
+
+                [voice]
+                enabled = true
+
+                [voice.tts]
+                provider = "elevenlabs"
+
+                [voice.stt]
+                provider = "elevenlabs"
+
+                [env]
+                OPENROUTER_API_KEY = {{ env.JARVIS_AI_OPENROUTER_KEY | to_json }}
+                ELEVENLABS_API_KEY = {{ env.JARVIS_AI_ELEVENLABS_KEY | to_json }}
+                BRAVE_API_KEY = ""
+            owner: '100000'
+            group: '100000'
+            mode: '0600'
+        register: moltis_config
+
+      - name: '{{ instance.hostname | upper }}: Provision Infrastructure'
+        when: instance_check.status | default(0) != 200
+        block:
+            - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
+              shell: pct stop {{ id }}; pct destroy {{ id }}
+              failed_when: false
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Download Latest Template'
+              shell: |
+                  pveam update >&2
+                  TEMPLATE=$(pveam available | grep -oP 'ubuntu-(2[024-9]|[3-9][0-9])\.04-standard[^\s]+' | sort -V | tail -1)
+                  pveam download local "$TEMPLATE" >&2 || true
+                  echo "$TEMPLATE"
+              register: template_result
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Create LXC'
+              command: >
+                  pct create {{ id }} local:vztmpl/{{ template_result.stdout | trim }}
+                  --hostname {{ instance.hostname }}
+                  --cores {{ instance.cores }}
+                  --memory {{ instance.memory }}
+                  --swap {{ instance.swap }}
+                  --rootfs {{ instance.storage }}:4
+                  --net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
+                  --unprivileged 1
+                  --features nesting=1
+                  --onboot 1
+
+            - name: '{{ instance.hostname | upper }}: Configure Bind Mounts'
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ id }}.conf'
+                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
+                  block: |
+                      mp0: {{ env.JARVIS_CONFIGS_DIR }}/moltis,mp=/root/.moltis-host
+
+            - name: '{{ instance.hostname | upper }}: Start LXC'
+              command: pct start {{ id }}
+
+            - name: '{{ instance.hostname | upper }}: Wait for Network'
+              shell: pct exec {{ id }} -- ping -c 1 -W 2 {{ env.JARVIS_DNS_SERVERS[0] }}
+              register: network_check
+              until: network_check.rc == 0
+              retries: 10
+              delay: 3
+
+            - name: '{{ instance.hostname | upper }}: Enable Console Autologin'
+              shell: >
+                  pct exec {{ id }} -- bash -c "mkdir -p /etc/systemd/system/container-getty@1.service.d &&
+                  echo -e '[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 \$TERM' > /etc/systemd/system/container-getty@1.service.d/override.conf &&
+                  systemctl daemon-reload && systemctl restart container-getty@1.service"
+
+            - name: '{{ instance.hostname | upper }}: Install Dependencies'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  export DEBIAN_FRONTEND=noninteractive
+                  apt-get update && apt-get install -y curl iptables-persistent libgomp1
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Install Moltis'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  set -e
+                  curl -fsSL https://www.moltis.org/install.sh -o /tmp/install-moltis.sh
+                  sh /tmp/install-moltis.sh --method=binary
+                  rm -f /tmp/install-moltis.sh
+                  ln -sf /root/.local/bin/moltis /usr/local/bin/moltis
+                  /usr/local/bin/moltis --version
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Link Config and Data'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  mkdir -p /root/.config/moltis
+                  ln -sf /root/.moltis-host/config/moltis.toml /root/.config/moltis/moltis.toml
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Configure Firewall'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  iptables -F && iptables -X && iptables -Z
+
+                  iptables -P INPUT DROP
+                  iptables -P FORWARD DROP
+                  iptables -P OUTPUT DROP
+
+                  iptables -A INPUT -i lo -j ACCEPT
+                  iptables -A OUTPUT -o lo -j ACCEPT
+                  iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+                  iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+                  iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+                  iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
+                  iptables -A OUTPUT -p tcp --dport 80 -j ACCEPT
+                  iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
+
+                  iptables -A INPUT -p tcp --dport {{ env.JARVIS_SERVICES[app_name].port }} -s {{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.traefik.id }} -j ACCEPT
+                  iptables -A INPUT -p tcp --dport {{ env.JARVIS_SERVICES[app_name].port }} -s {{ env.JARVIS_NETWORK_PREFIX }}.0/24 -j ACCEPT
+
+                  iptables-save > /etc/iptables/rules.v4
+                  "
+
+            - name: '{{ instance.hostname | upper }}: Install Restart Helper'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  echo '#!/usr/bin/env bash
+                  systemctl restart moltis' > /usr/local/bin/re
+                  chmod +x /usr/local/bin/re
+                  "
+
+      - name: '{{ instance.hostname | upper }}: Configure Systemd Service'
+        shell: |
+            pct exec {{ id }} -- bash -c "
+            cat <<'EOF' > /etc/systemd/system/moltis.service
+            [Unit]
+            Description=Jarvis AI
+            After=network.target
+
+            [Service]
+            Type=simple
+            User=root
+            WorkingDirectory=/root
+            ExecStart=/usr/local/bin/moltis --bind 0.0.0.0 --port {{ env.JARVIS_SERVICES[app_name].port }} --no-tls
+            Restart=always
+            RestartSec=10
+            Environment="MOLTIS_PASSWORD={{ env.JARVIS_ADMIN_PASSWORD }}"
+            Environment="MOLTIS_PROVIDER=openrouter"
+            Environment="MOLTIS_API_KEY={{ env.JARVIS_AI_OPENROUTER_KEY }}"
+            Environment="OPENROUTER_API_KEY={{ env.JARVIS_AI_OPENROUTER_KEY }}"
+            Environment="MOLTIS_BEHIND_PROXY=true"
+            Environment="MOLTIS_CONFIG_DIR=/root/.config/moltis"
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            systemctl daemon-reload
+            systemctl enable --now moltis
+            "
+        register: moltis_service
+
+      - name: '{{ instance.hostname | upper }}: Restart on Config Change'
+        shell: pct exec {{ id }} -- systemctl restart moltis
+        when: (moltis_config is changed or moltis_service is changed) and instance_check.status | default(0) == 200
+
+      - name: '{{ instance.hostname | upper }}: Verify Service'
+        shell: pct exec {{ id }} -- systemctl is-active moltis
+        register: service_status
+        until: service_status.stdout | default('') == 'active'
+        retries: 6
+        delay: 5
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Show Status'
+        debug:
+            msg: 'Moltis: {{ service_status.stdout | default("not running") }} -- http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}'
+
+      - name: '{{ instance.hostname | upper }}: WhatsApp Setup Note'
+        debug:
+            msg: 'WhatsApp: Pair via web UI at http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }} -> Settings -> Channels -> WhatsApp -> Scan QR'
+
+  rescue:
+      - debug:
+            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
+  become: true
