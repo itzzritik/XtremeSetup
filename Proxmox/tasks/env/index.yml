@@ -7,8 +7,8 @@
 - vars:
       project: jarvis
       doppler_required_secrets:
-          - JARVIS_ADMIN_EMAIL
-          - JARVIS_ADMIN_NAME
+          - RITIK_EMAIL
+          - RITIK_NAME
           - JARVIS_AI_CEREBRAS_KEY
           - JARVIS_AI_GEMINI_KEY
           - JARVIS_AI_GROQ_KEY

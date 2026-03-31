@@ -156,7 +156,7 @@
                       certificatesResolvers:
                         letsencrypt:
                           acme:
-                            email: "{{ env.JARVIS_ADMIN_EMAIL }}"
+                            email: "{{ env.RITIK_EMAIL }}"
                             storage: /etc/traefik/acme.json
                             dnsChallenge:
                               provider: cloudflare

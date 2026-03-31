@@ -107,8 +107,8 @@
                   "UPDATE user SET
                   username = '{{ env.JARVIS_ADMIN_USERNAME }}',
                   passwordHash = '{{ env.JARVIS_ADMIN_PASSWORD_ARGON | replace('$', '\$') }}',
-                  email = '{{ env.JARVIS_ADMIN_EMAIL }}',
-                  name = '{{ env.JARVIS_ADMIN_NAME }}',
+                  email = '{{ env.RITIK_EMAIL }}',
+                  name = '{{ env.RITIK_NAME }}',
                   emailVerified = 1
                   WHERE username = 'auth_admin' OR username = '{{ env.JARVIS_ADMIN_USERNAME }}';"
               changed_when: false

@@ -45,6 +45,7 @@
             - docker
             - tools
             - hardening
+            - devenv
         loop_control:
             loop_var: task
 
@@ -53,8 +54,7 @@
         loop:
             - cloudflared
             - code-server
-            - mux
-            - devenv
+            - cloudcli
             - caddy
         loop_control:
             loop_var: service

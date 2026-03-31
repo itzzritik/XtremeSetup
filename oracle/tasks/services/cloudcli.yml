@@ -1,0 +1,120 @@
+---
+- vars:
+      app_name: cloudcli
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+      nvm_init: 'export NVM_DIR=/home/ubuntu/.nvm && source /home/ubuntu/.nvm/nvm.sh'
+  block:
+      - name: '{{ app_name | upper }}: Check Installation'
+        shell: '{{ nvm_init }} && cloudcli version'
+        args:
+            executable: /bin/bash
+        register: cloudcli_check
+        failed_when: false
+        changed_when: false
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Install'
+        shell: |
+            {{ nvm_init }}
+            npm install -g @siteboon/claude-code-ui
+            DIST=$(dirname $(which cloudcli))/../lib/node_modules/@siteboon/claude-code-ui/dist/index.html
+            sed -i "s|<title>CloudCLI UI</title>|<title>Ritik\x27s Lab</title>|" "$DIST"
+        args:
+            executable: /bin/bash
+        when: cloudcli_check.rc != 0
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Configure Directories'
+        file:
+            path: '{{ config.root }}'
+            state: directory
+            mode: '0755'
+            owner: ubuntu
+            group: ubuntu
+
+      - name: '{{ app_name | upper }}: Find Node Path'
+        shell: '{{ nvm_init }} && dirname $(which cloudcli)'
+        args:
+            executable: /bin/bash
+        register: node_bin_path
+        changed_when: false
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Create Systemd Service'
+        copy:
+            dest: /etc/systemd/system/cloudcli.service
+            content: |
+                [Unit]
+                Description=CloudCLI (Claude Code UI)
+                After=network.target
+
+                [Service]
+                Type=simple
+                User=ubuntu
+                WorkingDirectory=/home/ubuntu
+                Environment=SERVER_PORT={{ env.JARVIS_SERVICES.cloudcli.port }}
+                Environment=HOST=127.0.0.1
+                Environment=NODE_ENV=production
+                Environment=VITE_IS_PLATFORM=true
+                Environment=DATABASE_PATH={{ config.root }}/auth.db
+                Environment=WORKSPACES_ROOT={{ env.JARVIS_PROJECTS_DIR }}
+                Environment=PATH={{ node_bin_path.stdout }}:/usr/local/bin:/usr/bin:/bin
+                ExecStart={{ node_bin_path.stdout }}/cloudcli
+                Restart=always
+                RestartSec=5
+
+                [Install]
+                WantedBy=multi-user.target
+            mode: '0644'
+        register: cloudcli_service
+
+      - name: '{{ app_name | upper }}: Pre-seed User'
+        shell: |
+            {{ nvm_init }}
+            CLOUDCLI_DIR=$(dirname $(which cloudcli))/../lib/node_modules/@siteboon/claude-code-ui
+            node -e "
+            const Database = require('$CLOUDCLI_DIR/node_modules/better-sqlite3');
+            const bcrypt = require('$CLOUDCLI_DIR/node_modules/bcrypt');
+            const db = new Database('{{ config.root }}/auth.db');
+            db.exec(\`CREATE TABLE IF NOT EXISTS users (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              username TEXT UNIQUE NOT NULL,
+              password_hash TEXT NOT NULL,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              last_login DATETIME,
+              is_active INTEGER DEFAULT 1,
+              git_name TEXT,
+              git_email TEXT,
+              has_completed_onboarding INTEGER DEFAULT 0
+            )\`);
+            const count = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+            if (count === 0) {
+              const hash = bcrypt.hashSync('{{ env.JARVIS_ADMIN_PASSWORD }}', 12);
+              db.prepare('INSERT INTO users (username, password_hash, git_name, git_email, has_completed_onboarding) VALUES (?, ?, ?, ?, 1)')
+                .run('{{ env.RITIK_EMAIL }}', hash, '{{ env.RITIK_NAME }}', '{{ env.RITIK_EMAIL }}');
+              console.log('User created');
+            } else {
+              console.log('User exists');
+            }
+            db.close();
+            "
+        args:
+            executable: /bin/bash
+        become: true
+        become_user: ubuntu
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Daemon Reload'
+        systemd:
+            daemon_reload: true
+        when: cloudcli_service is changed
+
+      - name: '{{ app_name | upper }}: Enable and Start Service'
+        systemd:
+            name: cloudcli
+            state: "{{ 'restarted' if cloudcli_service is changed else 'started' }}"
+            enabled: true

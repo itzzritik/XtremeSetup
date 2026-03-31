@@ -1,10 +1,14 @@
 ---
 - vars:
       app_name: code-server
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
   block:
-      - name: '{{ app_name | upper }}: Check Installation'
-        command: code-server --version
-        register: cs_check
+      - name: '{{ app_name | upper }}: Health Check'
+        uri:
+            url: 'http://127.0.0.1:{{ env.JARVIS_SERVICES["code-server"].port }}'
+            timeout: 3
+        register: health
         failed_when: false
         changed_when: false
 
@@ -14,23 +18,24 @@
             curl -fsSL https://code-server.dev/install.sh | sh
         args:
             executable: /bin/bash
-        when: cs_check.rc != 0
+        when: (health.status | default(0)) != 200
 
-      - name: '{{ app_name | upper }}: Ensure Config Directory'
+      - name: '{{ app_name | upper }}: Configure Directories'
         file:
-            path: /home/ubuntu/.config/code-server
+            path: '{{ config.root }}'
             state: directory
             mode: '0755'
             owner: ubuntu
             group: ubuntu
 
-      - name: '{{ app_name | upper }}: Configure'
+      - name: '{{ app_name | upper }}: Write Config'
         copy:
-            dest: /home/ubuntu/.config/code-server/config.yaml
+            dest: '{{ config.root }}/config.yaml'
             content: |-
                 bind-addr: 127.0.0.1:{{ env.JARVIS_SERVICES['code-server'].port }}
                 auth: none
                 cert: false
+                user-data-dir: {{ config.root }}/data
             mode: '0644'
             owner: ubuntu
             group: ubuntu
@@ -42,13 +47,15 @@
             state: directory
             mode: '0755'
 
-      - name: '{{ app_name | upper }}: Configure Memory Limits'
+      - name: '{{ app_name | upper }}: Configure Systemd Override'
         copy:
             dest: /etc/systemd/system/code-server@ubuntu.service.d/override.conf
             content: |
                 [Service]
                 MemoryMax=6G
                 RuntimeMaxSec=86400
+                ExecStart=
+                ExecStart=/usr/bin/code-server --config {{ config.root }}/config.yaml
             mode: '0644'
         register: cs_override
 

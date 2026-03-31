@@ -3,7 +3,7 @@ JARVIS_SERVICES:
         name: Code Server
         subdomain: code
         port: '8080'
-    mux:
-        name: Coder Mux
-        subdomain: mux
-        port: '4000'
+    cloudcli:
+        name: CloudCLI
+        subdomain: vibe
+        port: '3001'

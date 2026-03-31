@@ -34,7 +34,7 @@ JARVIS_HOSTNAME="jarvis"
 source <(doppler secrets download -p "$JARVIS_HOSTNAME" -c prd --silent --enable-dns-resolver --no-file --format env)
 echo "✔ $NAME secrets injected into the shell"
 
-JARVIS_ADMIN_USERNAME=$(echo "${JARVIS_ADMIN_NAME}" | awk '{print tolower($1)}')
+JARVIS_ADMIN_USERNAME=$(echo "${RITIK_NAME}" | awk '{print tolower($1)}')
 JARVIS_ADMIN_PASSWORD_HASHED=$(htpasswd -nbB admin "$JARVIS_ADMIN_PASSWORD" | awk -F: '{print $2}')
 JARVIS_DOMAIN="myjarvis.in"
 JARVIS_GOOGLE_DNS="8.8.8.8;8.8.4.4"

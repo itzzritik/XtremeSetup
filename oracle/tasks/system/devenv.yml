@@ -1,8 +1,10 @@
 ---
 - vars:
       app_name: devenv
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
   block:
-      - name: '{{ app_name | upper }}: Ensure Directories'
+      - name: '{{ app_name | upper }}: Configure Directories'
         file:
             path: '{{ item }}'
             state: directory
@@ -11,14 +13,15 @@
             group: ubuntu
         loop:
             - '{{ env.JARVIS_PROJECTS_DIR }}'
-            - /home/ubuntu/.config/jarvis
+            - '{{ config.root }}'
 
       - name: '{{ app_name | upper }}: Write Environment Config'
         copy:
-            dest: /home/ubuntu/.config/jarvis/env.sh
+            dest: '{{ config.root }}/env.sh'
             content: |
                 export OPENAI_API_KEY="{{ env.JARVIS_AI_OPENAI_KEY }}"
                 alias cc="claude"
+                alias code="code-server -r"
             mode: '0600'
             owner: ubuntu
             group: ubuntu
@@ -29,7 +32,21 @@
             path: /home/ubuntu/.zshrc
             marker: '# {mark} JARVIS'
             block: |
-                [ -f ~/.config/jarvis/env.sh ] && source ~/.config/jarvis/env.sh
+                [ -f {{ config.root }}/env.sh ] && source {{ config.root }}/env.sh
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Configure Git'
+        community.general.git_config:
+            name: '{{ git_item.key }}'
+            value: '{{ git_item.value }}'
+            scope: global
+        loop:
+            - { key: user.name, value: '{{ env.RITIK_NAME }}' }
+            - { key: user.email, value: '{{ env.RITIK_EMAIL }}' }
+        loop_control:
+            loop_var: git_item
+            label: '{{ git_item.key }}'
         become: true
         become_user: ubuntu
 
