@@ -3,8 +3,8 @@
       id: '{{ env.JARVIS_SERVICES.moltis.id }}'
       instance:
           hostname: moltis
-          memory: 512
-          swap: 256
+          memory: 2048
+          swap: 512
           cores: 1
           storage: local-lvm
           ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
@@ -44,6 +44,9 @@
 
                 [identity]
                 name = "Jarvis"
+                user_name = {{ env.JARVIS_ADMIN_NAME | to_json }}
+                emoji = "🤖"
+                theme = "witty robot"
 
                 [tools]
                 agent_timeout_secs = 600

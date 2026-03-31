@@ -29,14 +29,12 @@
             dest: /home/ubuntu/.config/code-server/config.yaml
             content: |-
                 bind-addr: 127.0.0.1:{{ env.JARVIS_SERVICES['code-server'].port }}
-                auth: password
-                password: "{{ env.JARVIS_CODE_PASSWORD }}"
+                auth: none
                 cert: false
-            mode: '0600'
+            mode: '0644'
             owner: ubuntu
             group: ubuntu
         register: cs_config
-        no_log: true
 
       - name: '{{ app_name | upper }}: Create Systemd Override Directory'
         file:
