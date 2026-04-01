@@ -13,7 +13,7 @@
       - name: '{{ app_name | upper }}: Write SSH Private Key'
         copy:
             dest: /home/ubuntu/.ssh/id_ed25519
-            content: '{{ env.JARVIS_GIT_SSH_PRIVATE_KEY }}'
+            content: "{{ env.JARVIS_GIT_SSH_PRIVATE_KEY }}\n"
             mode: '0600'
             owner: ubuntu
             group: ubuntu
@@ -22,7 +22,7 @@
       - name: '{{ app_name | upper }}: Write SSH Public Key'
         copy:
             dest: /home/ubuntu/.ssh/id_ed25519.pub
-            content: '{{ env.JARVIS_GIT_SSH_PUBLIC_KEY }}'
+            content: "{{ env.JARVIS_GIT_SSH_PUBLIC_KEY }}\n"
             mode: '0644'
             owner: ubuntu
             group: ubuntu

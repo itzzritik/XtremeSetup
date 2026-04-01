@@ -15,6 +15,7 @@
           JARVIS_DIR: '/home/ubuntu/.jarvis'
           JARVIS_PROJECTS_DIR: '/home/ubuntu/projects'
           JARVIS_CONFIGS_DIR: '/home/ubuntu/.jarvis/configs'
+          JARVIS_TZ: 'Asia/Kolkata'
 
   block:
       - name: Ensure Doppler is Installed

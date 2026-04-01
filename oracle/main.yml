@@ -46,6 +46,7 @@
             - tools
             - hardening
             - git
+            - keepalive
             - devenv
         loop_control:
             loop_var: task

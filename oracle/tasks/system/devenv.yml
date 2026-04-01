@@ -40,9 +40,3 @@
         debug:
             msg: 'Run `claude login` as ubuntu user to authenticate Claude Code (uses subscription, not API key)'
 
-      - name: '{{ app_name | upper }}: Anti-reclaim cron job'
-        cron:
-            name: 'Oracle anti-reclaim keepalive'
-            minute: '*/30'
-            job: 'nice -n 19 head -c 1M /dev/urandom | sha256sum > /dev/null 2>&1'
-            user: ubuntu

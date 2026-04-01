@@ -1,0 +1,105 @@
+---
+- vars:
+      app_name: keepalive
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+  block:
+      - name: '{{ app_name | upper }}: Install dependencies'
+        apt:
+            name: stress-ng
+            state: present
+
+      - name: '{{ app_name | upper }}: Configure Directories'
+        file:
+            path: '{{ config.root }}/logs'
+            state: directory
+            mode: '0755'
+            recurse: true
+
+      - name: '{{ app_name | upper }}: Create Script'
+        copy:
+            dest: '{{ config.root }}/keepalive.sh'
+            content: |
+                #!/bin/bash
+                LOG_DIR="{{ config.root }}/logs"
+                TODAY=$(date +%d-%^b-%Y)
+                LOG="$LOG_DIR/$TODAY.log"
+
+                log() { echo "[$(date +%H:%M:%S)] $1" >> "$LOG"; }
+
+                get_cpu() { vmstat 1 2 2>/dev/null | tail -1 | awk '{print int(100 - $15)}'; }
+
+                summarize() {
+                    [ ! -f "$LOG" ] && return
+                    AVG=$(grep -o 'CPU: [0-9]*' "$LOG" | grep -o '[0-9]*' | awk '{s+=$1; n++} END {if(n>0) printf "%.0f", s/n; else print 0}')
+                    SAMPLES=$(grep -c 'CPU:' "$LOG" || true)
+                    STRESS=$(grep -c 'running stress-ng' "$LOG" || true)
+                    [ "$AVG" -ge 20 ] 2>/dev/null && STATUS="PASS" || STATUS="FAIL"
+                    {
+                        echo "═══════════════════════════════"
+                        echo "  SUMMARY ($TODAY) — $STATUS"
+                        echo "═══════════════════════════════"
+                        echo "  Avg CPU:  ${AVG}%"
+                        echo "  Samples:  $SAMPLES"
+                        echo "  Stress:   $STRESS"
+                        echo "═══════════════════════════════"
+                        echo ""
+                        cat "$LOG"
+                    } > "$LOG_DIR/${TODAY}_${STATUS}.log"
+                    rm -f "$LOG"
+                    find "$LOG_DIR" -name "*.log" -mtime +180 -delete
+                }
+
+                log "Keepalive started"
+
+                while true; do
+                    NEW_TODAY=$(date +%d-%^b-%Y)
+                    if [ "$NEW_TODAY" != "$TODAY" ]; then
+                        summarize
+                        TODAY=$NEW_TODAY
+                        LOG="$LOG_DIR/$TODAY.log"
+                        log "New day"
+                    fi
+
+                    CPU=$(get_cpu)
+                    log "CPU: ${CPU}%"
+
+                    if [ "${CPU:-0}" -lt 20 ] 2>/dev/null; then
+                        log "Low CPU — running stress-ng"
+                        stress-ng --cpu 1 --cpu-load 80 --timeout 30m --quiet
+                        log "Stress-ng done"
+                    fi
+
+                    sleep 300
+                done
+            mode: '0755'
+        register: keepalive_script
+
+      - name: '{{ app_name | upper }}: Create Systemd Service'
+        copy:
+            dest: /etc/systemd/system/keepalive.service
+            content: |
+                [Unit]
+                Description=Oracle Keepalive (anti-reclaim)
+
+                [Service]
+                Type=simple
+                ExecStart={{ config.root }}/keepalive.sh
+                Restart=always
+                RestartSec=60
+
+                [Install]
+                WantedBy=multi-user.target
+            mode: '0644'
+        register: keepalive_service
+
+      - name: '{{ app_name | upper }}: Daemon Reload'
+        systemd:
+            daemon_reload: true
+        when: keepalive_service is changed
+
+      - name: '{{ app_name | upper }}: Enable Service'
+        systemd:
+            name: keepalive
+            state: "{{ 'restarted' if (keepalive_service is changed or keepalive_script is changed) else 'started' }}"
+            enabled: true

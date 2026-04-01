@@ -1,4 +1,8 @@
 ---
+- name: 'SYSCTL: Set System Timezone'
+  community.general.timezone:
+      name: '{{ env.JARVIS_TZ }}'
+
 - name: 'SYSCTL: Configure kernel parameters'
   ansible.posix.sysctl:
       name: '{{ sysctl_item.key }}'
