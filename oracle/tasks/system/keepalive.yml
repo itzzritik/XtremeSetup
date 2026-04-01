@@ -22,27 +22,54 @@
             content: |
                 #!/bin/bash
                 LOG_DIR="{{ config.root }}/logs"
+                CORES=$(nproc)
                 TODAY=$(date +%d-%^b-%Y)
                 LOG="$LOG_DIR/$TODAY.log"
                 STRESS_PID=""
+                PREV_NET=0
 
                 log() { echo "[$(date +%H:%M:%S)] $1" >> "$LOG"; }
-                get_cpu() { vmstat 1 2 2>/dev/null | tail -1 | awk '{print int(100 - $15)}'; }
+
+                get_stats() {
+                    CPU=$(vmstat 1 2 2>/dev/null | tail -1 | awk '{print int(100 - $15)}')
+                    [ -z "$CPU" ] || [ "$CPU" -lt 0 ] 2>/dev/null && CPU=0
+                    MEM=$(free | awk '/Mem:/ {printf "%.0f", $3/$2*100}')
+                    CUR_NET=$(awk 'NR>2 {rx+=$2; tx+=$10} END {print int((rx+tx)/1024)}' /proc/net/dev 2>/dev/null)
+                    if [ "$PREV_NET" -gt 0 ] && [ "$CUR_NET" -ge "$PREV_NET" ]; then
+                        NET=$(( CUR_NET - PREV_NET ))
+                    else
+                        NET=0
+                    fi
+                    PREV_NET=$CUR_NET
+                }
 
                 summarize() {
                     [ ! -f "$LOG" ] && return
-                    AVG=$(grep -o 'CPU: [0-9]*' "$LOG" | grep -o '[0-9]*' | awk '{s+=$1; n++} END {if(n>0) printf "%.0f", s/n; else print 0}')
-                    SAMPLES=$(grep -c 'CPU:' "$LOG" || true)
-                    STRESS=$(grep -c 'stress-ng started' "$LOG" || true)
-                    [ "${AVG:-0}" -ge 20 ] 2>/dev/null && STATUS="PASS" || STATUS="FAIL"
+
+                    AVG_CPU=$(grep -o 'C:[0-9]*' "$LOG" | grep -o '[0-9]*' | awk '{s+=$1; n++} END {if(n>0) printf "%.0f", s/n; else print 0}')
+                    AVG_MEM=$(grep -o 'M:[0-9]*' "$LOG" | grep -o '[0-9]*' | awk '{s+=$1; n++} END {if(n>0) printf "%.0f", s/n; else print 0}')
+                    SAMPLES=$(grep -c 'C:' "$LOG" || true)
+                    STRESS=$(grep -c 'stress started' "$LOG" || true)
+
+                    CPU_OK="N"; [ "${AVG_CPU:-0}" -ge 20 ] 2>/dev/null && CPU_OK="Y"
+                    MEM_OK="N"; [ "${AVG_MEM:-0}" -ge 20 ] 2>/dev/null && MEM_OK="Y"
+
+                    if [ "$CPU_OK" = "Y" ] || [ "$MEM_OK" = "Y" ]; then
+                        STATUS="PASS"
+                    else
+                        STATUS="FAIL"
+                    fi
+
                     {
-                        echo "═══════════════════════════════"
+                        echo "═══════════════════════════════════════"
                         echo "  SUMMARY ($TODAY) — $STATUS"
-                        echo "═══════════════════════════════"
-                        echo "  Avg CPU:  ${AVG}%"
-                        echo "  Samples:  $SAMPLES"
-                        echo "  Stress:   $STRESS runs"
-                        echo "═══════════════════════════════"
+                        echo "═══════════════════════════════════════"
+                        echo "  CPU:     ${AVG_CPU}% avg  (${CPU_OK})"
+                        echo "  Memory:  ${AVG_MEM}% avg  (${MEM_OK})"
+                        echo "  Cores:   $CORES"
+                        echo "  Samples: $SAMPLES"
+                        echo "  Stress:  $STRESS runs"
+                        echo "═══════════════════════════════════════"
                         echo ""
                         cat "$LOG"
                     } > "$LOG_DIR/${TODAY}_${STATUS}.log"
@@ -50,7 +77,7 @@
                     find "$LOG_DIR" -name "*.log" -mtime +180 -delete
                 }
 
-                log "Keepalive started"
+                log "Keepalive started ($CORES cores)"
 
                 while true; do
                     NEW_TODAY=$(date +%d-%^b-%Y)
@@ -58,22 +85,24 @@
                         summarize
                         TODAY=$NEW_TODAY
                         LOG="$LOG_DIR/$TODAY.log"
+                        PREV_NET=0
                         log "New day"
                     fi
 
-                    CPU=$(get_cpu)
-                    log "CPU: ${CPU}%"
+                    get_stats
+                    log "C:${CPU}% M:${MEM}% N:${NET}KB/m"
 
-                    # Start stress if CPU low and no stress already running
                     if [ "${CPU:-0}" -lt 20 ] 2>/dev/null; then
                         if [ -z "$STRESS_PID" ] || ! kill -0 $STRESS_PID 2>/dev/null; then
-                            stress-ng --cpu 1 --cpu-load 80 --timeout 30m --quiet &
+                            nice -n 19 stress-ng --cpu 2 --cpu-load 60 --vm 1 --vm-bytes 5G --vm-keep --timeout 30m --quiet &
                             STRESS_PID=$!
-                            log "stress-ng started"
+                            log "stress started (cpu+mem)"
                         fi
                     fi
 
-                    sleep 300
+                    curl -sf --max-time 5 -o /dev/null https://cloudflare.com/cdn-cgi/trace >/dev/null 2>&1
+
+                    sleep 60
                 done
             mode: '0755'
         register: keepalive_script
