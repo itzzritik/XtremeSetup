@@ -1,6 +1,8 @@
 ---
 - vars:
       app_name: neveridle
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
   block:
       - name: '{{ app_name | upper }}: Check Installation'
         stat:
@@ -14,7 +16,90 @@
             mode: '0755'
         when: not neveridle_check.stat.exists
 
-      - name: '{{ app_name | upper }}: Create Systemd Service'
+      - name: '{{ app_name | upper }}: Configure Directories'
+        file:
+            path: '{{ config.root }}/logs'
+            state: directory
+            mode: '0755'
+            owner: ubuntu
+            group: ubuntu
+            recurse: true
+
+      - name: '{{ app_name | upper }}: Create Logger'
+        copy:
+            dest: '{{ config.root }}/logger.sh'
+            content: |
+                #!/bin/bash
+                # Independent resource logger — measures real CPU/MEM/NET every minute
+                # Oracle reclaims ARM instances when ALL three are below 20% (95th percentile, 7-day)
+                LOG_DIR="{{ config.root }}/logs"
+                TODAY=$(date +%d-%^b-%Y)
+                LOG="$LOG_DIR/$TODAY.log"
+                PREV_NET=0
+
+                get_cpu() { vmstat 1 2 2>/dev/null | tail -1 | awk '{print int(100 - $15)}'; }
+                get_mem() { free | awk '/Mem:/ {printf "%.0f", $3/$2*100}'; }
+
+                summarize() {
+                    [ ! -f "$LOG" ] && return
+                    AVG_CPU=$(grep -o 'C:[0-9]*' "$LOG" | grep -o '[0-9]*' | awk '{s+=$1;n++} END {if(n>0) printf "%.0f",s/n; else print 0}')
+                    AVG_MEM=$(grep -o 'M:[0-9]*' "$LOG" | grep -o '[0-9]*' | awk '{s+=$1;n++} END {if(n>0) printf "%.0f",s/n; else print 0}')
+                    SAMPLES=$(grep -c 'C:' "$LOG" || true)
+
+                    CPU_OK="N"; [ "${AVG_CPU:-0}" -ge 20 ] 2>/dev/null && CPU_OK="Y"
+                    MEM_OK="N"; [ "${AVG_MEM:-0}" -ge 20 ] 2>/dev/null && MEM_OK="Y"
+
+                    # SAFE if ANY metric >= 20% (Oracle needs ALL below 20% to reclaim)
+                    if [ "$CPU_OK" = "Y" ] || [ "$MEM_OK" = "Y" ]; then
+                        STATUS="PASS"
+                    else
+                        STATUS="FAIL"
+                    fi
+
+                    {
+                        echo "═══════════════════════════════════════"
+                        echo "  SUMMARY — $TODAY — $STATUS"
+                        echo "═══════════════════════════════════════"
+                        echo "  CPU:      ${AVG_CPU}% avg  ($CPU_OK)"
+                        echo "  Memory:   ${AVG_MEM}% avg  ($MEM_OK)"
+                        echo "  Samples:  $SAMPLES"
+                        echo "═══════════════════════════════════════"
+                        echo ""
+                        cat "$LOG"
+                    } > "$LOG_DIR/${TODAY}_${STATUS}.log"
+                    rm -f "$LOG"
+                    find "$LOG_DIR" -name "*.log" -mtime +180 -delete
+                }
+
+                while true; do
+                    NEW_TODAY=$(date +%d-%^b-%Y)
+                    if [ "$NEW_TODAY" != "$TODAY" ]; then
+                        summarize
+                        TODAY=$NEW_TODAY
+                        LOG="$LOG_DIR/$TODAY.log"
+                        PREV_NET=0
+                    fi
+
+                    CPU=$(get_cpu); [ -z "$CPU" ] && CPU=0
+                    MEM=$(get_mem)
+                    CUR_NET=$(awk 'NR>2 {rx+=$2; tx+=$10} END {print int((rx+tx)/1024)}' /proc/net/dev 2>/dev/null)
+                    if [ "$PREV_NET" -gt 0 ] && [ "$CUR_NET" -ge "$PREV_NET" ]; then
+                        NET=$(( CUR_NET - PREV_NET ))
+                    else
+                        NET=0
+                    fi
+                    PREV_NET=$CUR_NET
+                    NET_MB=$(( NET / 1024 ))
+                    echo "[$(date +%H:%M:%S)] C:${CPU}% M:${MEM}% N:${NET_MB}MB/min" >> "$LOG"
+
+                    sleep 60
+                done
+            mode: '0755'
+            owner: ubuntu
+            group: ubuntu
+        register: logger_script
+
+      - name: '{{ app_name | upper }}: Create NeverIdle Service'
         copy:
             dest: /etc/systemd/system/{{ app_name }}.service
             content: |
@@ -34,13 +119,38 @@
             mode: '0644'
         register: neveridle_service
 
+      - name: '{{ app_name | upper }}: Create Logger Service'
+        copy:
+            dest: /etc/systemd/system/{{ app_name }}-logger.service
+            content: |
+                [Unit]
+                Description=NeverIdle Resource Logger
+                After=network.target
+
+                [Service]
+                Type=simple
+                ExecStart={{ config.root }}/logger.sh
+                Restart=always
+                RestartSec=60
+
+                [Install]
+                WantedBy=multi-user.target
+            mode: '0644'
+        register: logger_service
+
       - name: '{{ app_name | upper }}: Daemon Reload'
         systemd:
             daemon_reload: true
-        when: neveridle_service is changed
+        when: neveridle_service is changed or logger_service is changed
 
-      - name: '{{ app_name | upper }}: Enable Service'
+      - name: '{{ app_name | upper }}: Enable NeverIdle'
         systemd:
             name: '{{ app_name }}'
             state: "{{ 'restarted' if neveridle_service is changed else 'started' }}"
+            enabled: true
+
+      - name: '{{ app_name | upper }}: Enable Logger'
+        systemd:
+            name: '{{ app_name }}-logger'
+            state: "{{ 'restarted' if (logger_service is changed or logger_script is changed) else 'started' }}"
             enabled: true
