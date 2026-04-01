@@ -108,6 +108,23 @@
         become_user: ubuntu
         changed_when: false
 
+      - name: '{{ app_name | upper }}: Install Plugins'
+        shell: |
+            {{ nvm_init }}
+            PLUGIN_DIR="$HOME/.claude-code-ui/plugins"
+            mkdir -p "$PLUGIN_DIR"
+            for repo in cloudcli-plugin-terminal; do
+                if [ ! -d "$PLUGIN_DIR/$repo" ]; then
+                    git clone "https://github.com/cloudcli-ai/$repo.git" "$PLUGIN_DIR/$repo"
+                    cd "$PLUGIN_DIR/$repo" && npm install && npm run build
+                fi
+            done
+        args:
+            executable: /bin/bash
+        become: true
+        become_user: ubuntu
+        changed_when: false
+
       - name: '{{ app_name | upper }}: Daemon Reload'
         systemd:
             daemon_reload: true
