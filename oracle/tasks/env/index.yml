@@ -5,8 +5,6 @@
           - RITIK_NAME
           - RITIK_EMAIL
           - RITIK_DOMAIN
-          - JARVIS_AI_OPENAI_KEY
-          - JARVIS_AI_OPENROUTER_KEY
           - RITIK_CF_TUNNEL_TOKEN
           - JARVIS_ADMIN_PASSWORD
           - JARVIS_GIT_SSH_PRIVATE_KEY

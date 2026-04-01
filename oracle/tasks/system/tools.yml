@@ -2,11 +2,16 @@
 - vars:
       nvm_init: 'export NVM_DIR=/home/ubuntu/.nvm && source /home/ubuntu/.nvm/nvm.sh'
   block:
-      # ── Shell ──
-
-      - name: 'TOOLS: Install zsh'
+      - name: 'TOOLS: Install apt packages'
         apt:
-            name: zsh
+            name:
+                - zsh
+                - git
+                - build-essential
+                - curl
+                - unzip
+                - htop
+                - jq
             state: present
 
       - name: 'TOOLS: Set zsh as default shell'
@@ -34,21 +39,6 @@
             line: 'plugins=(git z)'
         become: true
         become_user: ubuntu
-
-      # ── System Packages ──
-
-      - name: 'TOOLS: Install apt packages'
-        apt:
-            name:
-                - git
-                - build-essential
-                - curl
-                - unzip
-                - htop
-                - jq
-            state: present
-
-      # ── nvm + Node.js ──
 
       - name: 'TOOLS: Check nvm'
         stat:
@@ -85,40 +75,17 @@
         become: true
         become_user: ubuntu
 
-      # ── AI CLIs ──
-
-      - name: 'TOOLS: Check Claude Code'
-        shell: '{{ nvm_init }} && claude --version'
+      - name: 'TOOLS: Install Global npm Packages'
+        shell: '{{ nvm_init }} && npm install -g {{ npm_item }}'
         args:
             executable: /bin/bash
-        register: claude_check
-        failed_when: false
-        changed_when: false
-        become: true
-        become_user: ubuntu
-
-      - name: 'TOOLS: Install Claude Code'
-        shell: '{{ nvm_init }} && npm install -g @anthropic-ai/claude-code'
-        args:
-            executable: /bin/bash
-        when: claude_check.rc != 0
-        become: true
-        become_user: ubuntu
-
-      - name: 'TOOLS: Check Codex CLI'
-        shell: '{{ nvm_init }} && codex --version'
-        args:
-            executable: /bin/bash
-        register: codex_check
-        failed_when: false
-        changed_when: false
-        become: true
-        become_user: ubuntu
-
-      - name: 'TOOLS: Install Codex CLI'
-        shell: '{{ nvm_init }} && npm install -g @openai/codex'
-        args:
-            executable: /bin/bash
-        when: codex_check.rc != 0
+        loop:
+            - typescript
+            - pnpm
+            - yarn
+            - '@anthropic-ai/claude-code'
+            - '@openai/codex'
+        loop_control:
+            loop_var: npm_item
         become: true
         become_user: ubuntu

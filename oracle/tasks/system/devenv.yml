@@ -1,42 +1,25 @@
 ---
 - vars:
       app_name: devenv
-      config:
-          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
   block:
-      - name: '{{ app_name | upper }}: Configure Directories'
+      - name: '{{ app_name | upper }}: Create Projects Directory'
         file:
-            path: '{{ item }}'
+            path: '{{ env.JARVIS_PROJECTS_DIR }}'
             state: directory
             mode: '0755'
             owner: ubuntu
             group: ubuntu
-        loop:
-            - '{{ env.JARVIS_PROJECTS_DIR }}'
-            - '{{ config.root }}'
 
-      - name: '{{ app_name | upper }}: Write Environment Config'
-        copy:
-            dest: '{{ config.root }}/env.sh'
-            content: |
-                export OPENAI_API_KEY="{{ env.JARVIS_AI_OPENAI_KEY }}"
-                alias cc="claude"
-                alias code="code-server -r"
-            mode: '0600'
-            owner: ubuntu
-            group: ubuntu
-        no_log: true
-
-      - name: '{{ app_name | upper }}: Source env in zshrc'
+      - name: '{{ app_name | upper }}: Configure Shell Aliases'
         blockinfile:
             path: /home/ubuntu/.zshrc
             marker: '# {mark} JARVIS'
             block: |
-                [ -f {{ config.root }}/env.sh ] && source {{ config.root }}/env.sh
+                alias cc="claude"
+                alias code="code-server -r"
         become: true
         become_user: ubuntu
 
       - name: '{{ app_name | upper }}: Remind to login Claude Code'
         debug:
             msg: 'Run `claude login` as ubuntu user to authenticate Claude Code (uses subscription, not API key)'
-

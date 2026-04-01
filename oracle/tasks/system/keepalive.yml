@@ -24,24 +24,24 @@
                 LOG_DIR="{{ config.root }}/logs"
                 TODAY=$(date +%d-%^b-%Y)
                 LOG="$LOG_DIR/$TODAY.log"
+                STRESS_PID=""
 
                 log() { echo "[$(date +%H:%M:%S)] $1" >> "$LOG"; }
-
                 get_cpu() { vmstat 1 2 2>/dev/null | tail -1 | awk '{print int(100 - $15)}'; }
 
                 summarize() {
                     [ ! -f "$LOG" ] && return
                     AVG=$(grep -o 'CPU: [0-9]*' "$LOG" | grep -o '[0-9]*' | awk '{s+=$1; n++} END {if(n>0) printf "%.0f", s/n; else print 0}')
                     SAMPLES=$(grep -c 'CPU:' "$LOG" || true)
-                    STRESS=$(grep -c 'running stress-ng' "$LOG" || true)
-                    [ "$AVG" -ge 20 ] 2>/dev/null && STATUS="PASS" || STATUS="FAIL"
+                    STRESS=$(grep -c 'stress-ng started' "$LOG" || true)
+                    [ "${AVG:-0}" -ge 20 ] 2>/dev/null && STATUS="PASS" || STATUS="FAIL"
                     {
                         echo "═══════════════════════════════"
                         echo "  SUMMARY ($TODAY) — $STATUS"
                         echo "═══════════════════════════════"
                         echo "  Avg CPU:  ${AVG}%"
                         echo "  Samples:  $SAMPLES"
-                        echo "  Stress:   $STRESS"
+                        echo "  Stress:   $STRESS runs"
                         echo "═══════════════════════════════"
                         echo ""
                         cat "$LOG"
@@ -64,10 +64,13 @@
                     CPU=$(get_cpu)
                     log "CPU: ${CPU}%"
 
+                    # Start stress if CPU low and no stress already running
                     if [ "${CPU:-0}" -lt 20 ] 2>/dev/null; then
-                        log "Low CPU — running stress-ng"
-                        stress-ng --cpu 1 --cpu-load 80 --timeout 30m --quiet
-                        log "Stress-ng done"
+                        if [ -z "$STRESS_PID" ] || ! kill -0 $STRESS_PID 2>/dev/null; then
+                            stress-ng --cpu 1 --cpu-load 80 --timeout 30m --quiet &
+                            STRESS_PID=$!
+                            log "stress-ng started"
+                        fi
                     fi
 
                     sleep 300
