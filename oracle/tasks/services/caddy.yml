@@ -16,10 +16,23 @@
             content: |-
                 :80 {
                     @codeserver host code.{{ env.RITIK_DOMAIN }}
-                    reverse_proxy @codeserver localhost:{{ env.JARVIS_SERVICES['code-server'].port }}
+                    handle @codeserver {
+                        reverse_proxy localhost:{{ env.JARVIS_SERVICES['code-server'].port }}
+                    }
 
                     @cloudcli host vibe.{{ env.RITIK_DOMAIN }}
-                    reverse_proxy @cloudcli localhost:{{ env.JARVIS_SERVICES.cloudcli.port }}
+                    handle @cloudcli {
+                        reverse_proxy localhost:{{ env.JARVIS_SERVICES.cloudcli.port }}
+                    }
+
+                    @port_allowed header_regexp portnum Host ^([3-8]\d{3}|9000)\.{{ env.RITIK_DOMAIN | regex_escape }}
+                    handle @port_allowed {
+                        reverse_proxy localhost:{re.portnum.1}
+                    }
+
+                    handle {
+                        respond "Forbidden" 403
+                    }
                 }
             mode: '0644'
 

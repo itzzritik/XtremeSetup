@@ -1,0 +1,45 @@
+---
+- vars:
+      app_name: git
+  block:
+      - name: '{{ app_name | upper }}: Ensure SSH Directory'
+        file:
+            path: /home/ubuntu/.ssh
+            state: directory
+            mode: '0700'
+            owner: ubuntu
+            group: ubuntu
+
+      - name: '{{ app_name | upper }}: Write SSH Private Key'
+        copy:
+            dest: /home/ubuntu/.ssh/id_ed25519
+            content: '{{ env.JARVIS_GIT_SSH_PRIVATE_KEY }}'
+            mode: '0600'
+            owner: ubuntu
+            group: ubuntu
+        no_log: true
+
+      - name: '{{ app_name | upper }}: Write SSH Public Key'
+        copy:
+            dest: /home/ubuntu/.ssh/id_ed25519.pub
+            content: '{{ env.JARVIS_GIT_SSH_PUBLIC_KEY }}'
+            mode: '0644'
+            owner: ubuntu
+            group: ubuntu
+
+      - name: '{{ app_name | upper }}: Configure Git'
+        community.general.git_config:
+            name: '{{ git_item.key }}'
+            value: '{{ git_item.value }}'
+            scope: global
+        loop:
+            - { key: user.name, value: '{{ env.RITIK_NAME }}' }
+            - { key: user.email, value: '{{ env.RITIK_EMAIL }}' }
+            - { key: gpg.format, value: ssh }
+            - { key: user.signingkey, value: /home/ubuntu/.ssh/id_ed25519.pub }
+            - { key: commit.gpgsign, value: 'true' }
+        loop_control:
+            loop_var: git_item
+            label: '{{ git_item.key }}'
+        become: true
+        become_user: ubuntu

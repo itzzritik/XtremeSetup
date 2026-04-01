@@ -36,6 +36,7 @@
                 auth: none
                 cert: false
                 user-data-dir: {{ config.root }}/data
+                proxy-domain: {{ env.RITIK_DOMAIN }}
             mode: '0644'
             owner: ubuntu
             group: ubuntu
@@ -69,3 +70,25 @@
             name: 'code-server@ubuntu'
             state: "{{ 'restarted' if (cs_config is changed or cs_override is changed) else 'started' }}"
             enabled: true
+
+      - name: '{{ app_name | upper }}: Install Extensions'
+        command: >
+            code-server
+            --extensions-dir {{ config.root }}/data/extensions
+            --user-data-dir {{ config.root }}/data
+            {{ extensions | map('regex_replace', '^', '--install-extension ') | join(' ') }}
+            --force
+        vars:
+            extensions:
+                - usernamehw.errorlens
+                - eamodio.gitlens
+                - ms-vscode.vscode-typescript-next
+                - biomejs.biome
+                - esbenp.prettier-vscode
+                - streetsidesoftware.code-spell-checker
+                - bradlc.vscode-tailwindcss
+                - vira.vsc-vira-theme
+        become: true
+        become_user: ubuntu
+        ignore_errors: true
+

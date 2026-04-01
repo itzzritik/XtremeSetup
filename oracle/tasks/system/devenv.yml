@@ -36,20 +36,6 @@
         become: true
         become_user: ubuntu
 
-      - name: '{{ app_name | upper }}: Configure Git'
-        community.general.git_config:
-            name: '{{ git_item.key }}'
-            value: '{{ git_item.value }}'
-            scope: global
-        loop:
-            - { key: user.name, value: '{{ env.RITIK_NAME }}' }
-            - { key: user.email, value: '{{ env.RITIK_EMAIL }}' }
-        loop_control:
-            loop_var: git_item
-            label: '{{ git_item.key }}'
-        become: true
-        become_user: ubuntu
-
       - name: '{{ app_name | upper }}: Remind to login Claude Code'
         debug:
             msg: 'Run `claude login` as ubuntu user to authenticate Claude Code (uses subscription, not API key)'

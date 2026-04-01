@@ -19,25 +19,6 @@
   when: ssh_check.rc != 0
   register: ssh_added
 
-- name: 'NETWORKING: Check Firewall Rules'
-  command: 'iptables -C INPUT -p tcp --dport {{ rule }} -j ACCEPT'
-  loop:
-      - '3000:9000'
-  loop_control:
-      loop_var: rule
-  register: rule_checks
-  failed_when: false
-  changed_when: false
-
-- name: 'NETWORKING: Add Missing Rules'
-  command: 'iptables -I INPUT -p tcp --dport {{ result.rule }} -j ACCEPT'
-  loop: '{{ rule_checks.results }}'
-  loop_control:
-      loop_var: result
-      label: '{{ result.rule }}'
-  when: result.rc != 0
-  register: rules_added
-
 - name: 'NETWORKING: Persist Rules'
   command: netfilter-persistent save
-  when: (ssh_added is changed) or (rules_added.results | default([]) | selectattr('changed', 'true') | list | length > 0)
+  when: ssh_added is changed

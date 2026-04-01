@@ -45,6 +45,7 @@
             - docker
             - tools
             - hardening
+            - git
             - devenv
         loop_control:
             loop_var: task
