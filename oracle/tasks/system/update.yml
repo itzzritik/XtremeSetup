@@ -1,11 +1,14 @@
 ---
-- name: 'UPDATE: Update Apt Cache'
-  apt:
-      update_cache: yes
-      cache_valid_time: 86400
+- vars:
+      app_name: update
+  block:
+      - name: '{{ app_name | upper }}: Update Apt Cache'
+        apt:
+            update_cache: yes
+            cache_valid_time: 86400
 
-- name: 'UPDATE: Upgrade, Autoremove & Clean'
-  apt:
-      upgrade: yes
-      autoremove: yes
-      autoclean: yes
+      - name: '{{ app_name | upper }}: Upgrade, Autoremove & Clean'
+        apt:
+            upgrade: yes
+            autoremove: yes
+            autoclean: yes

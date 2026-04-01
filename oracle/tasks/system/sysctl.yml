@@ -1,42 +1,45 @@
 ---
-- name: 'SYSCTL: Set System Timezone'
-  community.general.timezone:
-      name: '{{ env.JARVIS_TZ }}'
-
-- name: 'SYSCTL: Configure kernel parameters'
-  ansible.posix.sysctl:
-      name: '{{ sysctl_item.key }}'
-      value: '{{ sysctl_item.value }}'
-      state: present
-      reload: true
-  loop:
-      - { key: fs.inotify.max_user_watches, value: '524288' }
-      - { key: fs.inotify.max_user_instances, value: '256' }
-      - { key: vm.swappiness, value: '10' }
-  loop_control:
-      loop_var: sysctl_item
-      label: '{{ sysctl_item.key }}={{ sysctl_item.value }}'
-
-- name: 'SYSCTL: Check Swap'
-  command: swapon --show
-  register: swap_check
-  changed_when: false
-  failed_when: false
-
-- name: 'SYSCTL: Setup Swap'
+- vars:
+      app_name: sysctl
   block:
-      - command: fallocate -l 4G /swapfile
-        args:
-            creates: /swapfile
-      - file:
-            path: /swapfile
-            mode: '0600'
-      - command: mkswap /swapfile
-        args:
-            creates: /swapfile
-      - command: swapon /swapfile
-      - lineinfile:
-            path: /etc/fstab
-            line: '/swapfile swap swap defaults 0 0'
+      - name: '{{ app_name | upper }}: Set System Timezone'
+        community.general.timezone:
+            name: '{{ env.JARVIS_TZ }}'
+
+      - name: '{{ app_name | upper }}: Configure kernel parameters'
+        ansible.posix.sysctl:
+            name: '{{ sysctl_item.key }}'
+            value: '{{ sysctl_item.value }}'
             state: present
-  when: "'/swapfile' not in swap_check.stdout"
+            reload: true
+        loop:
+            - { key: fs.inotify.max_user_watches, value: '524288' }
+            - { key: fs.inotify.max_user_instances, value: '256' }
+            - { key: vm.swappiness, value: '10' }
+        loop_control:
+            loop_var: sysctl_item
+            label: '{{ sysctl_item.key }}={{ sysctl_item.value }}'
+
+      - name: '{{ app_name | upper }}: Check Swap'
+        command: swapon --show
+        register: swap_check
+        changed_when: false
+        failed_when: false
+
+      - name: '{{ app_name | upper }}: Setup Swap'
+        block:
+            - command: fallocate -l 4G /swapfile
+              args:
+                  creates: /swapfile
+            - file:
+                  path: /swapfile
+                  mode: '0600'
+            - command: mkswap /swapfile
+              args:
+                  creates: /swapfile
+            - command: swapon /swapfile
+            - lineinfile:
+                  path: /etc/fstab
+                  line: '/swapfile swap swap defaults 0 0'
+                  state: present
+        when: "'/swapfile' not in swap_check.stdout"

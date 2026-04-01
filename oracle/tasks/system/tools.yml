@@ -1,8 +1,9 @@
 ---
 - vars:
+      app_name: tools
       nvm_init: 'export NVM_DIR=/home/ubuntu/.nvm && source /home/ubuntu/.nvm/nvm.sh'
   block:
-      - name: 'TOOLS: Install apt packages'
+      - name: '{{ app_name | upper }}: Install apt packages'
         apt:
             name:
                 - zsh
@@ -14,17 +15,17 @@
                 - jq
             state: present
 
-      - name: 'TOOLS: Set zsh as default shell'
+      - name: '{{ app_name | upper }}: Set zsh as default shell'
         user:
             name: ubuntu
             shell: /usr/bin/zsh
 
-      - name: 'TOOLS: Check oh-my-zsh'
+      - name: '{{ app_name | upper }}: Check oh-my-zsh'
         stat:
             path: /home/ubuntu/.oh-my-zsh
         register: omz_check
 
-      - name: 'TOOLS: Install oh-my-zsh'
+      - name: '{{ app_name | upper }}: Install oh-my-zsh'
         shell: >
             curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh
             | sh -s -- --unattended
@@ -32,7 +33,7 @@
         become: true
         become_user: ubuntu
 
-      - name: 'TOOLS: Configure oh-my-zsh plugins'
+      - name: '{{ app_name | upper }}: Configure oh-my-zsh plugins'
         lineinfile:
             path: /home/ubuntu/.zshrc
             regexp: '^plugins='
@@ -40,19 +41,19 @@
         become: true
         become_user: ubuntu
 
-      - name: 'TOOLS: Check nvm'
+      - name: '{{ app_name | upper }}: Check nvm'
         stat:
             path: /home/ubuntu/.nvm/nvm.sh
         register: nvm_check
 
-      - name: 'TOOLS: Install nvm'
+      - name: '{{ app_name | upper }}: Install nvm'
         shell: >
             curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash
         when: not nvm_check.stat.exists
         become: true
         become_user: ubuntu
 
-      - name: 'TOOLS: Ensure nvm sourced in zshrc'
+      - name: '{{ app_name | upper }}: Ensure nvm sourced in zshrc'
         blockinfile:
             path: /home/ubuntu/.zshrc
             marker: '# {mark} NVM'
@@ -63,7 +64,7 @@
         become: true
         become_user: ubuntu
 
-      - name: 'TOOLS: Install Node.js LTS'
+      - name: '{{ app_name | upper }}: Install Node.js LTS'
         shell: |
             {{ nvm_init }}
             nvm install --lts
@@ -75,7 +76,7 @@
         become: true
         become_user: ubuntu
 
-      - name: 'TOOLS: Install Global npm Packages'
+      - name: '{{ app_name | upper }}: Install Global npm Packages'
         shell: '{{ nvm_init }} && npm install -g {{ npm_item }}'
         args:
             executable: /bin/bash

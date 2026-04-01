@@ -1,24 +1,27 @@
 ---
-- name: 'NETWORKING: Install iptables-persistent'
-  apt:
-      name:
-          - iptables-persistent
-          - netfilter-persistent
-      state: present
-  environment:
-      DEBIAN_FRONTEND: noninteractive
+- vars:
+      app_name: networking
+  block:
+      - name: '{{ app_name | upper }}: Install iptables-persistent'
+        apt:
+            name:
+                - iptables-persistent
+                - netfilter-persistent
+            state: present
+        environment:
+            DEBIAN_FRONTEND: noninteractive
 
-- name: 'NETWORKING: Check SSH Safety Rule'
-  command: iptables -C INPUT -p tcp --dport 22 -j ACCEPT
-  register: ssh_check
-  failed_when: false
-  changed_when: false
+      - name: '{{ app_name | upper }}: Check SSH Safety Rule'
+        command: iptables -C INPUT -p tcp --dport 22 -j ACCEPT
+        register: ssh_check
+        failed_when: false
+        changed_when: false
 
-- name: 'NETWORKING: Ensure SSH Access'
-  command: iptables -I INPUT -p tcp --dport 22 -j ACCEPT
-  when: ssh_check.rc != 0
-  register: ssh_added
+      - name: '{{ app_name | upper }}: Ensure SSH Access'
+        command: iptables -I INPUT -p tcp --dport 22 -j ACCEPT
+        when: ssh_check.rc != 0
+        register: ssh_added
 
-- name: 'NETWORKING: Persist Rules'
-  command: netfilter-persistent save
-  when: ssh_added is changed
+      - name: '{{ app_name | upper }}: Persist Rules'
+        command: netfilter-persistent save
+        when: ssh_added is changed

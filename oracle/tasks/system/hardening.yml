@@ -1,45 +1,48 @@
 ---
-- name: 'HARDENING: Secure SSH Configuration'
-  lineinfile:
-      path: /etc/ssh/sshd_config
-      regexp: '{{ ssh_item.regexp }}'
-      line: '{{ ssh_item.line }}'
-  loop:
-      - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
-      - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
-  loop_control:
-      loop_var: ssh_item
-      label: '{{ ssh_item.line }}'
-  register: ssh_settings
+- vars:
+      app_name: hardening
+  block:
+      - name: '{{ app_name | upper }}: Secure SSH Configuration'
+        lineinfile:
+            path: /etc/ssh/sshd_config
+            regexp: '{{ ssh_item.regexp }}'
+            line: '{{ ssh_item.line }}'
+        loop:
+            - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+            - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        loop_control:
+            loop_var: ssh_item
+            label: '{{ ssh_item.line }}'
+        register: ssh_settings
 
-- name: 'HARDENING: Restart SSH'
-  systemd:
-      name: ssh
-      state: restarted
-  when: ssh_settings.results | selectattr('changed', 'true') | list | length > 0
+      - name: '{{ app_name | upper }}: Restart SSH'
+        systemd:
+            name: ssh
+            state: restarted
+        when: ssh_settings.results | selectattr('changed', 'true') | list | length > 0
 
-- name: 'HARDENING: Install fail2ban'
-  apt:
-      name: fail2ban
-      state: present
+      - name: '{{ app_name | upper }}: Install fail2ban'
+        apt:
+            name: fail2ban
+            state: present
 
-- name: 'HARDENING: Configure fail2ban for SSH'
-  copy:
-      dest: /etc/fail2ban/jail.local
-      content: |
-          [sshd]
-          enabled = true
-          port = ssh
-          filter = sshd
-          logpath = /var/log/auth.log
-          maxretry = 5
-          bantime = 3600
-          findtime = 600
-      mode: '0644'
-  register: f2b_config
+      - name: '{{ app_name | upper }}: Configure fail2ban for SSH'
+        copy:
+            dest: /etc/fail2ban/jail.local
+            content: |
+                [sshd]
+                enabled = true
+                port = ssh
+                filter = sshd
+                logpath = /var/log/auth.log
+                maxretry = 5
+                bantime = 3600
+                findtime = 600
+            mode: '0644'
+        register: f2b_config
 
-- name: 'HARDENING: Enable fail2ban'
-  systemd:
-      name: fail2ban
-      state: "{{ 'restarted' if f2b_config is changed else 'started' }}"
-      enabled: true
+      - name: '{{ app_name | upper }}: Enable fail2ban'
+        systemd:
+            name: fail2ban
+            state: "{{ 'restarted' if f2b_config is changed else 'started' }}"
+            enabled: true
