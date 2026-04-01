@@ -1,0 +1,46 @@
+---
+- vars:
+      app_name: neveridle
+  block:
+      - name: '{{ app_name | upper }}: Check Installation'
+        stat:
+            path: /usr/local/bin/{{ app_name }}
+        register: neveridle_check
+
+      - name: '{{ app_name | upper }}: Install NeverIdle'
+        get_url:
+            url: 'https://github.com/layou233/NeverIdle/releases/latest/download/NeverIdle-linux-arm64'
+            dest: /usr/local/bin/{{ app_name }}
+            mode: '0755'
+        when: not neveridle_check.stat.exists
+
+      - name: '{{ app_name | upper }}: Create Systemd Service'
+        copy:
+            dest: /etc/systemd/system/{{ app_name }}.service
+            content: |
+                [Unit]
+                Description=NeverIdle (Oracle anti-reclaim)
+                After=network.target
+
+                [Service]
+                Type=simple
+                Nice=19
+                ExecStart=/usr/local/bin/{{ app_name }} -cp 0.2 -m 2 -n 4h
+                Restart=always
+                RestartSec=60
+
+                [Install]
+                WantedBy=multi-user.target
+            mode: '0644'
+        register: neveridle_service
+
+      - name: '{{ app_name | upper }}: Daemon Reload'
+        systemd:
+            daemon_reload: true
+        when: neveridle_service is changed
+
+      - name: '{{ app_name | upper }}: Enable Service'
+        systemd:
+            name: '{{ app_name }}'
+            state: "{{ 'restarted' if neveridle_service is changed else 'started' }}"
+            enabled: true

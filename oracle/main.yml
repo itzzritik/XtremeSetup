@@ -49,7 +49,7 @@
             - tools
             - hardening
             - git
-            - keepalive
+            - neveridle
             - devenv
         loop_control:
             loop_var: task
