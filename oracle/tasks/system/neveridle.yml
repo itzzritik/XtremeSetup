@@ -89,7 +89,9 @@
                 [Service]
                 Type=simple
                 Nice=19
-                ExecStart=/usr/local/bin/{{ app_name }} -cp 0.2 -m 2 -n 4h
+                OOMScoreAdjust=1000
+                MemoryLow=0
+                ExecStart=/usr/local/bin/{{ app_name }} -cp 0.25 -m 6 -n 4h
                 Restart=always
                 RestartSec=60
 
