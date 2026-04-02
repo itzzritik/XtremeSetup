@@ -177,21 +177,21 @@ JARVIS_SERVICES:
         section: 'Media Server'
         skip_auth: true
 
-    # zeroclaw:
-    #     id: 247
-    #     name: Claw
-    #     subtitle: Jarvis AI Assistant
-    #     logo: azirevpn.svg
-    #     port: 42617
-    #     subdomains: [claw]
-
-    moltis:
-        id: 249
+    zeroclaw:
+        id: 247
         name: Claw
         subtitle: Jarvis AI Assistant
         logo: azirevpn.svg
-        port: 13131
+        port: 42617
         subdomains: [claw]
+
+    # moltis:
+    #     id: 249
+    #     name: Claw
+    #     subtitle: Jarvis AI Assistant
+    #     logo: azirevpn.svg
+    #     port: 13131
+    #     subdomains: [claw]
 
     alist:
         id: 253

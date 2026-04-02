@@ -251,13 +251,13 @@
       - name: '{{ instance.hostname | upper }}: WhatsApp Pairing (check logs)'
         shell: |
             pct exec {{ id }} -- bash -c '
-            [ -f /root/.zeroclaw/whatsapp-session.db ] && [ $(stat -c%s /root/.zeroclaw/whatsapp-session.db 2>/dev/null || echo 0) -gt 1000 ] && echo "WhatsApp already paired" && exit 0
-            for i in $(seq 1 6); do
-                CODE=$(journalctl -u zeroclaw --no-pager -n 50 2>/dev/null | grep -oP "WhatsApp Web pair code: \K\S+" | tail -1 || true)
-                [ -n "$CODE" ] && echo "WhatsApp Web pair code: $CODE" && exit 0
+            sleep 30
+            for i in $(seq 1 12); do
+                CODE=$(journalctl -u zeroclaw --no-pager -n 100 2>/dev/null | grep -oP "Pair code: \K\S+|WhatsApp Web pair code: \K\S+" | tail -1 || true)
+                [ -n "$CODE" ] && echo "WhatsApp Pair Code: $CODE" && exit 0
                 sleep 5
             done
-            echo "WhatsApp not paired. Check logs manually."
+            echo "No pair code found. Check: pct exec {{ id }} -- journalctl -u zeroclaw -f"
             '
         register: whatsapp_pair
         changed_when: false
