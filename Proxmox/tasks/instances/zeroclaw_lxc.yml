@@ -179,19 +179,11 @@
 
                   iptables -P INPUT DROP
                   iptables -P FORWARD DROP
-                  iptables -P OUTPUT DROP
+                  iptables -P OUTPUT ACCEPT
 
                   iptables -A INPUT -i lo -j ACCEPT
-                  iptables -A OUTPUT -o lo -j ACCEPT
                   iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-                  iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
-                  iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
-                  iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
-                  iptables -A OUTPUT -p tcp --dport 80 -j ACCEPT
-                  iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
-
-                  iptables -A INPUT -p tcp --dport {{ env.JARVIS_SERVICES[app_name].port }} -s {{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.traefik.id }} -j ACCEPT
                   iptables -A INPUT -p tcp --dport {{ env.JARVIS_SERVICES[app_name].port }} -s {{ env.JARVIS_NETWORK_PREFIX }}.0/24 -j ACCEPT
 
                   iptables-save > /etc/iptables/rules.v4
@@ -251,20 +243,30 @@
       - name: '{{ instance.hostname | upper }}: WhatsApp Pairing (check logs)'
         shell: |
             pct exec {{ id }} -- bash -c '
-            sleep 30
-            for i in $(seq 1 12); do
-                CODE=$(journalctl -u zeroclaw --no-pager -n 100 2>/dev/null | grep -oP "Pair code: \K\S+|WhatsApp Web pair code: \K\S+" | tail -1 || true)
-                [ -n "$CODE" ] && echo "WhatsApp Pair Code: $CODE" && exit 0
+            for i in $(seq 1 24); do
+                LOGS=$(journalctl -u zeroclaw --no-pager -o cat -n 200 2>/dev/null)
+
+                QR=$(echo "$LOGS" | grep -E "^[[:space:]]*[█▀▄▀░▓▒ ]+$" | head -35)
+                CODE=$(echo "$LOGS" | grep -oP "WhatsApp Web pair code: \K\S+" | tail -1)
+                CONNECTED=$(echo "$LOGS" | grep -c "WhatsApp Web connected successfully")
+
+                [ "$CONNECTED" -gt 0 ] && echo "WhatsApp already connected" && exit 0
+                if [ -n "$QR" ]; then
+                    [ -z "$CODE" ] && sleep 2 && CODE=$(journalctl -u zeroclaw --no-pager -o cat -n 50 2>/dev/null | grep -oP "WhatsApp Web pair code: \K\S+" | tail -1)
+                    echo "$QR"
+                    [ -n "$CODE" ] && echo "" && echo "Pair Code: $CODE"
+                    exit 0
+                fi
                 sleep 5
             done
-            echo "No pair code found. Check: pct exec {{ id }} -- journalctl -u zeroclaw -f"
+            echo "No QR found. Check: pct exec {{ id }} -- journalctl -u zeroclaw -f"
             '
         register: whatsapp_pair
         changed_when: false
         failed_when: false
 
       - debug:
-            msg: '{{ whatsapp_pair.stdout }}'
+            msg: '{{ whatsapp_pair.stdout_lines }}'
 
   rescue:
       - debug:
