@@ -1,0 +1,100 @@
+---
+- vars:
+      app_name: claude-telegram
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+      nvm_init: 'export NVM_DIR=/home/ubuntu/.nvm && source /home/ubuntu/.nvm/nvm.sh'
+  block:
+      - name: '{{ app_name | upper }}: Configure Directories'
+        file:
+            path: '{{ config.root }}'
+            state: directory
+            mode: '0755'
+            owner: ubuntu
+            group: ubuntu
+
+      - name: '{{ app_name | upper }}: Check Installation'
+        shell: '{{ nvm_init }} && claude-telegram-bot --help'
+        args:
+            executable: /bin/bash
+        register: ct_check
+        failed_when: false
+        changed_when: false
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Install'
+        shell: '{{ nvm_init }} && pip install --break-system-packages git+https://github.com/RichardAtCT/claude-code-telegram@latest'
+        args:
+            executable: /bin/bash
+        become: true
+        become_user: ubuntu
+        when: ct_check.rc != 0
+
+      - name: '{{ app_name | upper }}: Write Config'
+        copy:
+            dest: '{{ config.root }}/.env'
+            content: |
+                TELEGRAM_BOT_TOKEN={{ env.JARVIS_CODE_TELEGRAM_KEY }}
+                TELEGRAM_BOT_USERNAME=JarvisHaxBot
+                APPROVED_DIRECTORY={{ env.JARVIS_PROJECTS_DIR }}
+                ALLOWED_USERS={{ env.RITIK_TELEGRAM_ID }}
+                USE_SDK=true
+                AGENTIC_MODE=true
+                ENVIRONMENT=production
+                DEVELOPMENT_MODE=false
+                DATABASE_URL=sqlite:///{{ config.root }}/bot.db
+                LOG_LEVEL=INFO
+                CLAUDE_TIMEOUT_SECONDS=300
+            mode: '0600'
+            owner: ubuntu
+            group: ubuntu
+        no_log: true
+        register: ct_config
+
+      - name: '{{ app_name | upper }}: Find Claude CLI Path'
+        shell: '{{ nvm_init }} && which claude'
+        args:
+            executable: /bin/bash
+        become: true
+        become_user: ubuntu
+        register: claude_path
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Enable Linger'
+        command: loginctl enable-linger ubuntu
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Create Systemd Service'
+        copy:
+            dest: /etc/systemd/system/{{ app_name }}.service
+            content: |
+                [Unit]
+                Description=Claude Code Telegram Bot
+                After=network.target
+
+                [Service]
+                Type=simple
+                User=ubuntu
+                WorkingDirectory={{ config.root }}
+                ExecStart=/home/ubuntu/.local/bin/claude-telegram-bot
+                Restart=always
+                RestartSec=10
+                Environment=PATH={{ claude_path.stdout | dirname }}:/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
+                EnvironmentFile={{ config.root }}/.env
+
+                [Install]
+                WantedBy=multi-user.target
+            mode: '0644'
+        register: ct_service
+
+      - name: '{{ app_name | upper }}: Daemon Reload'
+        systemd:
+            daemon_reload: true
+        when: ct_service is changed
+
+      - name: '{{ app_name | upper }}: Enable and Start Service'
+        systemd:
+            name: '{{ app_name }}'
+            state: "{{ 'restarted' if (ct_service is changed or ct_config is changed) else 'started' }}"
+            enabled: true

@@ -99,7 +99,7 @@
                 [channels_config.whatsapp]
                 session_path = "/root/.zeroclaw/whatsapp-session.db"
                 pair_phone = {{ env.JARVIS_WHATSAPP_BOT_PHONE | to_json }}
-                allowed_numbers = [{{ env.JARVIS_WHATSAPP_ADMIN_PHONE | to_json }}]
+                allowed_numbers = [{{ env.RITIK_PHONE | to_json }}]
                 mention_only = true
 
                 [reliability]

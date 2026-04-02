@@ -60,6 +60,7 @@
             - cloudflared
             - code-server
             - cloudcli
+            - claude-telegram
             - caddy
         loop_control:
             loop_var: service

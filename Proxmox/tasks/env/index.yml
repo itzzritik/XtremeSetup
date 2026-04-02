@@ -40,7 +40,7 @@
           - JARVIS_QDRANT_KEY
           - JARVIS_QDRANT_URL
           - JARVIS_VOIDAUTH_STORAGE_KEY
-          - JARVIS_WHATSAPP_ADMIN_PHONE
+          - RITIK_PHONE
           - JARVIS_WHATSAPP_BOT_PHONE
       local_config:
           JARVIS_BOT_NAME: '{{ project | title }}'

@@ -9,6 +9,7 @@
           - JARVIS_ADMIN_PASSWORD
           - JARVIS_GIT_SSH_PRIVATE_KEY
           - JARVIS_GIT_SSH_PUBLIC_KEY
+          - JARVIS_CODE_TELEGRAM_KEY
       local_config:
           JARVIS_DIR: '/home/ubuntu/.jarvis'
           JARVIS_PROJECTS_DIR: '/home/ubuntu/projects'
