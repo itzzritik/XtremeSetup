@@ -24,7 +24,7 @@
         become_user: ubuntu
 
       - name: '{{ app_name | upper }}: Install'
-        shell: '{{ nvm_init }} && pip install --break-system-packages git+https://github.com/RichardAtCT/claude-code-telegram@latest'
+        shell: '{{ nvm_init }} && pip install --break-system-packages "claude-code-telegram[voice] @ git+https://github.com/RichardAtCT/claude-code-telegram@latest"'
         args:
             executable: /bin/bash
         become: true
@@ -44,6 +44,7 @@
                 ENVIRONMENT=production
                 DEVELOPMENT_MODE=false
                 DATABASE_URL=sqlite:///{{ config.root }}/bot.db
+                MISTRAL_API_KEY={{ env.JARVIS_AI_MISTRAL_KEY }}
                 LOG_LEVEL=INFO
                 CLAUDE_TIMEOUT_SECONDS=300
             mode: '0600'

@@ -50,7 +50,6 @@
             - hardening
             - git
             - neveridle
-            - devenv
         loop_control:
             loop_var: task
 
