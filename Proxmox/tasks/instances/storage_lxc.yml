@@ -1,14 +1,32 @@
 - vars:
       id: '{{ env.JARVIS_SERVICES.storage.id }}'
-      instance:
+      lxc:
+          id: '{{ id }}'
           hostname: storage
           memory: 1024
           swap: 256
           cores: 2
+          disk: 8
           storage: local-lvm
           ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
           gateway: '{{ env.JARVIS_GATEWAY }}'
           mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
+          dns_servers: '{{ env.JARVIS_DNS_SERVERS }}'
+          unprivileged: false
+          features:
+              - nesting
+          firewall: true
+          onboot: true
+          mounts:
+              - src: /mnt/ssd
+                dest: /media/ssd
+          lxc_extra: 'lxc.apparmor.profile: unconfined'
+          base_packages:
+              - curl
+              - ca-certificates
+              - gnupg
+              - samba
+              - nfs-kernel-server
       shares:
           - name: ssd
             path: '/media/ssd'
@@ -19,223 +37,166 @@
             auth_required: false
             comment: 'Media Library (Guest Access)'
   block:
-      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
-        command: pct status {{ id }}
-        register: instance_check
-        failed_when: false
-        changed_when: false
+      # ── Step 1: Health Check ──────────────────────────────────────────
+      - name: 'STORAGE: Health Check'
+        include_tasks: ../utils/_health_check.yml
+        vars:
+            health:
+                id: '{{ id }}'
+                type: lxc
 
-      - name: '{{ instance.hostname | upper }}: Check SMB Service'
-        command: smbclient -L //{{ instance.ip }} -U {{ env.JARVIS_ADMIN_USERNAME }}%{{ env.JARVIS_ADMIN_PASSWORD }}
-        register: smb_check
-        failed_when: false
-        changed_when: false
-        when: instance_check.rc == 0
-
-      - name: '{{ instance.hostname | upper }}: Check NFS Service'
-        command: showmount -e {{ instance.ip }}
-        register: nfs_check
-        failed_when: false
-        changed_when: false
-        when: instance_check.rc == 0
-
-      - name: '{{ instance.hostname | upper }}: Check Privileged Status'
+      - name: 'STORAGE: Check Privileged Status'
         shell: "pct config {{ id }} | grep -q 'unprivileged: 1'"
-        register: is_unprivileged
+        register: _storage_is_unprivileged
         failed_when: false
         changed_when: false
-        when: instance_check.rc == 0
+        when: instance_state.exists | bool
 
-      - name: '{{ instance.hostname | upper }}: Force Rebuild if Unprivileged (NFS Req)'
-        shell: pct stop {{ id }} && pct destroy {{ id }}
-        when: instance_check.rc == 0 and is_unprivileged.rc == 0
-        changed_when: true
-
-      - name: '{{ instance.hostname | upper }}: Reset Instance Check'
+      - name: 'STORAGE: Force Provision if Unprivileged (NFS requires privileged)'
         set_fact:
-            instance_check: { 'rc': 1 }
-        when: instance_check.rc == 0 and is_unprivileged.rc == 0
+            needs_provision: true
+        when:
+            - instance_state.exists | bool
+            - _storage_is_unprivileged.rc | default(1) == 0
 
-      - name: '{{ instance.hostname | upper }}: Provision Infrastructure'
-        when: instance_check.rc != 0
-        block:
-            - name: '{{ instance.hostname | upper }}: Cleanup Existing LXC'
-              shell: pct stop {{ id }} 2>/dev/null; pct destroy {{ id }} 2>/dev/null; true
-              changed_when: false
+      - name: 'STORAGE: Check SMB Service'
+        command: smbclient -L //{{ lxc.ip }} -U {{ env.JARVIS_ADMIN_USERNAME }}%{{ env.JARVIS_ADMIN_PASSWORD }}
+        register: _storage_smb_check
+        failed_when: false
+        changed_when: false
+        no_log: true
+        when:
+            - not needs_provision | bool
+            - instance_state.running | bool
 
-            - name: '{{ instance.hostname | upper }}: Download Latest Template'
-              shell: |
-                  pveam update >&2
-                  TEMPLATE=$(pveam available | grep -oP 'ubuntu-(2[02468]|[3-9][02468])\.04-standard[^\s]+' | sort -V | tail -1)
-                  pveam download local "$TEMPLATE" >&2 || true
-                  echo "$TEMPLATE"
-              register: template_result
-              changed_when: false
+      - name: 'STORAGE: Check NFS Service'
+        command: showmount -e {{ lxc.ip }}
+        register: _storage_nfs_check
+        failed_when: false
+        changed_when: false
+        when:
+            - not needs_provision | bool
+            - instance_state.running | bool
 
-            - name: '{{ instance.hostname | upper }}: Create LXC'
-              command: >
-                  pct create {{ id }} local:vztmpl/{{ template_result.stdout | trim }}
-                  --hostname {{ instance.hostname }}
-                  --cores {{ instance.cores }}
-                  --memory {{ instance.memory }}
-                  --swap {{ instance.swap }}
-                  --rootfs {{ instance.storage }}:8
-                  --net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
-                  --unprivileged 0
-                  --features nesting=1
-                  --onboot 1
+      - name: 'STORAGE: Force Provision if SMB/NFS Down'
+        set_fact:
+            needs_provision: true
+        when:
+            - not needs_provision | bool
+            - instance_state.running | bool
+            - (_storage_smb_check.rc | default(1) != 0) or (_storage_nfs_check.rc | default(1) != 0)
 
-            - name: '{{ instance.hostname | upper }}: Configure Mounts'
-              blockinfile:
-                  path: '/etc/pve/lxc/{{ id }}.conf'
-                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
-                  block: |
-                      mp1: /mnt/ssd,mp=/media/ssd
+      # ── Step 2: Provision ─────────────────────────────────────────────
+      - name: 'STORAGE: Provision LXC'
+        include_tasks: ../utils/_create_lxc.yml
+        when: needs_provision | bool
 
-            - name: '{{ instance.hostname | upper }}: Start LXC'
-              command: pct start {{ id }}
+      - name: 'STORAGE: Mask Unnecessary NFS GSS Services'
+        shell: |
+            pct exec {{ id }} -- bash -c '
+            systemctl mask rpc-gssd rpc-svcgssd
+            systemctl disable --now rpc-gssd rpc-svcgssd || true
+            '
+        when: needs_provision | bool
 
-            - name: '{{ instance.hostname | upper }}: Wait for Network'
-              shell: pct exec {{ id }} -- ping -c 1 -W 2 {{ env.JARVIS_DNS_SERVERS[0] }}
-              register: network_check
-              until: network_check.rc == 0
-              retries: 10
-              delay: 3
+      # ── Step 3: Config (always) ───────────────────────────────────────
+      - name: 'STORAGE: Write Samba Config'
+        shell: |
+            pct exec {{ id }} -- bash -c "cat <<'EOF' > /etc/samba/smb.conf
+            [global]
+            workgroup = WORKGROUP
+            server string = Storage Server
+            security = user
+            map to guest = Bad User
+            log file = /var/log/samba/%m.log
+            max log size = 50
 
-            - name: '{{ instance.hostname | upper }}: Enable Console Autologin'
-              shell: >
-                  pct exec {{ id }} -- bash -c "mkdir -p /etc/systemd/system/container-getty@1.service.d &&
-                  echo -e '[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 \$TERM' > /etc/systemd/system/container-getty@1.service.d/override.conf &&
-                  systemctl daemon-reload && systemctl restart container-getty@1.service"
+            {% for share in shares %}
+            [{{ share.name }}]
+            path = {{ share.path }}
+            comment = {{ share.comment }}
+            browseable = yes
+            writable = yes
+            {% if share.auth_required %}
+            guest ok = no
+            valid users = {{ env.JARVIS_ADMIN_USERNAME }}
+            create mask = 0664
+            directory mask = 0775
+            {% else %}
+            guest ok = yes
+            read only = no
+            create mask = 0666
+            directory mask = 0777
+            force user = nobody
+            force group = nogroup
+            {% endif %}
 
-      - name: '{{ instance.hostname | upper }}: SMB Setup'
-        when: instance_check.rc != 0 or (smb_check is defined and smb_check.rc != 0)
-        block:
-            - name: '{{ instance.hostname | upper }}: Install Samba'
-              shell: |
-                  pct exec {{ id }} -- bash -c '
-                  export DEBIAN_FRONTEND=noninteractive
-                  apt-get update && apt-get install -y samba
-                  '
-              retries: 2
-              delay: 5
+            {% endfor %}
+            EOF"
+        register: _storage_smb_conf
+        changed_when: _storage_smb_conf.rc == 0
 
-            - name: '{{ instance.hostname | upper }}: Configure Samba'
-              shell: |
-                  pct exec {{ id }} -- bash -c "
-                  cat <<'EOF' > /etc/samba/smb.conf
-                  [global]
-                  workgroup = WORKGROUP
-                  server string = Storage Server
-                  security = user
-                  map to guest = Bad User
-                  log file = /var/log/samba/%m.log
-                  max log size = 50
+      - name: 'STORAGE: Set Samba Password'
+        shell: |
+            pct exec {{ id }} -- bash -c "
+            (echo '{{ env.JARVIS_ADMIN_PASSWORD }}'; echo '{{ env.JARVIS_ADMIN_PASSWORD }}') | smbpasswd -a -s {{ env.JARVIS_ADMIN_USERNAME }}
+            smbpasswd -e {{ env.JARVIS_ADMIN_USERNAME }}
+            "
+        changed_when: false
+        no_log: true
 
-                  {% for share in shares %}
-                  [{{ share.name }}]
-                  path = {{ share.path }}
-                  comment = {{ share.comment }}
-                  browseable = yes
-                  writable = yes
-                  {% if share.auth_required %}
-                  guest ok = no
-                  valid users = {{ env.JARVIS_ADMIN_USERNAME }}
-                  create mask = 0664
-                  directory mask = 0775
-                  {% else %}
-                  guest ok = yes
-                  read only = no
-                  create mask = 0666
-                  directory mask = 0777
-                  force user = nobody
-                  force group = nogroup
-                  {% endif %}
+      - name: 'STORAGE: Write NFS Exports'
+        shell: |
+            pct exec {{ id }} -- bash -c "cat <<'EOF' > /etc/exports
+            {% for share in shares %}
+            {% if share.auth_required %}
+            {{ share.path }} {{ env.JARVIS_NETWORK_PREFIX }}.0/24(rw,sync,no_subtree_check,sec=sys)
+            {% else %}
+            {{ share.path }} {{ env.JARVIS_NETWORK_PREFIX }}.0/24(rw,sync,no_subtree_check,all_squash,anonuid=65534,anongid=65534)
+            {% endif %}
+            {% endfor %}
+            EOF"
+        register: _storage_nfs_exports
+        changed_when: _storage_nfs_exports.rc == 0
 
-                  {% endfor %}
-                  EOF
+      - name: 'STORAGE: Set Share Permissions'
+        shell: |
+            pct exec {{ id }} -- bash -c "
+            {% for share in shares %}
+            chmod -R {{ '777' if not share.auth_required else '775' }} {{ share.path }} 2>/dev/null || true
+            {% endfor %}
+            "
+        changed_when: false
 
-                  (echo '{{ env.JARVIS_ADMIN_PASSWORD }}'; echo '{{ env.JARVIS_ADMIN_PASSWORD }}') | smbpasswd -a -s {{ env.JARVIS_ADMIN_USERNAME }}
-                  smbpasswd -e {{ env.JARVIS_ADMIN_USERNAME }}
+      - name: 'STORAGE: Restart Samba Services'
+        shell: |
+            pct exec {{ id }} -- bash -c '
+            systemctl enable --now smbd nmbd 2>/dev/null || true
+            systemctl restart smbd nmbd
+            '
 
-                  {% for share in shares %}
-                  chmod -R {{ '777' if not share.auth_required else '775' }} {{ share.path }} 2>/dev/null || true
-                  {% endfor %}
+      - name: 'STORAGE: Restart NFS Services'
+        shell: |
+            pct exec {{ id }} -- bash -c '
+            exportfs -ra
+            systemctl enable --now rpcbind nfs-kernel-server 2>/dev/null || true
+            systemctl restart rpcbind nfs-kernel-server
+            '
 
-                  systemctl enable --now smbd nmbd 2>/dev/null || true
-                  systemctl restart smbd nmbd
-                  "
-
-      - name: '{{ instance.hostname | upper }}: NFS Setup'
-        when: instance_check.rc != 0 or (nfs_check is defined and nfs_check.rc != 0)
-        block:
-            - name: '{{ instance.hostname | upper }}: Configure AppArmor (NFS Support)'
-              blockinfile:
-                  path: '/etc/pve/lxc/{{ id }}.conf'
-                  marker: '# {mark} ANSIBLE NFS'
-                  block: |
-                      lxc.apparmor.profile: unconfined
-
-            - name: '{{ instance.hostname | upper }}: Restart LXC (Apply Features)'
-              shell: pct stop {{ id }} && pct start {{ id }}
-              changed_when: false
-
-            - name: '{{ instance.hostname | upper }}: Wait for Network'
-              shell: pct exec {{ id }} -- ping -c 1 -W 2 {{ env.JARVIS_DNS_SERVERS[0] }}
-              register: network_check_nfs
-              until: network_check_nfs.rc == 0
-              retries: 10
-              delay: 3
-
-            - name: '{{ instance.hostname | upper }}: Install NFS'
-              shell: |
-                  pct exec {{ id }} -- bash -c '
-                  export DEBIAN_FRONTEND=noninteractive
-                  apt-get update && apt-get install -y nfs-kernel-server
-                  '
-              retries: 2
-              delay: 5
-
-            - name: '{{ instance.hostname | upper }}: Configure NFS'
-              shell: |
-                  pct exec {{ id }} -- bash -c "
-                  systemctl mask rpc-gssd rpc-svcgssd
-                  systemctl disable --now rpc-gssd rpc-svcgssd || true
-
-                  cat <<'EOF' > /etc/exports
-                  {% for share in shares %}
-                  {% if share.auth_required %}
-                  {{ share.path }} {{ env.JARVIS_NETWORK_PREFIX }}.0/24(rw,sync,no_subtree_check,sec=sys)
-                  {% else %}
-                  {{ share.path }} {{ env.JARVIS_NETWORK_PREFIX }}.0/24(rw,sync,no_subtree_check,all_squash,anonuid=65534,anongid=65534)
-                  {% endif %}
-                  {% endfor %}
-                  EOF
-
-                  {% for share in shares %}
-                  chmod -R {{ '777' if not share.auth_required else '775' }} {{ share.path }} 2>/dev/null || true
-                  {% endfor %}
-
-                  exportfs -ra
-
-                  systemctl enable --now rpcbind nfs-kernel-server 2>/dev/null || true
-                  systemctl restart rpcbind nfs-kernel-server
-                  "
-
-      - name: '{{ instance.hostname | upper }}: Verify Services'
+      - name: 'STORAGE: Verify Services'
         shell: |
             pct exec {{ id }} -- bash -c '
             echo "SMB: $(systemctl is-active smbd)"
             echo "NFS: $(systemctl is-active nfs-kernel-server)"
             '
-        register: service_status
+        register: _storage_service_status
         failed_when: false
 
-      - name: '{{ instance.hostname | upper }}: Show Service Status'
+      - name: 'STORAGE: Show Service Status'
         debug:
-            msg: '{{ service_status.stdout_lines }}'
+            msg: '{{ _storage_service_status.stdout_lines }}'
 
   rescue:
       - debug:
-            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
+            msg: 'STORAGE ({{ id }}) failed to deploy'
   become: true

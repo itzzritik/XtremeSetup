@@ -11,27 +11,116 @@
           gateway: '{{ env.JARVIS_GATEWAY }}'
           mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
   block:
-      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
-        uri:
-            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}'
-            timeout: 5
-        register: instance_check
-        failed_when: false
-        changed_when: false
+      # ── Step 1: Health Check ──────────────────────────────────────
+      - name: '{{ instance.hostname | upper }}: Health Check'
+        include_tasks: ../utils/_health_check.yml
+        vars:
+            health:
+                id: '{{ id }}'
+                type: lxc
+                url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}'
+                timeout: 5
 
-      - name: '{{ instance.hostname | upper }}: Create Config Directories'
-        file:
-            path: '{{ dir_item }}'
-            state: directory
-            owner: '100000'
-            group: '100000'
-            mode: '0700'
-        loop:
-            - '{{ env.JARVIS_CONFIGS_DIR }}/zeroclaw'
-            - '{{ env.JARVIS_CONFIGS_DIR }}/zeroclaw/workspace'
-        loop_control:
-            loop_var: dir_item
+      # ── Step 2: Provision (if needed) ─────────────────────────────
+      - name: '{{ instance.hostname | upper }}: Provision'
+        when: needs_provision | bool
+        block:
+            - name: '{{ instance.hostname | upper }}: Create Config Directories'
+              file:
+                  path: '{{ dir_item }}'
+                  state: directory
+                  owner: '100000'
+                  group: '100000'
+                  mode: '0700'
+              loop:
+                  - '{{ env.JARVIS_CONFIGS_DIR }}/zeroclaw'
+                  - '{{ env.JARVIS_CONFIGS_DIR }}/zeroclaw/workspace'
+              loop_control:
+                  loop_var: dir_item
 
+            - name: '{{ instance.hostname | upper }}: Create LXC'
+              include_tasks: ../utils/_create_lxc.yml
+              vars:
+                  lxc:
+                      id: '{{ id }}'
+                      hostname: '{{ instance.hostname }}'
+                      cores: '{{ instance.cores }}'
+                      memory: '{{ instance.memory }}'
+                      swap: '{{ instance.swap }}'
+                      disk: 4
+                      storage: '{{ instance.storage }}'
+                      ip: '{{ instance.ip }}'
+                      gateway: '{{ instance.gateway }}'
+                      mac: '{{ instance.mac }}'
+                      dns_servers: '{{ env.JARVIS_DNS_SERVERS }}'
+                      features:
+                          - nesting
+                      mounts:
+                          - src: '{{ env.JARVIS_CONFIGS_DIR }}/zeroclaw'
+                            dest: /root/.zeroclaw
+                      base_packages:
+                          - curl
+                          - iptables-persistent
+
+            - name: '{{ instance.hostname | upper }}: Install ZeroClaw'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  curl -fsSL https://github.com/zeroclaw-labs/zeroclaw/releases/latest/download/zeroclaw-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin/
+                  chmod +x /usr/local/bin/zeroclaw
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Configure Firewall'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  iptables -F && iptables -X && iptables -Z
+
+                  iptables -P INPUT DROP
+                  iptables -P FORWARD DROP
+                  iptables -P OUTPUT ACCEPT
+
+                  iptables -A INPUT -i lo -j ACCEPT
+                  iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+                  iptables -A INPUT -p tcp --dport {{ env.JARVIS_SERVICES[app_name].port }} -s {{ env.JARVIS_NETWORK_PREFIX }}.0/24 -j ACCEPT
+
+                  iptables-save > /etc/iptables/rules.v4
+                  "
+
+            - name: '{{ instance.hostname | upper }}: Install Restart Helper'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  echo '#!/usr/bin/env bash
+                  systemctl restart zeroclaw' > /usr/local/bin/re
+                  chmod +x /usr/local/bin/re
+                  "
+
+            - name: '{{ instance.hostname | upper }}: Configure Systemd Service'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  cat <<'EOF' > /etc/systemd/system/zeroclaw.service
+                  [Unit]
+                  Description=ZeroClaw AI Assistant
+                  After=network.target
+
+                  [Service]
+                  Type=simple
+                  User=root
+                  WorkingDirectory=/root
+                  ExecStart=/usr/local/bin/zeroclaw daemon --host 0.0.0.0 --port {{ env.JARVIS_SERVICES[app_name].port }}
+                  Restart=always
+                  RestartSec=10
+                  Environment=OPENROUTER_API_KEY={{ env.JARVIS_AI_OPENROUTER_KEY }}
+
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+
+                  systemctl daemon-reload
+                  systemctl enable --now zeroclaw
+                  "
+              no_log: true
+
+      # ── Step 3: Config (always runs) ──────────────────────────────
       - name: '{{ instance.hostname | upper }}: Write Workspace Files'
         copy:
             dest: '{{ env.JARVIS_CONFIGS_DIR }}/zeroclaw/workspace/{{ ws_file.name }}'
@@ -49,7 +138,7 @@
             - name: IDENTITY.md
               content: |-
                   You are a proactive, autonomous worker. Do not ask permission for obvious next steps.
-                  Figure it out, use your tools, and report back only when the job is done. Reserve questions strictly for genuine blockers that require human input.
+                  Figure it out, use your tools, and report back only when done. Reserve questions strictly for genuine blockers that require human input.
             - name: AGENTS.md
               content: |-
                   Treat memory files as absolute truth. Silently run `memory_recall` on new sessions. Address the user by their stored name, or ask once and store it.
@@ -58,6 +147,7 @@
         loop_control:
             loop_var: ws_file
             label: '{{ ws_file.name }}'
+        register: zeroclaw_workspace
 
       - name: '{{ instance.hostname | upper }}: Write Config'
         no_log: true
@@ -110,122 +200,11 @@
             mode: '0600'
         register: zeroclaw_config
 
-      - name: '{{ instance.hostname | upper }}: Provision Infrastructure'
-        when: instance_check.status | default(0) != 200
-        block:
-            - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
-              shell: pct stop {{ id }}; pct destroy {{ id }}
-              failed_when: false
-              changed_when: false
-
-            - name: '{{ instance.hostname | upper }}: Download Latest Template'
-              shell: |
-                  pveam update >&2
-                  TEMPLATE=$(pveam available | grep -oP 'ubuntu-(2[024-9]|[3-9][0-9])\.04-standard[^\s]+' | sort -V | tail -1)
-                  pveam download local "$TEMPLATE" >&2 || true
-                  echo "$TEMPLATE"
-              register: template_result
-              changed_when: false
-
-            - name: '{{ instance.hostname | upper }}: Create LXC'
-              command: >
-                  pct create {{ id }} local:vztmpl/{{ template_result.stdout | trim }}
-                  --hostname {{ instance.hostname }}
-                  --cores {{ instance.cores }}
-                  --memory {{ instance.memory }}
-                  --swap {{ instance.swap }}
-                  --rootfs {{ instance.storage }}:4
-                  --net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
-                  --unprivileged 1
-                  --features nesting=1
-                  --onboot 1
-
-            - name: '{{ instance.hostname | upper }}: Configure Bind Mounts'
-              blockinfile:
-                  path: '/etc/pve/lxc/{{ id }}.conf'
-                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
-                  block: |
-                      mp0: {{ env.JARVIS_CONFIGS_DIR }}/zeroclaw,mp=/root/.zeroclaw
-
-            - name: '{{ instance.hostname | upper }}: Start LXC'
-              command: pct start {{ id }}
-
-            - name: '{{ instance.hostname | upper }}: Wait for Network'
-              shell: pct exec {{ id }} -- ping -c 1 -W 2 {{ env.JARVIS_DNS_SERVERS[0] }}
-              register: network_check
-              until: network_check.rc == 0
-              retries: 10
-              delay: 3
-
-            - name: '{{ instance.hostname | upper }}: Enable Console Autologin'
-              shell: >
-                  pct exec {{ id }} -- bash -c "mkdir -p /etc/systemd/system/container-getty@1.service.d &&
-                  echo -e '[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 \$TERM' > /etc/systemd/system/container-getty@1.service.d/override.conf &&
-                  systemctl daemon-reload && systemctl restart container-getty@1.service"
-
-            - name: '{{ instance.hostname | upper }}: Install ZeroClaw'
-              shell: |
-                  pct exec {{ id }} -- bash -c '
-                  export DEBIAN_FRONTEND=noninteractive
-                  apt-get update && apt-get install -y curl iptables-persistent
-                  curl -fsSL https://github.com/zeroclaw-labs/zeroclaw/releases/latest/download/zeroclaw-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin/
-                  chmod +x /usr/local/bin/zeroclaw
-                  '
-
-            - name: '{{ instance.hostname | upper }}: Configure Firewall'
-              shell: |
-                  pct exec {{ id }} -- bash -c "
-                  iptables -F && iptables -X && iptables -Z
-
-                  iptables -P INPUT DROP
-                  iptables -P FORWARD DROP
-                  iptables -P OUTPUT ACCEPT
-
-                  iptables -A INPUT -i lo -j ACCEPT
-                  iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-
-                  iptables -A INPUT -p tcp --dport {{ env.JARVIS_SERVICES[app_name].port }} -s {{ env.JARVIS_NETWORK_PREFIX }}.0/24 -j ACCEPT
-
-                  iptables-save > /etc/iptables/rules.v4
-                  "
-
-            - name: '{{ instance.hostname | upper }}: Install Restart Helper'
-              shell: |
-                  pct exec {{ id }} -- bash -c "
-                  echo '#!/usr/bin/env bash
-                  systemctl restart zeroclaw' > /usr/local/bin/re
-                  chmod +x /usr/local/bin/re
-                  "
-
-      - name: '{{ instance.hostname | upper }}: Configure Systemd Service'
-        shell: |
-            pct exec {{ id }} -- bash -c "
-            cat <<'EOF' > /etc/systemd/system/zeroclaw.service
-            [Unit]
-            Description=ZeroClaw AI Assistant
-            After=network.target
-
-            [Service]
-            Type=simple
-            User=root
-            WorkingDirectory=/root
-            ExecStart=/usr/local/bin/zeroclaw daemon --host 0.0.0.0 --port {{ env.JARVIS_SERVICES[app_name].port }}
-            Restart=always
-            RestartSec=10
-            Environment=OPENROUTER_API_KEY={{ env.JARVIS_AI_OPENROUTER_KEY }}
-
-            [Install]
-            WantedBy=multi-user.target
-            EOF
-
-            systemctl daemon-reload
-            systemctl enable --now zeroclaw
-            "
-        register: zeroclaw_service
-
       - name: '{{ instance.hostname | upper }}: Restart on Config Change'
         shell: pct exec {{ id }} -- systemctl restart zeroclaw
-        when: (zeroclaw_config is changed or zeroclaw_service is changed) and instance_check.status | default(0) == 200
+        when:
+            - not (needs_provision | bool)
+            - zeroclaw_config is changed or zeroclaw_workspace is changed
 
       - name: '{{ instance.hostname | upper }}: Verify Service'
         shell: pct exec {{ id }} -- systemctl is-active zeroclaw

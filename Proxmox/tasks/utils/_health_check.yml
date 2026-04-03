@@ -1,0 +1,85 @@
+# 3-Tier Health Check: exists → running → healthy
+# Input: `health` variable with id, type (lxc/vm), url (optional), timeout (default 5)
+# Output: `instance_state` with exists, running, healthy booleans
+# Also sets `needs_provision` (true if full rebuild needed)
+---
+- name: 'HEALTH CHECK [{{ health.id }}]: Check if instance exists'
+  command: '{{ "pct" if health.type | default("lxc") == "lxc" else "qm" }} status {{ health.id }}'
+  register: _hc_exists
+  failed_when: false
+  changed_when: false
+
+- name: 'HEALTH CHECK [{{ health.id }}]: Check if running'
+  shell: >
+    {{ "pct" if health.type | default("lxc") == "lxc" else "qm" }} status {{ health.id }}
+    | grep -q "running"
+  register: _hc_running
+  failed_when: false
+  changed_when: false
+  when: _hc_exists.rc == 0
+
+- name: 'HEALTH CHECK [{{ health.id }}]: Try starting stopped instance'
+  command: '{{ "pct start" if health.type | default("lxc") == "lxc" else "qm start" }} {{ health.id }}'
+  register: _hc_start_attempt
+  failed_when: false
+  changed_when: _hc_start_attempt.rc == 0
+  when:
+    - _hc_exists.rc == 0
+    - _hc_running.rc | default(1) != 0
+
+- name: 'HEALTH CHECK [{{ health.id }}]: Wait after start attempt'
+  wait_for:
+    timeout: 10
+  when:
+    - _hc_exists.rc == 0
+    - _hc_running.rc | default(1) != 0
+    - _hc_start_attempt.rc | default(1) == 0
+
+- name: 'HEALTH CHECK [{{ health.id }}]: Re-check running after start'
+  shell: >
+    {{ "pct" if health.type | default("lxc") == "lxc" else "qm" }} status {{ health.id }}
+    | grep -q "running"
+  register: _hc_running_retry
+  failed_when: false
+  changed_when: false
+  when:
+    - _hc_exists.rc == 0
+    - _hc_running.rc | default(1) != 0
+
+- name: 'HEALTH CHECK [{{ health.id }}]: Check service health'
+  uri:
+    url: '{{ health.url }}'
+    timeout: '{{ health.timeout | default(5) }}'
+    status_code: '{{ health.status_codes | default([200]) }}'
+  register: _hc_healthy
+  failed_when: false
+  changed_when: false
+  when:
+    - health.url is defined
+    - _hc_exists.rc == 0
+    - (_hc_running.rc | default(1) == 0) or (_hc_running_retry.rc | default(1) == 0)
+
+- name: 'HEALTH CHECK [{{ health.id }}]: Set instance state'
+  set_fact:
+    instance_state:
+      exists: '{{ _hc_exists.rc == 0 }}'
+      running: '{{ (_hc_running.rc | default(1) == 0) or (_hc_running_retry.rc | default(1) == 0) }}'
+      healthy: '{{ true if health.url is not defined else (_hc_healthy.status | default(0)) in (health.status_codes | default([200])) }}'
+
+- name: 'HEALTH CHECK [{{ health.id }}]: Determine action'
+  set_fact:
+    needs_provision: >-
+      {{
+        not instance_state.exists | bool
+        or (instance_state.running | bool and not instance_state.healthy | bool)
+        or (instance_state.exists | bool and not instance_state.running | bool and (_hc_start_attempt.rc | default(1)) != 0)
+      }}
+
+- name: 'HEALTH CHECK [{{ health.id }}]: Status'
+  debug:
+    msg: >-
+      Instance {{ health.id }}:
+      exists={{ instance_state.exists }},
+      running={{ instance_state.running }},
+      healthy={{ instance_state.healthy }}
+      → {{ 'PROVISION' if needs_provision | bool else 'SKIP (config only)' }}

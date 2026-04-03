@@ -31,22 +31,23 @@
             run_vms: "{{ (hostvars['local']['run_vms_input'] | default('n') | lower) in ['yes', 'y'] }}"
 
   tasks:
-      # - name: Execute System Tasks
-      #   include_tasks: 'tasks/system/{{ item }}.yml'
-      #   loop:
-      #       - update
-      #       - automount
-      #       - configure
-      #       - docker_cli
+      - name: Execute System Tasks
+        include_tasks: 'tasks/system/{{ item }}.yml'
+        loop:
+            - update
+            - automount
+            - configure
+            - docker_cli
 
       - name: Deploy Instances
         include_tasks: 'tasks/instances/{{ item }}.yml'
         loop:
-            # - traefik_lxc
-            # - home_vm
-            # - docker_lxc
-            # - storage_lxc
-            # - jellyfin_lxc
-            # - pihole_lxc
+            - traefik_lxc
+            - home_vm
+            - docker_lxc
+            - storage_lxc
+            - jellyfin_lxc
+            - pihole_lxc
             - zeroclaw_lxc
+            - openclaw_lxc
         when: not (item.endswith('_vm') and not run_vms)

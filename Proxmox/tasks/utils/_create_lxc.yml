@@ -1,0 +1,100 @@
+# Shared LXC provisioning module
+# Expects `_health_check.yml` to have run first — only call when `needs_provision` is true
+#
+# Input: `lxc` variable:
+#   id, hostname, cores, memory, swap, disk
+#   storage (default: local-lvm), unprivileged (default: true)
+#   features (default: [nesting]), firewall (default: true), onboot (default: true)
+#   ip, gateway, mac, dns_servers
+#   mounts: [{ src, dest }]
+#   lxc_extra: "" (raw lines for lxc.conf)
+#   base_packages: [] (default: [curl, ca-certificates, gnupg])
+#
+# Output: registers `provisioned: true`
+---
+- name: '{{ lxc.hostname | upper }}: Cleanup existing LXC'
+  shell: pct stop {{ lxc.id }} 2>/dev/null; pct destroy {{ lxc.id }} 2>/dev/null; true
+  changed_when: false
+
+- name: '{{ lxc.hostname | upper }}: Resolve latest Ubuntu LTS template'
+  shell: |
+    CACHED=$(pveam list local 2>/dev/null | grep -oP 'ubuntu-\d+\.\d+-standard[^\s]+' | sort -V | tail -1)
+    if [ -n "$CACHED" ]; then
+      echo "$CACHED"
+      exit 0
+    fi
+    pveam update >&2
+    TEMPLATE=$(pveam available | grep -oP 'ubuntu-(2[02468]|[3-9][02468])\.04-standard[^\s]+' | sort -V | tail -1)
+    pveam download local "$TEMPLATE" >&2
+    echo "$TEMPLATE"
+  register: _lxc_template
+  changed_when: false
+
+- name: '{{ lxc.hostname | upper }}: Create LXC container'
+  command: >
+    pct create {{ lxc.id }} local:vztmpl/{{ _lxc_template.stdout | trim }}
+    --hostname {{ lxc.hostname }}
+    --cores {{ lxc.cores }}
+    --memory {{ lxc.memory }}
+    --swap {{ lxc.swap | default(512) }}
+    --rootfs {{ lxc.storage | default('local-lvm') }}:{{ lxc.disk }}
+    --net0 name=eth0,bridge=vmbr0,{% if not lxc.firewall | default(true) %}firewall=0,{% endif %}ip={{ lxc.ip }}/24,gw={{ lxc.gateway }},hwaddr={{ lxc.mac }}
+    --unprivileged {{ '1' if lxc.unprivileged | default(true) else '0' }}
+    --features {{ lxc.features | default(['nesting']) | join(',') | regex_replace('(\w+)', '\1=1') }}
+    --onboot {{ '1' if lxc.onboot | default(true) else '0' }}
+
+- name: '{{ lxc.hostname | upper }}: Configure bind mounts'
+  blockinfile:
+    path: '/etc/pve/lxc/{{ lxc.id }}.conf'
+    marker: '# {mark} ANSIBLE MANAGED MOUNTS'
+    block: |
+      {% for mount in lxc.mounts | default([]) %}
+      mp{{ loop.index0 }}: {{ mount.src }},mp={{ mount.dest }}
+      {% endfor %}
+  when: lxc.mounts | default([]) | length > 0
+
+- name: '{{ lxc.hostname | upper }}: Apply extra LXC config'
+  blockinfile:
+    path: '/etc/pve/lxc/{{ lxc.id }}.conf'
+    marker: '# {mark} ANSIBLE MANAGED EXTRA'
+    block: '{{ lxc.lxc_extra }}'
+  when: lxc.lxc_extra | default('') | length > 0
+
+- name: '{{ lxc.hostname | upper }}: Start LXC'
+  command: pct start {{ lxc.id }}
+
+- name: '{{ lxc.hostname | upper }}: Wait for network'
+  shell: pct exec {{ lxc.id }} -- ping -c 1 -W 2 {{ lxc.dns_servers | default(['8.8.8.8']) | first }}
+  register: _lxc_net
+  until: _lxc_net.rc == 0
+  retries: 15
+  delay: 3
+
+- name: '{{ lxc.hostname | upper }}: Install base packages'
+  shell: |
+    pct exec {{ lxc.id }} -- bash -c '
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq
+    apt-get install -y -qq {{ (lxc.base_packages | default(["curl", "ca-certificates", "gnupg"])) | join(" ") }}
+    '
+  register: _lxc_apt
+  retries: 2
+  delay: 5
+  until: _lxc_apt.rc == 0
+
+- name: '{{ lxc.hostname | upper }}: Enable console autologin'
+  shell: |
+    pct exec {{ lxc.id }} -- bash -c '
+    mkdir -p /etc/systemd/system/container-getty@1.service.d
+    cat > /etc/systemd/system/container-getty@1.service.d/override.conf << EOF
+    [Service]
+    ExecStart=
+    ExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 \$TERM
+    EOF
+    systemctl daemon-reload
+    systemctl restart container-getty@1.service
+    '
+
+- name: '{{ lxc.hostname | upper }}: Mark as provisioned'
+  set_fact:
+    provisioned: true

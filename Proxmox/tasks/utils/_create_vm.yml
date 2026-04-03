@@ -1,0 +1,128 @@
+# Shared VM provisioning module (HAOS)
+# Expects `_health_check.yml` to have run first — only call when `needs_provision` is true
+#
+# Input: `vm` variable:
+#   id, hostname, cores, memory, storage (default: local-lvm)
+#   bridge (default: vmbr0), mac, ip, gateway, dns_servers
+#
+# Output: registers `provisioned: true`
+---
+- name: '{{ vm.hostname | upper }}: Cleanup existing VM'
+  shell: |
+    if qm status {{ vm.id }} &>/dev/null; then
+      qm stop {{ vm.id }} 2>/dev/null || true
+      qm destroy {{ vm.id }} 2>/dev/null || true
+    fi
+  changed_when: false
+
+- name: '{{ vm.hostname | upper }}: Get latest HAOS release version'
+  uri:
+    url: https://api.github.com/repos/home-assistant/operating-system/releases/latest
+    return_content: true
+  register: _vm_haos_release
+
+- name: '{{ vm.hostname | upper }}: Set HAOS version'
+  set_fact:
+    _vm_haos_version: '{{ _vm_haos_release.json.tag_name }}'
+
+- name: '{{ vm.hostname | upper }}: Download HAOS image'
+  get_url:
+    url: 'https://github.com/home-assistant/operating-system/releases/download/{{ _vm_haos_version }}/haos_ova-{{ _vm_haos_version }}.qcow2.xz'
+    dest: '/tmp/haos-{{ _vm_haos_version }}.qcow2.xz'
+    mode: '0644'
+  register: _vm_download
+
+- name: '{{ vm.hostname | upper }}: Decompress HAOS image'
+  command: xz -d -k -f /tmp/haos-{{ _vm_haos_version }}.qcow2.xz
+  when: _vm_download is changed or not ('/tmp/haos-' + _vm_haos_version + '.qcow2') is file
+
+- name: '{{ vm.hostname | upper }}: Create VM'
+  command: >
+    qm create {{ vm.id }}
+    --name {{ vm.hostname }}
+    --machine q35
+    --bios ovmf
+    --agent 1
+    --tablet 0
+    --localtime 1
+    --cpu host
+    --cores {{ vm.cores }}
+    --memory {{ vm.memory }}
+    --ostype l26
+    --scsihw virtio-scsi-pci
+    --net0 virtio,bridge={{ vm.bridge | default('vmbr0') }},macaddr={{ vm.mac }}
+    --onboot 1
+
+- name: '{{ vm.hostname | upper }}: Import disk image'
+  command: >
+    qm importdisk {{ vm.id }}
+    /tmp/haos-{{ _vm_haos_version }}.qcow2
+    {{ vm.storage | default('local-lvm') }}
+    --format raw
+  register: _vm_import
+
+- name: '{{ vm.hostname | upper }}: Configure EFI and boot'
+  command: >
+    qm set {{ vm.id }}
+    --efidisk0 {{ vm.storage | default('local-lvm') }}:0,efitype=4m
+    --scsi0 {{ vm.storage | default('local-lvm') }}:vm-{{ vm.id }}-disk-0,ssd=1,discard=on
+    --boot order=scsi0
+
+- name: '{{ vm.hostname | upper }}: Start VM'
+  command: qm start {{ vm.id }}
+
+- name: '{{ vm.hostname | upper }}: Wait for QEMU guest agent'
+  shell: qm agent {{ vm.id }} ping
+  register: _vm_agent
+  retries: 20
+  delay: 10
+  until: _vm_agent.rc == 0
+
+- name: '{{ vm.hostname | upper }}: Detect network interface'
+  shell: |
+    qm guest exec {{ vm.id }} -- bash -c "ip -o link show | grep -v 'lo:' | grep 'state UP' | head -1 | awk -F': ' '{print \$2}'"
+  register: _vm_iface_raw
+  retries: 5
+  delay: 10
+  until: (_vm_iface_raw.stdout | from_json)['out-data'] | default('') | trim | length > 0
+
+- name: '{{ vm.hostname | upper }}: Extract interface name'
+  set_fact:
+    _vm_interface: "{{ (_vm_iface_raw.stdout | from_json)['out-data'] | trim }}"
+
+- name: '{{ vm.hostname | upper }}: Clear existing network connections'
+  shell: |
+    qm guest exec {{ vm.id }} -- bash -c 'for conn in $(nmcli -t -f NAME connection show); do nmcli connection delete "$conn" 2>/dev/null || true; done'
+  failed_when: false
+
+- name: '{{ vm.hostname | upper }}: Configure static IP'
+  shell: |
+    qm guest exec {{ vm.id }} -- bash -c "nmcli connection add type ethernet con-name static ifname {{ _vm_interface }} ipv4.method manual ipv4.addresses {{ vm.ip }}/24 ipv4.gateway {{ vm.gateway }} ipv4.dns {{ vm.dns_servers | join(',') }} ipv6.method disabled connection.autoconnect yes connection.autoconnect-priority 100"
+    qm guest exec {{ vm.id }} -- nmcli connection up static
+  retries: 3
+  delay: 5
+
+- name: '{{ vm.hostname | upper }}: Set hostname'
+  shell: qm guest exec {{ vm.id }} -- hostnamectl set-hostname {{ vm.hostname }}
+
+- name: '{{ vm.hostname | upper }}: Reboot to apply network'
+  shell: qm guest exec {{ vm.id }} -- reboot || true
+
+- name: '{{ vm.hostname | upper }}: Verify connectivity after reboot'
+  shell: ping -c 1 -W 3 {{ vm.ip }}
+  retries: 30
+  delay: 5
+  register: _vm_ping
+  until: _vm_ping.rc == 0
+
+- name: '{{ vm.hostname | upper }}: Cleanup downloaded images'
+  file:
+    path: '{{ item }}'
+    state: absent
+  loop:
+    - '/tmp/haos-{{ _vm_haos_version }}.qcow2.xz'
+    - '/tmp/haos-{{ _vm_haos_version }}.qcow2'
+
+- name: '{{ vm.hostname | upper }}: Mark as provisioned'
+  set_fact:
+    provisioned: true

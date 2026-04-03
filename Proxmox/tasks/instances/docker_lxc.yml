@@ -1,90 +1,67 @@
 - vars:
       id: '{{ env.JARVIS_SERVICES.docker.id }}'
-      instance:
-          hostname: docker
-          memory: 8192
-          swap: 512
-          cores: 4
-          disk: 32
-          storage: local-lvm
-          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
-          gateway: '{{ env.JARVIS_GATEWAY }}'
-          configs: '/root/configs'
-          subuid: '100000'
-          mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
+      ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
       docker_user: '1000'
 
   block:
-      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
-        uri:
-            url: 'http://{{ instance.ip }}:2375/version'
-            timeout: 5
-        register: instance_check
-        failed_when: false
-        changed_when: false
+      # --- Step 1: Health Check ---
+      - name: 'DOCKER: Health Check'
+        include_tasks: ../utils/_health_check.yml
+        vars:
+            health:
+                id: '{{ id }}'
+                type: lxc
+                url: 'http://{{ ip }}:2375/version'
+                timeout: 5
 
-      - name: '{{ instance.hostname | upper }}: Create Host Config Directory'
+      # --- Step 2: Provision (if needed) ---
+      - name: 'DOCKER: Create Host Config Directory'
         file:
             path: '{{ env.JARVIS_CONFIGS_DIR }}'
             state: directory
             mode: '0755'
-            owner: '{{ instance.subuid }}'
-            group: '{{ instance.subuid }}'
+            owner: '100000'
+            group: '100000'
 
-      - name: '{{ instance.hostname | upper }}: Provision Instance'
-        when: instance_check.status | default(0) != 200
+      - name: 'DOCKER: Provision LXC'
+        when: needs_provision | bool
         block:
-            - name: '{{ instance.hostname | upper }}: Cleanup Existing LXC'
-              shell: pct stop {{ id }} 2>/dev/null; pct destroy {{ id }} 2>/dev/null; true
-              changed_when: false
+            - name: 'DOCKER: Create LXC Container'
+              include_tasks: ../utils/_create_lxc.yml
+              vars:
+                  lxc:
+                      id: '{{ id }}'
+                      hostname: docker
+                      cores: 4
+                      memory: 8192
+                      swap: 512
+                      disk: 32
+                      storage: local-lvm
+                      unprivileged: true
+                      features:
+                          - nesting
+                          - keyctl
+                      firewall: false
+                      onboot: true
+                      ip: '{{ ip }}'
+                      gateway: '{{ env.JARVIS_GATEWAY }}'
+                      mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
+                      dns_servers: '{{ env.JARVIS_DNS_SERVERS }}'
+                      mounts:
+                          - src: /mnt/ssd
+                            dest: /media/ssd
+                          - src: '{{ env.JARVIS_CONFIGS_DIR }}'
+                            dest: /root/configs
+                      base_packages:
+                          - curl
+                          - ca-certificates
+                          - gnupg
+                          - sqlite3
 
-            - name: '{{ instance.hostname | upper }}: Download Template'
-              shell: |
-                  pveam update >&2
-                  TEMPLATE=$(pveam available | grep -oP 'ubuntu-(2[02468]|[3-9][02468])\.04-standard[^\s]+' | sort -V | tail -1)
-                  pveam download local "$TEMPLATE" >&2 || true
-                  echo "$TEMPLATE"
-              register: template_result
-              changed_when: false
-
-            - name: '{{ instance.hostname | upper }}: Create LXC'
-              command: >
-                  pct create {{ id }} local:vztmpl/{{ template_result.stdout | trim }}
-                  --hostname {{ instance.hostname }}
-                  --cores {{ instance.cores }}
-                  --memory {{ instance.memory }}
-                  --swap {{ instance.swap }}
-                  --rootfs {{ instance.storage }}:{{ instance.disk }}
-                  --net0 name=eth0,bridge=vmbr0,firewall=0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
-                  --unprivileged 1
-                  --features nesting=1,keyctl=1
-                  --onboot 1
-
-            - name: '{{ instance.hostname | upper }}: Configure Mounts'
-              blockinfile:
-                  path: '/etc/pve/lxc/{{ id }}.conf'
-                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
-                  block: |
-                      mp1: /mnt/ssd,mp=/media/ssd
-                      mp2: {{ env.JARVIS_CONFIGS_DIR }},mp={{ instance.configs }}
-
-            - name: '{{ instance.hostname | upper }}: Start LXC'
-              command: pct start {{ id }}
-
-            - name: '{{ instance.hostname | upper }}: Wait for Network'
-              shell: pct exec {{ id }} -- ping -c 1 -W 2 {{ env.JARVIS_DNS_SERVERS[0] }}
-              register: network_check
-              until: network_check.rc == 0
-              retries: 10
-              delay: 3
-
-            - name: '{{ instance.hostname | upper }}: Install Docker & Dependencies'
+            - name: 'DOCKER: Install Docker via official apt repo'
               shell: |
                   pct exec {{ id }} -- bash -c '
                   export DEBIAN_FRONTEND=noninteractive
-                  apt-get update && apt-get -y upgrade
-                  apt-get install -y ca-certificates curl gnupg sqlite3
-                  ln -sf /usr/bin/sqlite3 /usr/bin/sqlite
                   install -m 0755 -d /etc/apt/keyrings
                   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
                   chmod a+r /etc/apt/keyrings/docker.gpg
@@ -94,7 +71,7 @@
                   systemctl enable --now docker
                   '
 
-            - name: '{{ instance.hostname | upper }}: Enable Docker TCP'
+            - name: 'DOCKER: Enable Docker TCP on port 2375'
               shell: |
                   pct exec {{ id }} -- bash -c '
                   mkdir -p /etc/systemd/system/docker.service.d
@@ -102,20 +79,15 @@
                   systemctl daemon-reload && systemctl restart docker
                   '
 
-            - name: '{{ instance.hostname | upper }}: Enable Console Autologin'
-              shell: >
-                  pct exec {{ id }} -- bash -c "mkdir -p /etc/systemd/system/container-getty@1.service.d &&
-                  echo -e '[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 \$TERM' > /etc/systemd/system/container-getty@1.service.d/override.conf &&
-                  systemctl daemon-reload && systemctl restart container-getty@1.service"
-
-            - name: '{{ instance.hostname | upper }}: Wait for Docker'
+            - name: 'DOCKER: Wait for Docker API'
               wait_for:
-                  host: '{{ instance.ip }}'
+                  host: '{{ ip }}'
                   port: 2375
                   delay: 5
                   timeout: 60
 
-      - name: '{{ instance.hostname | upper }}: Deploy Apps'
+      # --- Step 3: Config (always) ---
+      - name: 'DOCKER: Deploy Apps'
         include_tasks: 'docker_lxc/{{ docker_app_item }}.yml'
         loop:
             - backrest
@@ -129,5 +101,5 @@
 
   rescue:
       - debug:
-            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
+            msg: 'docker ({{ id }}) failed to deploy'
   become: true

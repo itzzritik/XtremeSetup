@@ -13,15 +13,18 @@
           config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/etc'
           data: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/lib'
   block:
-      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
-        uri:
-            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES.jellyfin.port }}'
-            timeout: 5
-        register: instance_check
-        failed_when: false
-        changed_when: false
+      # ── Step 1: Health Check ──────────────────────────────────────────
+      - name: '{{ instance.hostname | upper }}: Health Check'
+        include_tasks: ../utils/_health_check.yml
+        vars:
+            health:
+                id: '{{ id }}'
+                type: lxc
+                url: 'http://{{ instance.ip }}:8096'
+                timeout: 5
 
-      - name: '{{ instance.hostname | upper }}: Create Config Directory on Host'
+      # ── Step 2: Provision (only when needed) ──────────────────────────
+      - name: '{{ instance.hostname | upper }}: Create Config Directories on Host'
         file:
             path: '{{ dir_item }}'
             state: directory
@@ -34,76 +37,87 @@
             loop_var: dir_item
 
       - name: '{{ instance.hostname | upper }}: Provision Instance'
-        when: instance_check.status | default(0) != 200
+        when: needs_provision | bool
         block:
-            - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
-              shell: pct stop {{ id }}; pct destroy {{ id }}
-              failed_when: false
-              changed_when: false
+            - name: '{{ instance.hostname | upper }}: Create LXC'
+              include_tasks: ../utils/_create_lxc.yml
+              vars:
+                  lxc:
+                      id: '{{ id }}'
+                      hostname: '{{ instance.hostname }}'
+                      cores: '{{ instance.cores }}'
+                      memory: '{{ instance.memory }}'
+                      swap: '{{ instance.swap }}'
+                      disk: 16
+                      storage: '{{ instance.storage }}'
+                      unprivileged: true
+                      features:
+                          - nesting
+                      firewall: true
+                      onboot: true
+                      ip: '{{ instance.ip }}'
+                      gateway: '{{ instance.gateway }}'
+                      mac: '{{ instance.mac }}'
+                      mounts:
+                          - { src: '/mnt/ssd', dest: '/media/ssd' }
+                          - { src: '{{ paths.config }}', dest: '/etc/jellyfin' }
+                          - { src: '{{ paths.data }}', dest: '/var/lib/jellyfin' }
+                      lxc_extra: |
+                          lxc.cgroup2.devices.allow: c 226:* rwm
+                          lxc.mount.entry: /dev/dri dev/dri none bind,optional,create=dir
+                          lxc.mount.entry: var/cache/transcodes var/lib/jellyfin/transcodes none bind,create=dir,optional 0 0
 
-            - name: '{{ instance.hostname | upper }}: Create Temporary Install Directory'
-              tempfile:
-                  state: directory
-                  suffix: _jellyfin_install
-              register: temp_install_dir
-
-            - name: '{{ instance.hostname | upper }}: Create default.vars for Silent Install'
-              copy:
-                  dest: '{{ temp_install_dir.path }}/default.vars'
-                  content: |
-                      var_container_storage={{ instance.storage }}
-                      var_template_storage={{ instance.storage }}
-
-            - name: '{{ instance.hostname | upper }}: Install using community script'
+            - name: '{{ instance.hostname | upper }}: Install Jellyfin via official repo'
               shell: |
-                  export mode="default"
-                  export var_ctid="{{ id }}"
-                  export var_hostname="{{ instance.hostname }}"
-                  export var_cpu="{{ instance.cores }}"
-                  export var_ram="{{ instance.memory }}"
-                  export var_disk="16"
-                  export var_net="{{ instance.ip }}/24"
-                  export var_gateway="{{ instance.gateway }}"
-                  export var_gpu="yes"
-                  export var_unprivileged="1"
-                  export TERM=xterm
-                  bash -c "$(curl -fsSL {{ env.JARVIS_COMMUNITY_SCRIPTS_URL }}/ct/jellyfin.sh)"
-              args:
-                  chdir: '{{ temp_install_dir.path }}'
-                  executable: /bin/bash
+                  pct exec {{ id }} -- bash -c '
+                  export DEBIAN_FRONTEND=noninteractive
+                  curl -fsSL https://repo.jellyfin.org/install-debpackage.sh | bash
+                  '
               register: jellyfin_install
-
-            - name: '{{ instance.hostname | upper }}: Configure MAC Address'
-              command: pct set {{ id }} -net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
+              retries: 2
+              delay: 5
+              until: jellyfin_install.rc == 0
 
             - name: '{{ instance.hostname | upper }}: Show install output'
               debug:
                   var: jellyfin_install.stdout_lines
 
-            - name: '{{ instance.hostname | upper }}: Cleanup Temporary Directory'
-              file:
-                  path: '{{ temp_install_dir.path }}'
-                  state: absent
+            - name: '{{ instance.hostname | upper }}: Add jellyfin user to GPU groups'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  usermod -aG render jellyfin
+                  usermod -aG video jellyfin
+                  '
 
-            - name: '{{ instance.hostname | upper }}: Stop LXC for Configuration'
-              command: pct stop {{ id }}
-              ignore_errors: true
+            - name: '{{ instance.hostname | upper }}: Enable jellyfin service'
+              shell: pct exec {{ id }} -- bash -c 'systemctl enable jellyfin'
 
-            - name: '{{ instance.hostname | upper }}: Set Swap Size'
-              command: pct set {{ id }} -swap {{ instance.swap }}
+      # ── Step 3: Config (always runs) ──────────────────────────────────
+      - name: '{{ instance.hostname | upper }}: Verify GPU passthrough'
+        shell: pct exec {{ id }} -- test -e /dev/dri/renderD128
+        register: gpu_check
+        failed_when: false
+        changed_when: false
 
-            - name: '{{ instance.hostname | upper }}: Configure LXC Mounts and Passthrough'
-              blockinfile:
-                  path: '/etc/pve/lxc/{{ id }}.conf'
-                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
-                  block: |
-                      mp1: /mnt/ssd,mp=/media/ssd
-                      mp2: {{ paths.config }},mp=/etc/jellyfin
-                      mp3: {{ paths.data }},mp=/var/lib/jellyfin
-                      lxc.mount.entry: var/cache/transcodes var/lib/jellyfin/transcodes none bind,create=dir,optional 0 0
+      - name: '{{ instance.hostname | upper }}: Warn if GPU not available'
+        debug:
+            msg: 'WARNING: /dev/dri/renderD128 not found in container — GPU passthrough may not be working'
+        when: gpu_check.rc != 0
 
-            - name: '{{ instance.hostname | upper }}: Start LXC'
-              command: pct start {{ id }}
+      - name: '{{ instance.hostname | upper }}: Verify jellyfin user in render group'
+        shell: pct exec {{ id }} -- id -nG jellyfin | grep -q render
+        register: render_check
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Warn if jellyfin not in render group'
+        debug:
+            msg: 'WARNING: jellyfin user is not in render group — GPU acceleration may not work'
+        when: render_check.rc != 0
+
+      - name: '{{ instance.hostname | upper }}: Restart jellyfin after provision'
+        shell: pct exec {{ id }} -- systemctl restart jellyfin
+        when: provisioned | default(false) | bool
 
   rescue:
       - debug:

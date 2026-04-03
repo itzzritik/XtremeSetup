@@ -53,7 +53,6 @@
           JARVIS_DNS_SERVERS: ['8.8.8.8', '8.8.4.4']
           JARVIS_TZ: 'Asia/Kolkata'
           JARVIS_CERT_RESOLVER: 'letsencrypt'
-          JARVIS_COMMUNITY_SCRIPTS_URL: 'https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main'
           JARVIS_ICON_CDN: 'https://cdn.jsdelivr.net/gh/selfhst/icons@main/svg/'
           JARVIS_SERVICES: '{{ service_defs.JARVIS_SERVICES }}'
 

@@ -11,28 +11,159 @@
           gateway: '{{ env.JARVIS_GATEWAY }}'
           mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
   block:
-      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
-        uri:
-            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}'
-            timeout: 5
-        register: instance_check
-        failed_when: false
-        changed_when: false
+      # ── Step 1: Health Check ──────────────────────────────────────
+      - name: '{{ instance.hostname | upper }}: Health Check'
+        include_tasks: ../utils/_health_check.yml
+        vars:
+            health:
+                id: '{{ id }}'
+                type: lxc
+                url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}'
+                timeout: 5
 
-      - name: '{{ instance.hostname | upper }}: Create Config Directory on Host'
-        file:
-            path: '{{ dir_item }}'
-            state: directory
-            owner: '100000'
-            group: '100000'
-            mode: '0700'
-        loop:
-            - '{{ env.JARVIS_CONFIGS_DIR }}/openclaw'
-            - '{{ env.JARVIS_CONFIGS_DIR }}/openclaw/config'
-        loop_control:
-            loop_var: dir_item
+      # ── Step 2: Provision (if needed) ─────────────────────────────
+      - name: '{{ instance.hostname | upper }}: Provision'
+        when: needs_provision | bool
+        block:
+            - name: '{{ instance.hostname | upper }}: Create Config Directories on Host'
+              file:
+                  path: '{{ dir_item }}'
+                  state: directory
+                  owner: '100000'
+                  group: '100000'
+                  mode: '0700'
+              loop:
+                  - '{{ env.JARVIS_CONFIGS_DIR }}/openclaw'
+                  - '{{ env.JARVIS_CONFIGS_DIR }}/openclaw/config'
+              loop_control:
+                  loop_var: dir_item
 
-      - name: '{{ instance.hostname | upper }}: Create OpenClaw Config File'
+            - name: '{{ instance.hostname | upper }}: Create LXC'
+              include_tasks: ../utils/_create_lxc.yml
+              vars:
+                  lxc:
+                      id: '{{ id }}'
+                      hostname: '{{ instance.hostname }}'
+                      cores: '{{ instance.cores }}'
+                      memory: '{{ instance.memory }}'
+                      swap: '{{ instance.swap }}'
+                      disk: 20
+                      storage: '{{ instance.storage }}'
+                      ip: '{{ instance.ip }}'
+                      gateway: '{{ instance.gateway }}'
+                      mac: '{{ instance.mac }}'
+                      dns_servers: '{{ env.JARVIS_DNS_SERVERS }}'
+                      features:
+                          - nesting
+                      mounts:
+                          - src: '{{ env.JARVIS_CONFIGS_DIR }}/openclaw'
+                            dest: /root/.openclaw
+                          - src: '{{ env.JARVIS_CONFIGS_DIR }}/openclaw/config'
+                            dest: /root/.config
+                      base_packages:
+                          - curl
+                          - ca-certificates
+                          - gnupg
+
+            - name: '{{ instance.hostname | upper }}: Install NodeJS Latest LTS & Dependencies'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  export DEBIAN_FRONTEND=noninteractive
+                  curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+                  apt-get install -y nodejs build-essential iptables-persistent git procps file
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Install Homebrew'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  set -e
+                  id -u linuxbrew >/dev/null 2>&1 || useradd -m -d /home/linuxbrew -s /bin/bash linuxbrew
+                  if [ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
+                    curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o /tmp/homebrew-install.sh
+                    su - linuxbrew -c "NONINTERACTIVE=1 /bin/bash /tmp/homebrew-install.sh"
+                    rm -f /tmp/homebrew-install.sh
+                  fi
+                  printf "%s\n" "eval \"\$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\"" > /etc/profile.d/homebrew.sh
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Install OpenClaw'
+              shell: pct exec {{ id }} -- bash -c 'npm install -g openclaw@latest'
+
+            - name: '{{ instance.hostname | upper }}: Build OpenClaw Control UI Assets'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  set -e
+                  command -v pnpm >/dev/null 2>&1 || npm install -g pnpm
+                  OPENCLAW_DIR="$(npm root -g)/openclaw"
+                  [ -d "$OPENCLAW_DIR" ] || exit 1
+                  [ -d "$OPENCLAW_DIR/dist/control-ui" ] || (cd "$OPENCLAW_DIR" && pnpm ui:build)
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Install Restart Helper'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  cat <<'EOF' > /usr/local/bin/re
+                  #!/usr/bin/env bash
+                  systemctl restart openclaw
+                  EOF
+                  chmod +x /usr/local/bin/re
+                  "
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Configure Startup Optimization'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  mkdir -p /var/tmp/openclaw-compile-cache
+                  grep -q NODE_COMPILE_CACHE /etc/environment 2>/dev/null || echo "NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache" >> /etc/environment
+                  grep -q OPENCLAW_NO_RESPAWN /etc/environment 2>/dev/null || echo "OPENCLAW_NO_RESPAWN=1" >> /etc/environment
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Locate OpenClaw Binary'
+              shell: pct exec {{ id }} -- bash -c 'which openclaw || npm bin -g | xargs -I {} echo {}/openclaw'
+              register: openclaw_bin_path
+              failed_when: openclaw_bin_path.stdout | length == 0
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Configure Systemd Service'
+              shell: |
+                  pct exec {{ id }} -- bash -c "
+                  cat <<'EOF' > /etc/systemd/system/openclaw.service
+                  [Unit]
+                  Description=OpenClaw AI Assistant
+                  After=network.target
+
+                  [Service]
+                  Type=simple
+                  User=root
+                  WorkingDirectory=/root
+                  ExecStart={{ openclaw_bin_path.stdout | trim }} gateway --allow-unconfigured --port {{ env.JARVIS_SERVICES[app_name].port }} --bind lan
+                  Restart=always
+                  RestartSec=10
+                  Environment=NODE_ENV=production
+                  Environment=NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache
+                  Environment=OPENCLAW_NO_RESPAWN=1
+                  Environment=OPENAI_API_KEY={{ env.JARVIS_AI_OPENAI_KEY }}
+                  Environment=PATH=/usr/bin:/usr/local/bin:/bin
+
+                  [Install]
+                  WantedBy=multi-user.target
+                  EOF
+
+                  systemctl daemon-reload
+                  systemctl enable --now openclaw
+                  "
+              no_log: true
+
+            - name: '{{ instance.hostname | upper }}: Configure OpenClaw Settings'
+              shell: |
+                  pct exec {{ id }} -- bash -c '
+                  openclaw config set gateway.mode local
+                  openclaw config set agents.defaults.memorySearch.enabled false
+                  '
+              changed_when: false
+
+      # ── Step 3: Config (always runs) ──────────────────────────────
+      - name: '{{ instance.hostname | upper }}: Write OpenClaw Config'
         no_log: true
         copy:
             dest: '{{ env.JARVIS_CONFIGS_DIR }}/openclaw/openclaw.json'
@@ -68,14 +199,14 @@
                       },
                       "subagents": {
                         "maxConcurrent": 2
-                      },
+                      }
                     }
                   },
                   "plugins": {
                     "entries": {
                       "telegram": {
                         "enabled": true
-                      },
+                      }
                     }
                   },
                   "channels": {
@@ -94,161 +225,11 @@
             mode: '0600'
         register: openclaw_config
 
-      - name: '{{ instance.hostname | upper }}: Provision Infrastructure'
-        when: instance_check.status | default(0) != 200
-        block:
-            - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
-              shell: pct stop {{ id }}; pct destroy {{ id }}
-              failed_when: false
-              changed_when: false
-
-            - name: '{{ instance.hostname | upper }}: Download Latest Template'
-              shell: |
-                  pveam update >&2
-                  TEMPLATE=$(pveam available | grep -oP 'ubuntu-(2[024-9]|[3-9][0-9])\.04-standard[^\s]+' | sort -V | tail -1)
-                  pveam download local "$TEMPLATE" >&2 || true
-                  echo "$TEMPLATE"
-              register: template_result
-              changed_when: false
-
-            - name: '{{ instance.hostname | upper }}: Create LXC'
-              command: >
-                  pct create {{ id }} local:vztmpl/{{ template_result.stdout | trim }}
-                  --hostname {{ instance.hostname }}
-                  --cores {{ instance.cores }}
-                  --memory {{ instance.memory }}
-                  --swap {{ instance.swap }}
-                  --rootfs {{ instance.storage }}:20
-                  --net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
-                  --unprivileged 1
-                  --features nesting=1
-                  --onboot 1
-
-            - name: '{{ instance.hostname | upper }}: Configure Bind Mount'
-              blockinfile:
-                  path: '/etc/pve/lxc/{{ id }}.conf'
-                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
-                  block: |
-                      mp0: {{ env.JARVIS_CONFIGS_DIR }}/openclaw,mp=/root/.openclaw
-                      mp1: {{ env.JARVIS_CONFIGS_DIR }}/openclaw/config,mp=/root/.config
-
-            - name: '{{ instance.hostname | upper }}: Start LXC'
-              command: pct start {{ id }}
-
-            - name: '{{ instance.hostname | upper }}: Wait for Network'
-              shell: pct exec {{ id }} -- ping -c 1 -W 2 {{ env.JARVIS_DNS_SERVERS[0] }}
-              register: network_check
-              until: network_check.rc == 0
-              retries: 10
-              delay: 3
-
-            - name: '{{ instance.hostname | upper }}: Enable Console Autologin'
-              shell: >
-                  pct exec {{ id }} -- bash -c "mkdir -p /etc/systemd/system/container-getty@1.service.d &&
-                  echo -e '[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 \$TERM' > /etc/systemd/system/container-getty@1.service.d/override.conf &&
-                  systemctl daemon-reload && systemctl restart container-getty@1.service"
-
-            - name: '{{ instance.hostname | upper }}: Install NodeJS Latest LTS & Dependencies'
-              shell: |
-                  pct exec {{ id }} -- bash -c '
-                  export DEBIAN_FRONTEND=noninteractive
-                  apt-get update && apt-get install -y curl
-                  curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
-                  apt-get install -y nodejs build-essential iptables-persistent git procps file
-                  '
-
-            - name: '{{ instance.hostname | upper }}: Install Homebrew'
-              shell: |
-                  pct exec {{ id }} -- bash -c '
-                  set -e
-                  id -u linuxbrew >/dev/null 2>&1 || useradd -m -d /home/linuxbrew -s /bin/bash linuxbrew
-                  if [ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
-                    curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o /tmp/homebrew-install.sh
-                    su - linuxbrew -c "NONINTERACTIVE=1 /bin/bash /tmp/homebrew-install.sh"
-                    rm -f /tmp/homebrew-install.sh
-                  fi
-                  printf '%s\n' 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' > /etc/profile.d/homebrew.sh
-                  '
-
-            - name: '{{ instance.hostname | upper }}: Install OpenClaw'
-              shell: pct exec {{ id }} -- bash -c 'npm install -g openclaw@latest'
-
-            - name: '{{ instance.hostname | upper }}: Build OpenClaw Control UI Assets'
-              shell: |
-                  pct exec {{ id }} -- bash -c '
-                  set -e
-                  command -v pnpm >/dev/null 2>&1 || npm install -g pnpm
-                  OPENCLAW_DIR="$(npm root -g)/openclaw"
-                  [ -d "$OPENCLAW_DIR" ] || exit 1
-                  [ -d "$OPENCLAW_DIR/dist/control-ui" ] || (cd "$OPENCLAW_DIR" && pnpm ui:build)
-                  '
-
-      - name: '{{ instance.hostname | upper }}: Locate OpenClaw Binary'
-        shell: pct exec {{ id }} -- bash -c 'which openclaw || npm bin -g | xargs -I {} echo {}/openclaw'
-        register: openclaw_bin_path
-        failed_when: openclaw_bin_path.stdout | length == 0
-        changed_when: false
-
-      - name: '{{ instance.hostname | upper }}: Configure Systemd Service'
-        shell: |
-            pct exec {{ id }} -- bash -c "
-            cat <<'EOF' > /etc/systemd/system/openclaw.service
-            [Unit]
-            Description=OpenClaw AI Assistant
-            After=network.target
-
-            [Service]
-            Type=simple
-            User=root
-            WorkingDirectory=/root
-            ExecStart={{ openclaw_bin_path.stdout | trim }} gateway --allow-unconfigured --port {{ env.JARVIS_SERVICES[app_name].port }} --bind lan
-            Restart=always
-            RestartSec=10
-            Environment=NODE_ENV=production
-            Environment=NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache
-            Environment=OPENCLAW_NO_RESPAWN=1
-            Environment=OPENAI_API_KEY={{ env.JARVIS_AI_OPENAI_KEY }}
-            Environment=PATH=/usr/bin:/usr/local/bin:/bin
-
-            [Install]
-            WantedBy=multi-user.target
-            EOF
-
-            systemctl daemon-reload
-            systemctl enable --now openclaw
-            "
-        register: openclaw_service
-
-      - name: '{{ instance.hostname | upper }}: Install Restart Helper'
-        shell: |
-            pct exec {{ id }} -- bash -c "
-            cat <<'EOF' > /usr/local/bin/re
-            #!/usr/bin/env bash
-            systemctl restart openclaw
-            EOF
-            chmod +x /usr/local/bin/re
-            "
-        changed_when: false
-
-      - name: '{{ instance.hostname | upper }}: Configure OpenClaw Settings'
-        shell: |
-            pct exec {{ id }} -- bash -c '
-            openclaw config set gateway.mode local
-            openclaw config set agents.defaults.memorySearch.enabled false
-            '
-        changed_when: false
-
-      - name: '{{ instance.hostname | upper }}: Configure Startup Optimization'
-        shell: |
-            pct exec {{ id }} -- bash -c '
-            mkdir -p /var/tmp/openclaw-compile-cache
-            grep -q NODE_COMPILE_CACHE /etc/environment 2>/dev/null || echo "NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache" >> /etc/environment
-            grep -q OPENCLAW_NO_RESPAWN /etc/environment 2>/dev/null || echo "OPENCLAW_NO_RESPAWN=1" >> /etc/environment
-            '
-
       - name: '{{ instance.hostname | upper }}: Restart on Config Change'
         shell: pct exec {{ id }} -- systemctl restart openclaw
-        when: (openclaw_config is changed or openclaw_service is changed) and instance_check.status | default(0) == 200
+        when:
+            - not (needs_provision | bool)
+            - openclaw_config is changed
 
       - name: '{{ instance.hostname | upper }}: Verify Service'
         shell: pct exec {{ id }} -- systemctl is-active openclaw
