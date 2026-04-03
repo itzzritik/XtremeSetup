@@ -65,7 +65,7 @@
             dest: '{{ env.JARVIS_CONFIGS_DIR }}/zeroclaw/config.toml'
             content: |-
                 default_provider = "openrouter"
-                default_model = "stepfun/step-3.5-flash:free"
+                default_model = "qwen/qwen3.6-plus:free"
 
                 [gateway]
                 host = "0.0.0.0"
