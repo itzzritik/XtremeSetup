@@ -11,6 +11,9 @@
           - JARVIS_GIT_SSH_PUBLIC_KEY
           - JARVIS_CODE_TELEGRAM_KEY
           - JARVIS_AI_MISTRAL_KEY
+          - JARVIS_BOT_TELEGRAM_KEY
+          - JARVIS_AI_OPENROUTER_KEY
+          - RITIK_TELEGRAM_ID
       local_config:
           JARVIS_DIR: '/home/ubuntu/.jarvis'
           JARVIS_PROJECTS_DIR: '/home/ubuntu/projects'

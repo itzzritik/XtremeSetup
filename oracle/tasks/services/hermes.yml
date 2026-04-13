@@ -1,0 +1,116 @@
+---
+- vars:
+      app_name: hermes
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+      hermes_home: /home/ubuntu/.hermes
+  block:
+      - name: '{{ app_name | upper }}: Configure Directories'
+        file:
+            path: '{{ config.root }}'
+            state: directory
+            mode: '0755'
+            owner: ubuntu
+            group: ubuntu
+
+      - name: '{{ app_name | upper }}: Check Installation'
+        shell: '/home/ubuntu/.local/bin/hermes --version'
+        args:
+            executable: /bin/bash
+        register: hermes_check
+        failed_when: false
+        changed_when: false
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Install System Dependencies'
+        apt:
+            name: [python3-dev, libffi-dev, build-essential, ffmpeg, ripgrep]
+            state: present
+        when: hermes_check.rc != 0
+
+      - name: '{{ app_name | upper }}: Install'
+        shell: 'curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup'
+        args:
+            executable: /bin/bash
+        become: true
+        become_user: ubuntu
+        when: hermes_check.rc != 0
+
+      - name: '{{ app_name | upper }}: Write Env'
+        copy:
+            dest: '{{ config.root }}/.env'
+            content: |
+                OPENROUTER_API_KEY={{ env.JARVIS_AI_OPENROUTER_KEY }}
+                TELEGRAM_BOT_TOKEN={{ env.JARVIS_BOT_TELEGRAM_KEY }}
+                TELEGRAM_ALLOWED_USERS={{ env.RITIK_TELEGRAM_ID }}
+            mode: '0600'
+            owner: ubuntu
+            group: ubuntu
+        no_log: true
+        register: hermes_env
+
+      - name: '{{ app_name | upper }}: Write Config'
+        copy:
+            dest: '{{ config.root }}/config.yaml'
+            content: |
+                model:
+                  default: openrouter/free
+                  provider: openrouter
+                terminal:
+                  backend: local
+                  allowed_commands: ["*"]
+                security:
+                  approval_mode: auto
+            mode: '0644'
+            owner: ubuntu
+            group: ubuntu
+        register: hermes_config
+
+      - name: '{{ app_name | upper }}: Symlink Config'
+        file:
+            src: '{{ config.root }}/{{ item }}'
+            dest: '{{ hermes_home }}/{{ item }}'
+            state: link
+            owner: ubuntu
+            group: ubuntu
+            force: true
+        loop:
+            - .env
+            - config.yaml
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Create Systemd Service'
+        copy:
+            dest: /etc/systemd/system/{{ app_name }}.service
+            content: |
+                [Unit]
+                Description=Hermes Agent Gateway
+                After=network.target
+
+                [Service]
+                Type=simple
+                User=ubuntu
+                WorkingDirectory={{ env.JARVIS_PROJECTS_DIR }}
+                ExecStart=/home/ubuntu/.local/bin/hermes gateway run
+                Restart=always
+                RestartSec=10
+                Environment=HOME=/home/ubuntu
+                Environment=PATH={{ hermes_home }}/hermes-agent/.venv/bin:/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+                [Install]
+                WantedBy=multi-user.target
+            mode: '0644'
+        register: hermes_service
+
+      - name: '{{ app_name | upper }}: Daemon Reload'
+        systemd:
+            daemon_reload: true
+        when: hermes_service is changed
+
+      - name: '{{ app_name | upper }}: Enable and Start Service'
+        systemd:
+            name: '{{ app_name }}'
+            state: "{{ 'restarted' if (hermes_service is changed or hermes_env is changed or hermes_config is changed) else 'started' }}"
+            enabled: true

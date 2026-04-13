@@ -98,5 +98,6 @@
             block: |
                 alias cc="claude"
                 alias code="code-server -r"
+                alias hre="sudo systemctl restart hermes"
         become: true
         become_user: ubuntu
