@@ -22,12 +22,29 @@
             - name: 'UPDATE: Retry Apt Update'
               command: apt-get update
 
-      - name: 'UPDATE: Upgrade, Autoremove & Clean'
-        apt:
-            upgrade: dist
-            autoremove: yes
-            purge: yes
-            autoclean: yes
+      - name: 'UPDATE: Safe Package Upgrade'
+        block:
+            - name: 'UPDATE: Upgrade, Autoremove & Clean'
+              apt:
+                  upgrade: dist
+                  autoremove: yes
+                  purge: yes
+                  autoclean: yes
+        rescue:
+            - name: 'UPDATE: Repair Broken Packages & Corrupt Cache'
+              shell: |
+                  apt-get clean
+                  apt-get update
+                  dpkg --configure -a --force-confdef --force-confold
+                  apt-get --fix-broken install -y
+                  apt-get clean
+
+            - name: 'UPDATE: Retry Upgrade, Autoremove & Clean'
+              apt:
+                  upgrade: dist
+                  autoremove: yes
+                  purge: yes
+                  autoclean: yes
 
       - name: 'UPDATE: Update Timestamp'
         file:
