@@ -1,0 +1,24 @@
+---
+- set_fact:
+      prefix: 'JOURNAL'
+
+- name: '{{ prefix }}: Write journald.conf'
+  copy:
+      dest: /etc/systemd/journald.conf
+      content: |
+          [Journal]
+          Storage=persistent
+          SystemMaxUse=500M
+          SystemKeepFree=1G
+          MaxRetentionSec=2week
+          Compress=yes
+
+- name: '{{ prefix }}: Restart journald'
+  systemd: { name: systemd-journald, state: restarted }
+
+- name: '{{ prefix }}: Symlink .jarvis/logs/journal -> /var/log/journal'
+  file:
+      src: /var/log/journal
+      dest: '{{ env.JARVIS_LOGS_DIR }}/journal'
+      state: link
+      force: true

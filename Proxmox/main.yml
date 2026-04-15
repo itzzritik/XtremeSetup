@@ -31,13 +31,16 @@
             run_vms: "{{ (hostvars['local']['run_vms_input'] | default('n') | lower) in ['yes', 'y'] }}"
 
   tasks:
-      # - name: Execute System Tasks
-      #   include_tasks: 'tasks/system/{{ item }}.yml'
-      #   loop:
-      #       - update
-      #       - automount
-      #       - configure
-      #       - docker_cli
+      - name: Execute System Tasks
+        include_tasks: 'tasks/system/{{ item }}.yml'
+        loop:
+            - update
+            - automount
+            - configure
+            - journal
+            - watchdog
+            - health_monitor
+            - docker_cli
 
       - name: Deploy Instances
         include_tasks: 'tasks/instances/{{ item }}.yml'

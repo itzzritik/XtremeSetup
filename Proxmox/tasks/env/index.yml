@@ -46,6 +46,7 @@
           JARVIS_BOT_NAME: '{{ project | title }}'
           JARVIS_DIR: '/root/.{{ project }}'
           JARVIS_CONFIGS_DIR: '/root/.{{ project }}/configs'
+          JARVIS_LOGS_DIR: '/root/.{{ project }}/logs'
           JARVIS_ADMIN_USERNAME: 'root'
           JARVIS_NETWORK_PREFIX: '192.168.68'
           JARVIS_MAC_PREFIX: '02:4A:61:72:76'
