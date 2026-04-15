@@ -42,14 +42,14 @@
             - health_monitor
             - docker_cli
 
-      - name: Deploy Instances
-        include_tasks: 'tasks/instances/{{ item }}.yml'
-        loop:
-            # - traefik_lxc
-            # - home_vm
-            # - docker_lxc
-            # - storage_lxc
-            # - jellyfin_lxc
-            # - pihole_lxc
-            # - zeroclaw_lxc
-        when: not (item.endswith('_vm') and not run_vms)
+      # - name: Deploy Instances
+      #   include_tasks: 'tasks/instances/{{ item }}.yml'
+      #   loop:
+      #       - traefik_lxc
+      #       - home_vm
+      #       - docker_lxc
+      #       - storage_lxc
+      #       - jellyfin_lxc
+      #       - pihole_lxc
+      #       - zeroclaw_lxc
+      #   when: not (item.endswith('_vm') and not run_vms)

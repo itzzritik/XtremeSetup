@@ -28,6 +28,8 @@
           [Service]
           # Log boot time. If 5 boots happen in < 1800s (30m), trigger safe poweroff.
           ExecStartPre=/bin/bash -c 'f="{{ env.JARVIS_LOGS_DIR }}/watchdog/boots"; date +%s >> $f; tail -n 5 $f > $f.tmp && mv $f.tmp $f; [ $(wc -l < $f) -lt 5 ] || [ $(( $(date +%s) - $(head -n 1 $f) )) -ge 1800 ] || { systemctl poweroff; exit 1; }'
+  register: watchdog_conf
 
 - name: '{{ prefix }}: Restart Proxmox watchdog-mux'
   systemd: { name: watchdog-mux, state: restarted, daemon_reload: true }
+  when: watchdog_conf.changed

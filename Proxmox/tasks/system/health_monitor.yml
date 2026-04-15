@@ -4,13 +4,15 @@
 
 - name: '{{ prefix }}: Create drop-in directories'
   file:
-      path: '/etc/systemd/system/{{ item }}.service.d'
+      path: '/etc/systemd/system/{{ svc }}.service.d'
       state: directory
   loop: [pvedaemon, pvestatd, pve-cluster, pveproxy]
+  loop_control:
+      loop_var: svc
 
 - name: '{{ prefix }}: Write restart policy drop-ins'
   copy:
-      dest: '/etc/systemd/system/{{ item }}.service.d/jarvis-restart.conf'
+      dest: '/etc/systemd/system/{{ svc }}.service.d/jarvis-restart.conf'
       content: |
           [Unit]
           StartLimitIntervalSec=300
@@ -19,6 +21,10 @@
           Restart=on-failure
           RestartSec=5s
   loop: [pvedaemon, pvestatd, pve-cluster, pveproxy]
+  loop_control:
+      loop_var: svc
+  register: dropins
 
 - name: '{{ prefix }}: Reload systemd'
   systemd: { daemon_reload: true }
+  when: dropins.changed

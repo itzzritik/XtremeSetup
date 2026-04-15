@@ -12,9 +12,11 @@
           SystemKeepFree=1G
           MaxRetentionSec=2week
           Compress=yes
+  register: journal_conf
 
 - name: '{{ prefix }}: Restart journald'
   systemd: { name: systemd-journald, state: restarted }
+  when: journal_conf.changed
 
 - name: '{{ prefix }}: Symlink .jarvis/logs/journal -> /var/log/journal'
   file:
