@@ -15,7 +15,26 @@
                 - jq
                 - procps
                 - file
+                - bubblewrap
             state: present
+
+      - name: '{{ app_name | upper }}: Enable unprivileged user namespace for bubblewrap'
+        sysctl:
+            name: kernel.apparmor_restrict_unprivileged_userns
+            value: '0'
+            state: present
+            sysctl_set: true
+        become: true
+        ignore_errors: true
+
+      - name: '{{ app_name | upper }}: Enable unprivileged user namespace clone for bubblewrap'
+        sysctl:
+            name: kernel.unprivileged_userns_clone
+            value: '1'
+            state: present
+            sysctl_set: true
+        become: true
+        ignore_errors: true
 
       - name: '{{ app_name | upper }}: Set zsh as default shell'
         user:
@@ -113,13 +132,23 @@
         become: true
         become_user: ubuntu
 
+      - name: '{{ app_name | upper }}: Install Homebrew Packages'
+        shell: /home/linuxbrew/.linuxbrew/bin/brew install {{ brew_item }}
+        loop:
+            - gh
+        loop_control:
+            loop_var: brew_item
+        become: true
+        become_user: ubuntu
+
       - name: '{{ app_name | upper }}: Configure Shell Aliases'
         blockinfile:
             path: /home/ubuntu/.zshrc
             marker: '# {mark} JARVIS'
             block: |
                 alias cc="claude"
-                alias code="code-server -r"
+                alias code="code-server"
+                alias coder="code-server -r"
                 alias hre="sudo systemctl restart hermes"
         become: true
         become_user: ubuntu
