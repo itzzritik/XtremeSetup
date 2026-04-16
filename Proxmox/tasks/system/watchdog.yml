@@ -2,34 +2,60 @@
 - set_fact:
       prefix: 'WATCHDOG'
 
-- name: '{{ prefix }}: Check for hardware watchdog device'
-  stat: { path: /dev/watchdog }
-  register: hw_watchdog
+- name: '{{ prefix }}: Load softdog module globally'
+  modprobe: { name: softdog, state: present }
 
-- name: '{{ prefix }}: Load softdog module (fallback)'
-  when: not hw_watchdog.stat.exists
-  block:
-      - name: '{{ prefix }}: Load softdog module'
-        modprobe: { name: softdog, state: present }
+- name: '{{ prefix }}: Persist softdog module across reboots'
+  lineinfile: { path: /etc/modules, line: softdog, state: present, create: true }
 
-      - name: '{{ prefix }}: Persist softdog across reboots'
-        lineinfile: { path: /etc/modules, line: softdog, state: present, create: true }
+- name: '{{ prefix }}: Configure Systemd Hardware Protection'
+  lineinfile:
+      path: /etc/systemd/system.conf
+      regexp: '^#?RuntimeWatchdogSec='
+      line: 'RuntimeWatchdogSec=60'
+  register: systemd_wd
 
-# ── Circuit Breaker ────────────────────────────────────────────────────────────
-- name: '{{ prefix }}: Create watchdog-mux service drop-in directory'
-  file:
-      path: /etc/systemd/system/watchdog-mux.service.d
-      state: directory
+- name: '{{ prefix }}: Apply Systemd Config'
+  systemd: { daemon_reload: true }
+  when: systemd_wd.changed
 
-- name: '{{ prefix }}: Attach bootloop circuit breaker to Proxmox watchdog-mux'
+- name: '{{ prefix }}: Configure Kernel Panic Auto-Reboot'
+  sysctl: { name: kernel.panic, value: '10', state: present, sysctl_set: yes }
+
+- name: '{{ prefix }}: Configure Kernel Oops Auto-Reboot'
+  sysctl: { name: kernel.panic_on_oops, value: '1', state: present, sysctl_set: yes }
+
+- name: '{{ prefix }}: Remove old watchdog-mux logic'
+  file: { path: /etc/systemd/system/watchdog-mux.service.d, state: absent }
+
+- name: '{{ prefix }}: Create circuit breaker script'
   copy:
-      dest: /etc/systemd/system/watchdog-mux.service.d/circuit-breaker.conf
+      dest: /usr/local/bin/jarvis-watchdog-breaker.sh
+      mode: '0755'
       content: |
-          [Service]
-          # Log boot time. If 5 boots happen in < 1800s (30m), trigger safe poweroff.
-          ExecStartPre=/bin/bash -c 'f="{{ env.JARVIS_LOGS_DIR }}/watchdog/boots"; date +%s >> $f; tail -n 5 $f > $f.tmp && mv $f.tmp $f; [ $(wc -l < $f) -lt 5 ] || [ $(( $(date +%s) - $(head -n 1 $f) )) -ge 1800 ] || { systemctl poweroff; exit 1; }'
-  register: watchdog_conf
+          #!/bin/bash
+          f="{{ env.JARVIS_LOGS_DIR }}/watchdog/boots"
+          date +%s >> "$f"
+          grep -E "^[0-9]+$" "$f" | tail -n 5 > "${f}.tmp" && mv "${f}.tmp" "$f"
+          if [ "$(wc -l < "$f")" -ge 5 ] && [ $(( $(date +%s) - $(head -n 1 "$f") )) -lt 1800 ]; then
+             systemctl poweroff
+             exit 1
+          fi
+          exit 0
 
-- name: '{{ prefix }}: Restart Proxmox watchdog-mux'
-  systemd: { name: watchdog-mux, state: restarted, daemon_reload: true }
-  when: watchdog_conf.changed
+- name: '{{ prefix }}: Create Circuit Breaker Service'
+  copy:
+      dest: /etc/systemd/system/jarvis-circuit-breaker.service
+      content: |
+          [Unit]
+          Description=Jarvis Anti-Bootloop Circuit Breaker
+          After=local-fs.target
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/bin/jarvis-watchdog-breaker.sh
+          [Install]
+          WantedBy=multi-user.target
+  register: cb_service
+
+- name: '{{ prefix }}: Enable Circuit Breaker Service'
+  systemd: { name: jarvis-circuit-breaker, enabled: true, state: started, daemon_reload: true }
