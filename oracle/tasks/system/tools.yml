@@ -13,6 +13,8 @@
                 - unzip
                 - htop
                 - jq
+                - procps
+                - file
             state: present
 
       - name: '{{ app_name | upper }}: Set zsh as default shell'
@@ -88,6 +90,26 @@
             - '@openai/codex'
         loop_control:
             loop_var: npm_item
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Check brew'
+        stat:
+            path: /home/linuxbrew/.linuxbrew/bin/brew
+        register: brew_check
+
+      - name: '{{ app_name | upper }}: Install brew'
+        shell: NONINTERACTIVE=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        when: not brew_check.stat.exists
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Configure brew'
+        blockinfile:
+            path: /home/ubuntu/.zshrc
+            marker: '# {mark} BREW'
+            block: |
+                eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
         become: true
         become_user: ubuntu
 
