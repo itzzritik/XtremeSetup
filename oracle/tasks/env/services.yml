@@ -7,3 +7,7 @@ JARVIS_SERVICES:
         name: CloudCLI
         subdomain: vibe
         port: '3001'
+    opencode:
+        name: OpenCode
+        subdomain: opencode
+        port: '4096'

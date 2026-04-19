@@ -88,6 +88,9 @@
                 - streetsidesoftware.code-spell-checker
                 - bradlc.vscode-tailwindcss
                 - vira.vsc-vira-theme
+                - anthropic.claude-code
+                - openai.chatgpt
+                - sst-dev.opencode
         become: true
         become_user: ubuntu
         ignore_errors: true

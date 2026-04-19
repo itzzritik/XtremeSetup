@@ -61,6 +61,7 @@
             - cloudcli
             - claude-telegram
             - hermes
+            - opencode
             - caddy
         loop_control:
             loop_var: service

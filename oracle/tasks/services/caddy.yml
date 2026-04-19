@@ -25,6 +25,14 @@
                         reverse_proxy localhost:{{ env.JARVIS_SERVICES.cloudcli.port }}
                     }
 
+                    @opencode host opencode.{{ env.RITIK_DOMAIN }}
+                    handle @opencode {
+                        reverse_proxy localhost:{{ env.JARVIS_SERVICES.opencode.port }} {
+                            header_up Host localhost
+                            header_up -X-Forwarded-Host
+                        }
+                    }
+
                     @port_allowed header_regexp portnum Host ^([3-8]\d{3}|9000)\.{{ env.RITIK_DOMAIN | regex_escape }}
                     handle @port_allowed {
                         reverse_proxy localhost:{re.portnum.1}

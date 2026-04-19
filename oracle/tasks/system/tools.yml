@@ -16,6 +16,7 @@
                 - procps
                 - file
                 - bubblewrap
+                - tmux
             state: present
 
       - name: '{{ app_name | upper }}: Enable unprivileged user namespace for bubblewrap'
@@ -58,7 +59,32 @@
         lineinfile:
             path: /home/ubuntu/.zshrc
             regexp: '^plugins='
-            line: 'plugins=(git z)'
+            line: 'plugins=(git z fzf zsh-autosuggestions zsh-syntax-highlighting)'
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Set FZF_BASE for oh-my-zsh fzf plugin'
+        lineinfile:
+            path: /home/ubuntu/.zshrc
+            regexp: '^export FZF_BASE='
+            line: 'export FZF_BASE=/home/linuxbrew/.linuxbrew/opt/fzf'
+            insertbefore: '^source \$ZSH/oh-my-zsh.sh'
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Clone zsh-autosuggestions'
+        git:
+            repo: https://github.com/zsh-users/zsh-autosuggestions
+            dest: /home/ubuntu/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+            depth: 1
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Clone zsh-syntax-highlighting'
+        git:
+            repo: https://github.com/zsh-users/zsh-syntax-highlighting
+            dest: /home/ubuntu/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+            depth: 1
         become: true
         become_user: ubuntu
 
@@ -107,6 +133,7 @@
             - yarn
             - '@anthropic-ai/claude-code'
             - '@openai/codex'
+            - opencode-ai
         loop_control:
             loop_var: npm_item
         become: true
@@ -136,6 +163,8 @@
         shell: /home/linuxbrew/.linuxbrew/bin/brew install {{ brew_item }}
         loop:
             - gh
+            - fzf
+            - eza
         loop_control:
             loop_var: brew_item
         become: true
@@ -146,9 +175,16 @@
             path: /home/ubuntu/.zshrc
             marker: '# {mark} JARVIS'
             block: |
+                export EDITOR="code-server --wait"
                 alias cc="claude"
                 alias code="code-server"
-                alias coder="code-server -r"
                 alias hre="sudo systemctl restart hermes"
+                alias t="tmux new-session -A -s main"
+                alias ls="eza --icons"
+                alias ll="eza -la --icons --git"
+                vscode() {
+                  local uri="vscode://vscode-remote/ssh-remote+{{ ansible_user }}@{{ ansible_host }}$(realpath ${1:-.})?windowId=_blank"
+                  ${BROWSER:-echo} "$uri"
+                }
         become: true
         become_user: ubuntu

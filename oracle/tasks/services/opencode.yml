@@ -1,0 +1,37 @@
+---
+- vars:
+      app_name: opencode
+  block:
+      - name: '{{ app_name | upper }}: Write Systemd Service'
+        copy:
+            dest: /etc/systemd/system/opencode.service
+            content: |
+                [Unit]
+                Description=OpenCode Web Server
+                After=network.target
+
+                [Service]
+                Type=simple
+                User=ubuntu
+                WorkingDirectory=/home/ubuntu
+                Environment=HOME=/home/ubuntu
+                Environment=NVM_DIR=/home/ubuntu/.nvm
+                ExecStart=/bin/bash -c 'source /home/ubuntu/.nvm/nvm.sh && exec opencode web --port {{ env.JARVIS_SERVICES.opencode.port }} --hostname 127.0.0.1'
+                Restart=always
+                RestartSec=5
+
+                [Install]
+                WantedBy=multi-user.target
+            mode: '0644'
+        register: opencode_service
+
+      - name: '{{ app_name | upper }}: Daemon Reload'
+        systemd:
+            daemon_reload: true
+        when: opencode_service is changed
+
+      - name: '{{ app_name | upper }}: Enable and Start Service'
+        systemd:
+            name: opencode
+            state: "{{ 'restarted' if opencode_service is changed else 'started' }}"
+            enabled: true
