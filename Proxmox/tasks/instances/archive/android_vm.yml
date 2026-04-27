@@ -1,0 +1,725 @@
+- vars:
+      app_name: android
+      id: '{{ env.JARVIS_SERVICES.android.id }}'
+      android_vm_rebuild_requested: '{{ rebuild_android_vm | default(false) | bool }}'
+      instance:
+          hostname: android
+          memory: 8192
+          cores: 4
+          disk: 64
+          storage: local-lvm
+          cloudinit_storage: local
+          bridge: vmbr0
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.android.id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+          dns_servers: '{{ env.JARVIS_DNS_SERVERS }}'
+          mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(env.JARVIS_SERVICES.android.id | int) }}'
+          port: '{{ env.JARVIS_SERVICES.android.port }}'
+          image_url: https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
+          image_file: /var/lib/vz/template/iso/jammy-server-cloudimg-amd64.img
+          cloudinit_snippet: /var/lib/vz/snippets/android-cloud-init.yml
+          web_wait_retries: '{{ android_web_wait_retries | default(20) }}'
+          web_wait_delay: '{{ android_web_wait_delay | default(15) }}'
+          ssh_public_key: >-
+              {{
+                  (
+                      android_vm_ssh_public_key | default(
+                      lookup("file", lookup("env", "HOME") + "/.ssh/id_ed25519.pub", errors="ignore")
+                      | default(lookup("file", lookup("env", "HOME") + "/.ssh/id_rsa.pub", errors="ignore"), true),
+                      true
+                      )
+                  )
+                  | default("", true)
+              }}
+          ssh_key_file: /tmp/android-vm-ssh.pub
+          redroid_image: '{{ redroid_image | default("abing7k/redroid:a11_gapps_magisk_ndk_amd") }}'
+          ws_scrcpy_image: '{{ ws_scrcpy_image | default("smanx/ws-scrcpy:latest") }}'
+          web_stream:
+              max_width: '{{ android_web_stream_max_width | default(1080) }}'
+              max_height: '{{ android_web_stream_max_height | default(1080) }}'
+              bitrate: '{{ android_web_stream_bitrate | default(12000000) }}'
+              max_fps: '{{ android_web_stream_max_fps | default(60) }}'
+              iframe_interval: '{{ android_web_stream_iframe_interval | default(1) }}'
+          pixelify:
+              enabled: '{{ android_pixelify_enabled | default(true) }}'
+              repo: '{{ android_pixelify_repo | default("BasGame1/Pixelify-Next") }}'
+              cache_dir: '{{ android_pixelify_cache_dir | default("/opt/pixelify-next") }}'
+              android_dir: '{{ android_pixelify_android_dir | default("/sdcard/Pixelify") }}'
+  block:
+      - name: '{{ instance.hostname | upper }}: Check Web Health'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ instance.port }}/'
+            method: GET
+            status_code: [200, 301, 302, 404]
+            timeout: 5
+        register: android_web_health
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Check VM Status'
+        command: qm status {{ id }}
+        register: android_vm_status
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Stop VM before explicit rebuild'
+        command: qm stop {{ id }} --skiplock 1
+        register: android_vm_stop
+        failed_when: false
+        changed_when: false
+        when: android_vm_rebuild_requested and android_vm_status.rc == 0
+
+      - name: '{{ instance.hostname | upper }}: Destroy VM during explicit rebuild'
+        command: qm destroy {{ id }} --purge 1 --destroy-unreferenced-disks 1
+        when: android_vm_rebuild_requested and android_vm_status.rc == 0
+
+      - name: '{{ instance.hostname | upper }}: Refresh VM Status'
+        command: qm status {{ id }}
+        register: android_vm_status_effective
+        failed_when: false
+        changed_when: false
+        when: android_vm_rebuild_requested
+
+      - name: '{{ instance.hostname | upper }}: Set effective status'
+        set_fact:
+            android_vm_exists: '{{ (android_vm_status_effective.rc if android_vm_rebuild_requested else android_vm_status.rc) == 0 }}'
+            android_web_ready: '{{ (android_web_health.status | default(0)) in [200, 301, 302, 404] }}'
+
+      - name: '{{ instance.hostname | upper }}: Provision VM'
+        when: not android_vm_exists
+        block:
+            - name: '{{ instance.hostname | upper }}: Download Ubuntu cloud image'
+              get_url:
+                  url: '{{ instance.image_url }}'
+                  dest: '{{ instance.image_file }}'
+                  mode: '0644'
+                  timeout: 180
+                  force: false
+
+            - name: '{{ instance.hostname | upper }}: Read cloud-init storage config'
+              shell: |
+                  awk -v storage="{{ instance.cloudinit_storage }}" '
+                    $1 ~ /:$/ && $2 == storage { in_storage=1; next }
+                    $1 ~ /:$/ && in_storage { exit }
+                    in_storage && $1 == "content" { print $2; found=1; exit }
+                    END { if (!found) print "iso,vztmpl,backup" }
+                  ' /etc/pve/storage.cfg
+              register: android_storage_content
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Enable snippets on cloud-init storage'
+              vars:
+                  current_content: '{{ android_storage_content.stdout | trim }}'
+              command: pvesm set {{ instance.cloudinit_storage }} --content {{ current_content }},snippets
+              when: "'snippets' not in current_content.split(',')"
+
+            - name: '{{ instance.hostname | upper }}: Create snippets directory'
+              file:
+                  path: /var/lib/vz/snippets
+                  state: directory
+                  mode: '0755'
+
+            - name: '{{ instance.hostname | upper }}: Write cloud-init user-data'
+              copy:
+                  dest: '{{ instance.cloudinit_snippet }}'
+                  mode: '0644'
+                  content: |
+                      #cloud-config
+                      package_update: false
+                      package_upgrade: false
+                      ssh_pwauth: false
+
+                      write_files:
+                        - path: /etc/systemd/system/serial-getty@ttyS0.service.d/override.conf
+                          permissions: '0644'
+                          content: |
+                            [Service]
+                            ExecStart=
+                            ExecStart=-/sbin/agetty --autologin root --noclear --keep-baud 115200,38400,9600 %I $TERM
+
+                        - path: /usr/local/sbin/jarvis-install-android.sh
+                          permissions: '0755'
+                          content: |
+                            #!/usr/bin/env bash
+                            set -euo pipefail
+                            exec > >(tee -a /var/log/jarvis-android-install.log) 2>&1
+
+                            export DEBIAN_FRONTEND=noninteractive
+                            export USER=root
+                            export SUDO_USER=root
+                            export HOME=/root
+                            WEB_PORT="{{ instance.port }}"
+                            REDROID_IMAGE="{{ instance.redroid_image }}"
+                            WS_SCRCPY_IMAGE="{{ instance.ws_scrcpy_image }}"
+                            WEB_STREAM_MAX_WIDTH="{{ instance.web_stream.max_width }}"
+                            WEB_STREAM_MAX_HEIGHT="{{ instance.web_stream.max_height }}"
+                            WEB_STREAM_BITRATE="{{ instance.web_stream.bitrate }}"
+                            WEB_STREAM_MAX_FPS="{{ instance.web_stream.max_fps }}"
+                            WEB_STREAM_IFRAME_INTERVAL="{{ instance.web_stream.iframe_interval }}"
+                            REDROID_DIR="/opt/redroid"
+                            STATE_DIR="/opt/android-state"
+                            WEB_DIR="/opt/android-web"
+
+                            mkdir -p "$STATE_DIR"
+
+                            disable_network_offload() {
+                                local iface
+                                iface="$(ip route get 1.1.1.1 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -n 1)"
+                                if [ -n "$iface" ] && command -v ethtool >/dev/null 2>&1; then
+                                    ethtool -K "$iface" tso off gso off gro off tx off sg off rx-gro-hw off || true
+                                fi
+                            }
+
+                            install_gzip_unpigz_wrapper() {
+                                if [ -e /usr/bin/unpigz ] && ! grep -q 'jarvis gzip wrapper' /usr/bin/unpigz 2>/dev/null; then
+                                    if command -v dpkg-divert >/dev/null 2>&1; then
+                                        dpkg-divert --local --rename --add /usr/bin/unpigz || true
+                                    elif [ ! -e /usr/bin/unpigz.jarvis-original ]; then
+                                        mv /usr/bin/unpigz /usr/bin/unpigz.jarvis-original
+                                    fi
+                                fi
+
+                                cat > /usr/bin/unpigz <<'EOF'
+                            #!/usr/bin/env sh
+                            # jarvis gzip wrapper: Docker layer extraction is more reliable here without pigz.
+                            exec /usr/bin/gzip "$@"
+                            EOF
+                                chmod +x /usr/bin/unpigz
+                            }
+
+                            echo "ANDROID: installing host packages"
+                            mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
+                            systemctl daemon-reload
+                            systemctl restart serial-getty@ttyS0.service || true
+                            disable_network_offload
+
+                            dpkg --configure -a || true
+                            apt-get -f install -y || true
+                            apt-get update -o Acquire::Retries=5
+                            apt-get install -y -o Acquire::Retries=5 linux-generic-hwe-22.04 || apt-get install -y -o Acquire::Retries=5 linux-generic || true
+                            apt-get install -y -o Acquire::Retries=5 "linux-modules-extra-$(uname -r)" || true
+                            apt-get install -y -o Acquire::Retries=5 qemu-guest-agent docker.io git python3 python3-venv python3-pip lzip curl ca-certificates sqlite3 jq make g++ ethtool
+                            apt-get install -y -o Acquire::Retries=5 adb || apt-get install -y -o Acquire::Retries=5 android-tools-adb
+                            disable_network_offload
+                            cat > /usr/local/sbin/jarvis-disable-net-offload.sh <<'EOF'
+                            #!/usr/bin/env bash
+                            set -euo pipefail
+                            iface="$(ip route get 1.1.1.1 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -n 1)"
+                            if [ -n "$iface" ] && command -v ethtool >/dev/null 2>&1; then
+                                ethtool -K "$iface" tso off gso off gro off tx off sg off rx-gro-hw off || true
+                            fi
+                            EOF
+                            chmod +x /usr/local/sbin/jarvis-disable-net-offload.sh
+                            cat > /etc/systemd/system/jarvis-network-offload.service <<'EOF'
+                            [Unit]
+                            Description=Disable risky network offload features
+                            After=network-online.target
+                            Wants=network-online.target
+
+                            [Service]
+                            Type=oneshot
+                            ExecStart=/usr/local/sbin/jarvis-disable-net-offload.sh
+                            RemainAfterExit=yes
+
+                            [Install]
+                            WantedBy=multi-user.target
+                            EOF
+                            mkdir -p /etc/docker
+                            cat > /etc/docker/daemon.json <<'EOF'
+                            {
+                              "max-concurrent-downloads": 1,
+                              "max-concurrent-uploads": 1
+                            }
+                            EOF
+                            systemctl daemon-reload
+                            systemctl enable --now jarvis-network-offload.service || true
+                            install_gzip_unpigz_wrapper
+                            systemctl enable --now qemu-guest-agent || true
+                            systemctl enable --now docker
+                            systemctl restart docker
+
+                            echo "ANDROID: loading binder modules"
+                            printf '%s\n' 'options binder_linux devices=binder,hwbinder,vndbinder' > /etc/modprobe.d/redroid.conf
+                            printf '%s\n' binder_linux > /etc/modules-load.d/redroid.conf
+                            if ! modprobe binder_linux devices="binder,hwbinder,vndbinder"; then
+                                if [ ! -f "$STATE_DIR/rebooted-for-binder" ]; then
+                                    echo "ANDROID: binder_linux is unavailable on the running kernel; rebooting once after kernel package install"
+                                    touch "$STATE_DIR/rebooted-for-binder"
+                                    systemctl reboot
+                                    exit 0
+                                fi
+
+                                echo "ANDROID: binder_linux is still unavailable after reboot"
+                                uname -a
+                                modinfo binder_linux || true
+                                exit 11
+                            fi
+                            modprobe ashmem_linux || true
+
+                            mkdir -p "$REDROID_DIR/data" "$REDROID_DIR/empty-system-xbin" "$WEB_DIR"
+                            cat > "$WEB_DIR/patch-ws-scrcpy.js" <<'EOF'
+                            const fs = require('fs');
+
+                            const settings = {
+                                maxWidth: parseInt(process.env.ANDROID_WEB_STREAM_MAX_WIDTH || '1080', 10),
+                                maxHeight: parseInt(process.env.ANDROID_WEB_STREAM_MAX_HEIGHT || '1080', 10),
+                                bitrate: parseInt(process.env.ANDROID_WEB_STREAM_BITRATE || '12000000', 10),
+                                maxFps: parseInt(process.env.ANDROID_WEB_STREAM_MAX_FPS || '60', 10),
+                                iFrameInterval: parseInt(process.env.ANDROID_WEB_STREAM_IFRAME_INTERVAL || '1', 10),
+                            };
+
+                            function patchPreferredVideoSettings(file) {
+                                if (!fs.existsSync(file)) {
+                                    return 0;
+                                }
+
+                                const content = fs.readFileSync(file, 'utf8');
+                                const settingsBlock = /bitrate:\s*\d+,\s*\n\s*maxFps:\s*\d+,\s*\n\s*iFrameInterval:\s*\d+,\s*\n\s*bounds:\s*new Size\(\d+,\s*\d+\),/g;
+                                const matches = content.match(settingsBlock);
+                                if (!matches) {
+                                    throw new Error('No preferred video settings block found in ' + file);
+                                }
+
+                                const replacement =
+                                    'bitrate: ' + settings.bitrate + ',\n' +
+                                    '        maxFps: ' + settings.maxFps + ',\n' +
+                                    '        iFrameInterval: ' + settings.iFrameInterval + ',\n' +
+                                    '        bounds: new Size(' + settings.maxWidth + ', ' + settings.maxHeight + '),';
+
+                                fs.writeFileSync(file, content.replace(settingsBlock, replacement));
+                                return matches.length;
+                            }
+
+                            function patchMoreBoxDefault(file) {
+                                const content = fs.readFileSync(file, 'utf8');
+                                const defaultSizeBlock = /private static defaultSize = new Size\(\d+,\s*\d+\);/;
+                                if (!defaultSizeBlock.test(content)) {
+                                    throw new Error('No default size block found in ' + file);
+                                }
+
+                                fs.writeFileSync(
+                                    file,
+                                    content.replace(
+                                        defaultSizeBlock,
+                                        'private static defaultSize = new Size(' + settings.maxWidth + ', ' + settings.maxHeight + ');',
+                                    ),
+                                );
+                            }
+
+                            const playerFiles = [
+                                '/ws-scrcpy/src/app/player/BasePlayer.ts',
+                                '/ws-scrcpy/src/app/player/BroadwayPlayer.ts',
+                                '/ws-scrcpy/src/app/player/MsePlayer.ts',
+                                '/ws-scrcpy/src/app/player/MsePlayerForQVHack.ts',
+                                '/ws-scrcpy/src/app/player/TinyH264Player.ts',
+                                '/ws-scrcpy/src/app/player/WebCodecsPlayer.ts',
+                            ];
+
+                            const patched = playerFiles.reduce((total, file) => total + patchPreferredVideoSettings(file), 0);
+                            patchMoreBoxDefault('/ws-scrcpy/src/app/googDevice/toolbox/GoogMoreBox.ts');
+
+                            if (!patched) {
+                                throw new Error('No ws-scrcpy player defaults were patched');
+                            }
+
+                            console.log('Patched ws-scrcpy stream defaults: ' + JSON.stringify(settings));
+                            EOF
+                            docker network inspect android >/dev/null 2>&1 || docker network create android
+
+                            if ! docker image inspect "$REDROID_IMAGE" >/dev/null 2>&1; then
+                                echo "ANDROID: pulling $REDROID_IMAGE"
+                                docker pull "$REDROID_IMAGE"
+                            fi
+
+                            if ! docker image inspect "$WS_SCRCPY_IMAGE" >/dev/null 2>&1; then
+                                echo "ANDROID: pulling $WS_SCRCPY_IMAGE"
+                                docker pull "$WS_SCRCPY_IMAGE"
+                            fi
+
+                            echo "ANDROID: writing redroid launcher"
+                            cat > /usr/local/sbin/start-redroid.sh <<EOF
+                            #!/usr/bin/env bash
+                            set -euo pipefail
+                            exec /usr/bin/docker run \\
+                              --name redroid \\
+                              --privileged \\
+                              --memory-swappiness=0 \\
+                              --network android \\
+                              -p 127.0.0.1:5555:5555 \\
+                              -v /opt/redroid/data:/data \\
+                              -v /opt/redroid/empty-system-xbin:/system/xbin:ro \\
+                              $REDROID_IMAGE \\
+                              androidboot.use_memfd=1 \\
+                              androidboot.redroid_width=1080 \\
+                              androidboot.redroid_height=1920 \\
+                              androidboot.redroid_dpi=420 \\
+                              androidboot.redroid_fps=$WEB_STREAM_MAX_FPS \\
+                              androidboot.redroid_gpu_mode=guest \\
+                              ro.secure=0 \\
+                              ro.adb.secure=0 \\
+                              ro.debuggable=1 \\
+                              service.adb.tcp.port=5555 \\
+                              ro.product.cpu.abilist=x86_64,arm64-v8a,x86,armeabi-v7a,armeabi \\
+                              ro.product.cpu.abilist64=x86_64,arm64-v8a \\
+                              ro.product.cpu.abilist32=x86,armeabi-v7a,armeabi \\
+                              ro.dalvik.vm.isa.arm=x86 \\
+                              ro.dalvik.vm.isa.arm64=x86_64 \\
+                              ro.enable.native.bridge.exec=1 \\
+                              ro.vendor.enable.native.bridge.exec=1 \\
+                              ro.vendor.enable.native.bridge.exec64=1 \\
+                              ro.dalvik.vm.native.bridge=libndk_translation.so \\
+                              ro.ndk_translation.version=0.2.3
+                            EOF
+                            chmod +x /usr/local/sbin/start-redroid.sh
+
+                            echo "ANDROID: writing systemd services"
+                            cat > /etc/systemd/system/redroid.service <<EOF
+                            [Unit]
+                            Description=ReDroid Android container
+                            Requires=docker.service
+                            After=docker.service
+
+                            [Service]
+                            Type=simple
+                            Restart=always
+                            RestartSec=10
+                            ExecStartPre=-/usr/bin/docker rm -f redroid
+                            ExecStart=/usr/local/sbin/start-redroid.sh
+                            ExecStop=/usr/bin/docker stop redroid
+
+                            [Install]
+                            WantedBy=multi-user.target
+                            EOF
+
+                            cat > /usr/local/sbin/start-android-web.sh <<EOF
+                            #!/usr/bin/env bash
+                            set -euo pipefail
+                            exec /usr/bin/docker run \\
+                              --name android-web \\
+                              --network android \\
+                              -p $WEB_PORT:8000 \\
+                              -e WS_SCRCPY_PATHNAME=/ \\
+                              -e ANDROID_WEB_STREAM_MAX_WIDTH=$WEB_STREAM_MAX_WIDTH \\
+                              -e ANDROID_WEB_STREAM_MAX_HEIGHT=$WEB_STREAM_MAX_HEIGHT \\
+                              -e ANDROID_WEB_STREAM_BITRATE=$WEB_STREAM_BITRATE \\
+                              -e ANDROID_WEB_STREAM_MAX_FPS=$WEB_STREAM_MAX_FPS \\
+                              -e ANDROID_WEB_STREAM_IFRAME_INTERVAL=$WEB_STREAM_IFRAME_INTERVAL \\
+                              -v $WEB_DIR/patch-ws-scrcpy.js:/opt/patch-ws-scrcpy.js:ro \\
+                              --entrypoint /bin/sh \\
+                              $WS_SCRCPY_IMAGE \\
+                              -c 'node /opt/patch-ws-scrcpy.js && npm run dist || exit 1; while true; do adb connect redroid:5555 >/dev/null 2>&1 || true; sleep 10; done & exec node dist/index.js'
+                            EOF
+                            chmod +x /usr/local/sbin/start-android-web.sh
+
+                            cat > /etc/systemd/system/android-web.service <<EOF
+                            [Unit]
+                            Description=Android browser gateway
+                            Requires=docker.service redroid.service
+                            After=docker.service redroid.service
+
+                            [Service]
+                            Type=simple
+                            Restart=always
+                            RestartSec=10
+                            ExecStartPre=-/usr/bin/docker rm -f android-web
+                            ExecStart=/usr/local/sbin/start-android-web.sh
+                            ExecStop=/usr/bin/docker stop android-web
+
+                            [Install]
+                            WantedBy=multi-user.target
+                            EOF
+
+                            cat > /usr/local/bin/android-status <<'EOF'
+                            #!/usr/bin/env bash
+                            set -euo pipefail
+                            docker ps --filter name=redroid --filter name=android-web
+                            docker exec android-web sh -lc 'adb connect redroid:5555 >/dev/null 2>&1 || true; adb devices -l'
+                            docker exec android-web sh -lc 'adb shell settings get secure android_id 2>/dev/null || true'
+                            EOF
+                            chmod +x /usr/local/bin/android-status
+
+                            systemctl daemon-reload
+                            systemctl enable --now redroid.service
+                            systemctl enable --now android-web.service
+
+                            echo "ANDROID: waiting for web gateway on port $WEB_PORT"
+                            for attempt in $(seq 1 120); do
+                                if curl -fsS "http://127.0.0.1:$WEB_PORT/" >/dev/null; then
+                                    android-status || true
+                                    echo "ANDROID: ready"
+                                    touch "$STATE_DIR/complete"
+                                    systemctl disable jarvis-android-install.service || true
+                                    exit 0
+                                fi
+                                sleep 5
+                            done
+
+                            systemctl status redroid.service --no-pager || true
+                            systemctl status android-web.service --no-pager || true
+                            docker ps -a || true
+                            exit 30
+
+                        - path: /etc/systemd/system/jarvis-android-install.service
+                          permissions: '0644'
+                          content: |
+                            [Unit]
+                            Description=Install and repair Jarvis Android stack
+                            After=network-online.target docker.service
+                            Wants=network-online.target
+
+                            [Service]
+                            Type=simple
+                            Restart=on-failure
+                            RestartSec=30
+                            ExecStart=/usr/local/sbin/jarvis-install-android.sh
+
+                            [Install]
+                            WantedBy=multi-user.target
+
+                      runcmd:
+                        - [systemctl, daemon-reload]
+                        - [systemctl, enable, --now, jarvis-android-install.service]
+
+            - name: '{{ instance.hostname | upper }}: Copy SSH key for cloud-init'
+              copy:
+                  dest: '{{ instance.ssh_key_file }}'
+                  content: '{{ instance.ssh_public_key }}'
+                  mode: '0600'
+              when: (instance.ssh_public_key | default('', true) | length) > 0
+
+            - name: '{{ instance.hostname | upper }}: Create VM shell'
+              command: >
+                  qm create {{ id }}
+                  --name {{ instance.hostname }}
+                  --memory {{ instance.memory }}
+                  --cores {{ instance.cores }}
+                  --cpu host
+                  --machine q35
+                  --bios ovmf
+                  --net0 virtio={{ instance.mac }},bridge={{ instance.bridge }},firewall=1
+                  --scsihw virtio-scsi-single
+                  --agent enabled=1
+                  --ostype l26
+                  --serial0 socket
+                  --vga serial0
+                  --onboot 1
+
+            - name: '{{ instance.hostname | upper }}: Import cloud image'
+              command: qm importdisk {{ id }} {{ instance.image_file }} {{ instance.storage }}
+
+            - name: '{{ instance.hostname | upper }}: Attach cloud image disk'
+              command: qm set {{ id }} --scsi0 {{ instance.storage }}:vm-{{ id }}-disk-0,discard=on,ssd=1
+
+            - name: '{{ instance.hostname | upper }}: Add EFI disk'
+              command: qm set {{ id }} --efidisk0 {{ instance.storage }}:1,efitype=4m,pre-enrolled-keys=0
+
+            - name: '{{ instance.hostname | upper }}: Resize VM disk'
+              command: qm resize {{ id }} scsi0 {{ instance.disk }}G
+
+            - name: '{{ instance.hostname | upper }}: Configure cloud-init'
+              command: >
+                  qm set {{ id }}
+                  --ide2 {{ instance.storage }}:cloudinit
+                  --boot order=scsi0
+                  --ciuser ubuntu
+                  --ipconfig0 ip={{ instance.ip }}/24,gw={{ instance.gateway }}
+                  --nameserver "{{ instance.dns_servers | join(' ') }}"
+                  {% if (instance.ssh_public_key | default('', true) | length) > 0 %}
+                  --sshkeys {{ instance.ssh_key_file }}
+                  {% endif %}
+                  --cicustom user={{ instance.cloudinit_storage }}:snippets/android-cloud-init.yml
+              no_log: true
+
+            - name: '{{ instance.hostname | upper }}: Regenerate cloud-init drive'
+              command: qm cloudinit update {{ id }}
+
+            - name: '{{ instance.hostname | upper }}: Start VM'
+              raw: |
+                  qm start {{ id }} 2>&1
+                  rc=$?
+                  if [ "$rc" -ne 0 ]; then
+                      echo "ANDROID_QM_START_FAILED rc=$rc"
+                      qm status {{ id }} 2>&1 || true
+                      qm config {{ id }} 2>&1 || true
+                      journalctl -n 120 --no-pager -u pvedaemon -u pveproxy -u qmeventd 2>&1 || true
+                  fi
+                  exit "$rc"
+              register: android_vm_start_create
+              changed_when: android_vm_start_create.rc == 0
+
+      - name: '{{ instance.hostname | upper }}: Ensure VM is running'
+        raw: |
+            qm start {{ id }} 2>&1
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+                qm status {{ id }} 2>&1 || true
+                qm config {{ id }} 2>&1 || true
+            fi
+            exit "$rc"
+        register: android_vm_start
+        failed_when: false
+        changed_when: android_vm_start.rc == 0
+        when: android_vm_exists and not android_web_ready
+
+      - name: '{{ instance.hostname | upper }}: Wait for Android web gateway'
+        block:
+            - name: '{{ instance.hostname | upper }}: Probe Android web gateway'
+              shell: |
+                  timeout 3 bash -lc 'cat < /dev/null > /dev/tcp/{{ instance.ip }}/{{ instance.port }}'
+              args:
+                  executable: /bin/bash
+              register: android_web_probe
+              failed_when: false
+              changed_when: false
+              retries: '{{ instance.web_wait_retries }}'
+              delay: '{{ instance.web_wait_delay }}'
+              until: android_web_probe.rc == 0
+        rescue:
+            - name: '{{ instance.hostname | upper }}: Collect gateway diagnostics'
+              shell: |
+                  echo "=== qm status ==="
+                  qm status {{ id }} || true
+                  echo
+                  echo "=== qm config ==="
+                  qm config {{ id }} || true
+                  echo
+                  echo "=== ping ==="
+                  ping -c 3 -W 2 {{ instance.ip }} || true
+                  echo
+                  echo "=== guest diagnostics ==="
+                  qm guest exec {{ id }} -- bash -lc '
+                    echo "--- cloud-init ---"
+                    cloud-init status --long || true
+                    echo "--- install log ---"
+                    tail -n 160 /var/log/jarvis-android-install.log || true
+                    echo "--- services ---"
+                    systemctl status jarvis-android-install redroid android-web cloud-final --no-pager || true
+                    echo "--- docker ---"
+                    docker ps -a || true
+                    echo "--- redroid logs ---"
+                    docker logs redroid --tail 80 || true
+                    echo "--- android-web logs ---"
+                    docker logs android-web --tail 80 || true
+                  ' || true
+              register: android_gateway_diagnostics
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Show gateway diagnostics'
+              debug:
+                  var: android_gateway_diagnostics.stdout_lines
+
+            - name: '{{ instance.hostname | upper }}: Fail when gateway is not ready'
+              fail:
+                  msg: 'Android web gateway did not open http://{{ instance.ip }}:{{ instance.port }}. Check diagnostics above.'
+        when: not android_web_ready
+
+      - name: '{{ instance.hostname | upper }}: Stage Pixelify Next release files'
+        shell: |
+            set -euo pipefail
+            script_b64="$(cat <<'EOF' | base64 -w0
+            #!/usr/bin/env bash
+            set -euo pipefail
+
+            PIXELIFY_REPO="{{ instance.pixelify.repo }}"
+            CACHE_DIR="{{ instance.pixelify.cache_dir }}"
+            ANDROID_DIR="{{ instance.pixelify.android_dir }}"
+            RELEASES_URL="https://api.github.com/repos/${PIXELIFY_REPO}/releases"
+            RELEASE_JSON="${CACHE_DIR}/latest-release.json"
+            MARKER_FILE="${CACHE_DIR}/staged-release.txt"
+
+            mkdir -p "$CACHE_DIR"
+
+            echo "PIXELIFY: fetching latest release metadata for ${PIXELIFY_REPO}"
+            curl -fsSL \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "$RELEASES_URL" \
+                -o "$RELEASE_JSON"
+
+            release_data="$(jq 'map(select(.draft | not)) | sort_by(.published_at // .created_at) | reverse | .[0]' "$RELEASE_JSON")"
+            tag_name="$(printf '%s' "$release_data" | jq -r '.tag_name // empty')"
+            release_name="$(printf '%s' "$release_data" | jq -r '.name // .tag_name // empty')"
+            config_name="$(printf '%s' "$release_data" | jq -r '.assets[] | select(.name == "config.prop") | .name' | head -n 1)"
+            config_url="$(printf '%s' "$release_data" | jq -r '.assets[] | select(.name == "config.prop") | .browser_download_url' | head -n 1)"
+            zip_name="$(printf '%s' "$release_data" | jq -r '.assets[] | select((.name | test("(?i)pixelify")) and (.name | test("(?i)no[-_]?vk")) and (.name | endswith(".zip"))) | .name' | head -n 1)"
+            zip_url="$(printf '%s' "$release_data" | jq -r '.assets[] | select((.name | test("(?i)pixelify")) and (.name | test("(?i)no[-_]?vk")) and (.name | endswith(".zip"))) | .browser_download_url' | head -n 1)"
+
+            if [ -z "$tag_name" ] || [ -z "$config_url" ] || [ -z "$zip_url" ]; then
+                echo "PIXELIFY: could not locate config.prop and no-VK zip in latest non-draft release"
+                printf '%s\n' "$release_data" | jq -r '.assets[].name?'
+                exit 42
+            fi
+
+            desired_marker="${tag_name}|${config_name}|${zip_name}"
+            config_file="${CACHE_DIR}/${config_name}"
+            zip_file="${CACHE_DIR}/${zip_name}"
+
+            if [ -f "$MARKER_FILE" ] && [ "$(cat "$MARKER_FILE")" = "$desired_marker" ] && [ -s "$config_file" ] && [ -s "$zip_file" ]; then
+                echo "PIXELIFY: ${release_name} already cached"
+                PIXELIFY_CHANGED=0
+            else
+                echo "PIXELIFY: downloading ${release_name}"
+                rm -f "${CACHE_DIR}/config.prop" "${CACHE_DIR}"/Pixelify*.zip "$config_file" "$zip_file"
+                curl -fL --retry 5 --retry-delay 3 -o "$config_file" "$config_url"
+                curl -fL --retry 5 --retry-delay 3 -o "$zip_file" "$zip_url"
+                printf '%s' "$desired_marker" > "$MARKER_FILE"
+                PIXELIFY_CHANGED=1
+            fi
+
+            echo "PIXELIFY: waiting for Android ADB"
+            adb disconnect 127.0.0.1:5555 >/dev/null 2>&1 || true
+            for attempt in $(seq 1 60); do
+                adb connect 127.0.0.1:5555 >/dev/null 2>&1 || true
+                if adb -s 127.0.0.1:5555 shell true >/dev/null 2>&1; then
+                    break
+                fi
+
+                if [ "$attempt" = 60 ]; then
+                    echo "PIXELIFY: Android ADB was not ready"
+                    exit 43
+                fi
+
+                sleep 3
+            done
+
+            android_marker="$(adb -s 127.0.0.1:5555 shell "cat '${ANDROID_DIR}/.jarvis-pixelify-release' 2>/dev/null" | tr -d '\r' || true)"
+            if [ "$android_marker" = "$desired_marker" ]; then
+                echo "PIXELIFY: ${release_name} already staged in Android"
+            else
+                echo "PIXELIFY: staging ${release_name} into ${ANDROID_DIR}"
+                adb -s 127.0.0.1:5555 shell "mkdir -p '${ANDROID_DIR}'"
+                adb -s 127.0.0.1:5555 push "$config_file" "${ANDROID_DIR}/config.prop" >/dev/null
+                adb -s 127.0.0.1:5555 push "$zip_file" "${ANDROID_DIR}/${zip_name}" >/dev/null
+                adb -s 127.0.0.1:5555 shell "printf '%s' '${desired_marker}' > '${ANDROID_DIR}/.jarvis-pixelify-release'"
+                PIXELIFY_CHANGED=1
+            fi
+
+            echo "PIXELIFY_RELEASE=${release_name}"
+            echo "PIXELIFY_CONFIG=${ANDROID_DIR}/config.prop"
+            echo "PIXELIFY_ZIP=${ANDROID_DIR}/${zip_name}"
+            echo "PIXELIFY_CHANGED=${PIXELIFY_CHANGED:-0}"
+            EOF
+            )"
+            qm guest exec {{ id }} -- bash -lc "printf '%s' '$script_b64' | base64 -d > /tmp/stage-pixelify-next.sh && bash /tmp/stage-pixelify-next.sh"
+        register: android_pixelify_stage
+        changed_when: "'PIXELIFY_CHANGED=1' in android_pixelify_stage.stdout"
+        when: instance.pixelify.enabled | bool
+
+      - name: '{{ instance.hostname | upper }}: Show Pixelify status'
+        debug:
+            msg: '{{ android_pixelify_stage.stdout_lines }}'
+        when: instance.pixelify.enabled | bool
+
+      - name: '{{ instance.hostname | upper }}: Show status'
+        debug:
+            msg:
+                - 'Android web: http://{{ instance.ip }}:{{ instance.port }}'
+                - 'Cloudflared route after Traefik refresh: https://android.{{ env.JARVIS_DOMAIN }}'
+                - 'Console login: root autologin on VM serial console'
+                - 'VM log: {{ "ssh ubuntu@" ~ instance.ip ~ " sudo tail -f /var/log/jarvis-android-install.log" if (instance.ssh_public_key | default("", true) | length) > 0 else "open VM " ~ id ~ " console and inspect /var/log/jarvis-android-install.log" }}'
+                - 'Android status: {{ "ssh ubuntu@" ~ instance.ip ~ " sudo android-status" if (instance.ssh_public_key | default("", true) | length) > 0 else "open VM " ~ id ~ " console and run android-status" }}'
+
+  rescue:
+      - debug:
+            msg: '{{ instance.hostname }} VM ({{ id }}) failed to deploy'
+  become: true
