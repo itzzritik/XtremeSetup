@@ -57,7 +57,7 @@
         include_tasks: 'tasks/services/{{ service }}.yml'
         loop:
             - cloudflared
-            - code-server
+            - vscode-web
             - cloudcli
             - claude-telegram
             - hermes

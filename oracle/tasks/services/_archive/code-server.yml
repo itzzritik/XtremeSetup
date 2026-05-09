@@ -3,6 +3,21 @@
       app_name: code-server
       config:
           root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+      nerd_font:
+          family: 'FantasqueSansM Nerd Font Mono'
+          file: 'FantasqueSansMNerdFontMono-Regular.ttf'
+          url: 'https://github.com/ryanoasis/nerd-fonts/releases/latest/download/FantasqueSansMono.zip'
+      vscode_user_dir: >-
+          {{
+          {
+            'Darwin':  lookup('env', 'HOME')    ~ '/Library/Application Support/Code/User',
+            'Linux':   lookup('env', 'HOME')    ~ '/.config/Code/User',
+            'Windows': lookup('env', 'APPDATA') ~ '/Code/User'
+          }[hostvars['local']['ansible_system']]
+          }}
+      vscode_user_files:
+          - settings.json
+          - keybindings.json
   block:
       - name: '{{ app_name | upper }}: Health Check'
         uri:
@@ -94,4 +109,47 @@
         become: true
         become_user: ubuntu
         ignore_errors: true
+
+      - name: '{{ app_name | upper }}: Fetch Nerd Font (controller)'
+        delegate_to: localhost
+        run_once: true
+        become: false
+        unarchive:
+            src: '{{ nerd_font.url }}'
+            dest: /tmp
+            remote_src: true
+            include: ['{{ nerd_font.file }}']
+            creates: '/tmp/{{ nerd_font.file }}'
+
+      - name: '{{ app_name | upper }}: Inject Nerd Font into workbench'
+        blockinfile:
+            path: /usr/lib/code-server/lib/vscode/out/vs/code/browser/workbench/workbench.html
+            insertbefore: '</head>'
+            marker: '<!-- {mark} ANSIBLE NERD FONT -->'
+            block: |
+              <style>
+              @font-face {
+                font-family: '{{ nerd_font.family }}';
+                src: url(data:font/ttf;base64,{{ lookup('file', '/tmp/' + nerd_font.file) | b64encode }}) format('truetype');
+              }
+              </style>
+
+      - name: '{{ app_name | upper }}: Ensure User Config Directory'
+        file:
+            path: '{{ config.root }}/data/User'
+            state: directory
+            mode: '0755'
+            owner: ubuntu
+            group: ubuntu
+
+      - name: '{{ app_name | upper }}: Sync User Config from Editor'
+        copy:
+            src: '{{ vscode_user_dir }}/{{ item }}'
+            dest: '{{ config.root }}/data/User/{{ item }}'
+            mode: '0644'
+            owner: ubuntu
+            group: ubuntu
+        loop: '{{ vscode_user_files }}'
+        loop_control:
+            label: '{{ item }}'
 

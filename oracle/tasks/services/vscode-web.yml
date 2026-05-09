@@ -1,0 +1,162 @@
+---
+- vars:
+      app_name: vscode-web
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+      server:
+          binary: /usr/local/lib/vscode-server/bin/code-server
+          product_json: /usr/local/lib/vscode-server/product.json
+          server_main: /usr/local/lib/vscode-server/out/server-main.js
+          workbench: /usr/local/lib/vscode-server/out/vs/code/browser/workbench/workbench.html
+          workbench_js: /usr/local/lib/vscode-server/out/vs/code/browser/workbench/workbench.js
+          extensions_dir: /usr/local/lib/vscode-server/extensions
+      sync_proxy_url: 'https://{{ env.JARVIS_SERVICES[app_name].subdomain }}.{{ env.RITIK_DOMAIN }}/_sync'
+      missing_ext_browser_files:
+          - github-authentication/dist/browser/extension.js
+          - emmet/dist/browser/emmetBrowserMain.js
+          - merge-conflict/dist/browser/mergeConflictMain.js
+          - git-base/dist/browser/extension.js
+      nerd_font:
+          family: 'FantasqueSansM Nerd Font Mono'
+          file: 'FantasqueSansMNerdFontMono-Regular.ttf'
+          url: 'https://github.com/ryanoasis/nerd-fonts/releases/latest/download/FantasqueSansMono.zip'
+  block:
+      - name: '{{ app_name | upper }}: Detect Architecture'
+        command: uname -m
+        register: arch
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Install Server'
+        unarchive:
+            src: 'https://update.code.visualstudio.com/latest/server-linux-{{ "arm64" if arch.stdout == "aarch64" else "x64" }}-web/stable'
+            dest: /usr/local/lib
+            remote_src: true
+            extra_opts:
+                - '--transform'
+                - 's,^vscode-server-linux-[^/]*-web,vscode-server,'
+            owner: root
+            group: root
+            creates: '{{ server.binary }}'
+
+      - name: '{{ app_name | upper }}: Read Server Commit ID'
+        command: jq -r .commit '{{ server.product_json }}'
+        register: vscode_commit
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Patch Server Source for Settings Sync Persistence'
+        replace:
+            path: '{{ item.path }}'
+            regexp: '{{ item.regexp }}'
+            replace: '{{ item.replace }}'
+        loop:
+            - path: '{{ server.product_json }}'
+              regexp: 'https://vscode-sync\.trafficmanager\.net/?'
+              replace: '{{ sync_proxy_url }}/'
+            - path: '{{ server.server_main }}'
+              regexp: 'https://vscode-sync\.trafficmanager\.net'
+              replace: '{{ sync_proxy_url }}'
+            - path: '{{ server.workbench_js }}'
+              regexp: 'https://vscode-sync\.trafficmanager\.net'
+              replace: '{{ sync_proxy_url }}'
+            - path: '{{ server.workbench_js }}'
+              regexp: 'secretStorageProvider:e\.remoteAuthority&&!t\?void 0:new YHi\(o\)'
+              replace: 'secretStorageProvider:new YHi(o)'
+            - path: '{{ server.workbench_js }}'
+              regexp: 't&&e9t\.supported\(\)\?new e9t\(t\):new QHi'
+              replace: 'false?void 0:new QHi'
+        loop_control:
+            label: '{{ item.path | basename }}'
+        register: cs_patches
+
+      - name: '{{ app_name | upper }}: Install Missing Browser Extension Bundles'
+        shell: |
+            set -eo pipefail
+            mkdir -p "$(dirname '{{ server.extensions_dir }}/{{ item }}')"
+            curl -sfL "https://main.vscode-cdn.net/stable/{{ vscode_commit.stdout }}/extensions/{{ item }}" -o '{{ server.extensions_dir }}/{{ item }}'
+        args:
+            creates: '{{ server.extensions_dir }}/{{ item }}'
+        loop: '{{ missing_ext_browser_files }}'
+        loop_control:
+            label: '{{ item }}'
+
+      - name: '{{ app_name | upper }}: Configure Directories'
+        file:
+            path: '{{ item }}'
+            state: directory
+            mode: '0755'
+            owner: ubuntu
+            group: ubuntu
+        loop:
+            - '{{ config.root }}'
+            - '{{ config.root }}/fonts'
+            - '{{ config.root }}/data/User'
+
+      - name: '{{ app_name | upper }}: Seed User Settings'
+        copy:
+            dest: '{{ config.root }}/data/User/settings.json'
+            content: |
+                {
+                  "terminal.integrated.fontFamily": "'{{ nerd_font.family }}', Menlo, Monaco, monospace",
+                  "editor.fontFamily": "'{{ nerd_font.family }}', Menlo, Monaco, monospace"
+                }
+            mode: '0644'
+            owner: ubuntu
+            group: ubuntu
+            force: false
+
+      - name: '{{ app_name | upper }}: Configure Systemd Unit'
+        copy:
+            dest: /etc/systemd/system/vscode-web.service
+            content: |
+                [Unit]
+                Description=VS Code Web
+                After=network.target
+
+                [Service]
+                Type=simple
+                User=ubuntu
+                Group=ubuntu
+                Environment=HOME=/home/ubuntu
+                ExecStart={{ server.binary }} --host 127.0.0.1 --port {{ env.JARVIS_SERVICES[app_name].port }} --without-connection-token --accept-server-license-terms --server-data-dir {{ config.root }}
+                Restart=on-failure
+                RestartSec=10
+                MemoryMax=6G
+
+                [Install]
+                WantedBy=multi-user.target
+            mode: '0644'
+        register: cs_unit
+
+      - name: '{{ app_name | upper }}: Daemon Reload'
+        systemd:
+            daemon_reload: true
+        when: cs_unit is changed
+
+      - name: '{{ app_name | upper }}: Enable and Start Service'
+        systemd:
+            name: vscode-web
+            state: "{{ 'restarted' if (cs_unit is changed or cs_patches is changed) else 'started' }}"
+            enabled: true
+
+      - name: '{{ app_name | upper }}: Install Nerd Font'
+        unarchive:
+            src: '{{ nerd_font.url }}'
+            dest: '{{ config.root }}/fonts'
+            remote_src: true
+            include: ['{{ nerd_font.file }}']
+            creates: '{{ config.root }}/fonts/{{ nerd_font.file }}'
+            owner: ubuntu
+            group: ubuntu
+
+      - name: '{{ app_name | upper }}: Inject Nerd Font into workbench'
+        blockinfile:
+            path: '{{ server.workbench }}'
+            insertbefore: '</head>'
+            marker: '<!-- {mark} ANSIBLE NERD FONT -->'
+            block: |
+              <style>
+              @font-face {
+                font-family: '{{ nerd_font.family }}';
+                src: url('/_fonts/{{ nerd_font.file }}') format('truetype');
+              }
+              </style>

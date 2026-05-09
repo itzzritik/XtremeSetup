@@ -17,7 +17,25 @@
                 :80 {
                     @codeserver host code.{{ env.RITIK_DOMAIN }}
                     handle @codeserver {
-                        reverse_proxy localhost:{{ env.JARVIS_SERVICES['code-server'].port }}
+                        handle_path /_fonts/* {
+                            root * /srv/vscode-fonts
+                            file_server
+                            header Cache-Control "public, max-age=31536000, immutable"
+                        }
+                        handle_path /_sync/* {
+                            reverse_proxy https://vscode-sync.trafficmanager.net {
+                                header_up Host vscode-sync.trafficmanager.net
+                                header_up -X-Forwarded-Host
+                                transport http {
+                                    tls
+                                    tls_server_name vscode-sync.trafficmanager.net
+                                }
+                            }
+                        }
+                        header Cache-Control "no-store, must-revalidate"
+                        header CDN-Cache-Control "no-store"
+                        header Cloudflare-CDN-Cache-Control "no-store"
+                        reverse_proxy localhost:{{ env.JARVIS_SERVICES['vscode-web'].port }}
                     }
 
                     @cloudcli host vibe.{{ env.RITIK_DOMAIN }}
@@ -57,6 +75,7 @@
                     volumes:
                       - {{ config.root }}/Caddyfile:/etc/caddy/Caddyfile:ro
                       - {{ config.root }}/data:/data
+                      - {{ env.JARVIS_CONFIGS_DIR }}/vscode-web/fonts:/srv/vscode-fonts:ro
                     healthcheck:
                       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
                       interval: 30s

@@ -1,6 +1,6 @@
 JARVIS_SERVICES:
-    code-server:
-        name: Code Server
+    vscode-web:
+        name: VS Code Web
         subdomain: code
         port: '8080'
     cloudcli:
