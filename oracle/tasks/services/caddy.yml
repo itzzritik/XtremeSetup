@@ -4,11 +4,32 @@
       config:
           root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
   block:
+      - name: '{{ app_name | upper }}: Add APT Repository'
+        shell: |
+            install -m 0755 -d /usr/share/keyrings
+            curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --batch --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+            curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt -o /etc/apt/sources.list.d/caddy-stable.list
+            chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg /etc/apt/sources.list.d/caddy-stable.list
+            apt-get update
+        args:
+            creates: /etc/apt/sources.list.d/caddy-stable.list
+
+      - name: '{{ app_name | upper }}: Install Package'
+        apt:
+            name: caddy
+            state: present
+        register: caddy_package
+
       - name: '{{ app_name | upper }}: Configure Directories'
         file:
-            path: '{{ config.root }}/data'
+            path: '{{ item }}'
             state: directory
             mode: '0755'
+            owner: ubuntu
+            group: ubuntu
+        loop:
+            - '{{ config.root }}'
+            - '{{ config.root }}/data'
 
       - name: '{{ app_name | upper }}: Create Caddyfile'
         copy:
@@ -18,7 +39,7 @@
                     @codeserver host code.{{ env.RITIK_DOMAIN }}
                     handle @codeserver {
                         handle_path /_fonts/* {
-                            root * /srv/vscode-fonts
+                            root * {{ env.JARVIS_CONFIGS_DIR }}/vscode-web/fonts
                             file_server
                             header Cache-Control "public, max-age=31536000, immutable"
                         }
@@ -61,43 +82,51 @@
                     }
                 }
             mode: '0644'
+            owner: ubuntu
+            group: ubuntu
+        register: caddy_config
 
-      - name: '{{ app_name | upper }}: Create docker-compose.yml'
-        copy:
-            dest: '{{ config.root }}/docker-compose.yml'
-            content: |-
-                services:
-                  {{ app_name }}:
-                    container_name: {{ app_name }}
-                    image: caddy:2-alpine
-                    network_mode: host
-                    restart: unless-stopped
-                    volumes:
-                      - {{ config.root }}/Caddyfile:/etc/caddy/Caddyfile:ro
-                      - {{ config.root }}/data:/data
-                      - {{ env.JARVIS_CONFIGS_DIR }}/vscode-web/fonts:/srv/vscode-fonts:ro
-                    healthcheck:
-                      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
-                      interval: 30s
-                      timeout: 10s
-                      retries: 3
-                      start_period: 10s
-                    logging:
-                      driver: "json-file"
-                      options:
-                        max-size: "10m"
-                        max-file: "3"
-            mode: '0644'
-
-      - name: '{{ app_name | upper }}: Stop and Remove Container'
-        command: docker compose down
-        args:
-            chdir: '{{ config.root }}'
-        failed_when: false
+      - name: '{{ app_name | upper }}: Validate Config'
+        command: 'caddy validate --config {{ config.root }}/Caddyfile --adapter caddyfile'
         changed_when: false
 
-      - name: '{{ app_name | upper }}: Deploy Container'
-        command: docker compose up -d
-        args:
-            chdir: '{{ config.root }}'
-        changed_when: true
+      - name: '{{ app_name | upper }}: Create Systemd Service'
+        copy:
+            dest: '/etc/systemd/system/{{ app_name }}.service'
+            content: |
+                [Unit]
+                Description=Caddy
+                Documentation=https://caddyserver.com/docs/
+                After=network-online.target
+                Wants=network-online.target
+
+                [Service]
+                Type=notify
+                User=ubuntu
+                Group=ubuntu
+                Environment=XDG_CONFIG_HOME={{ config.root }}/config
+                Environment=XDG_DATA_HOME={{ config.root }}/data
+                ExecStart=/usr/bin/caddy run --environ --config {{ config.root }}/Caddyfile --adapter caddyfile
+                ExecReload=/usr/bin/caddy reload --config {{ config.root }}/Caddyfile --adapter caddyfile --force
+                TimeoutStopSec=5s
+                LimitNOFILE=1048576
+                Restart=on-failure
+                RestartSec=5s
+                AmbientCapabilities=CAP_NET_BIND_SERVICE
+                CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+                NoNewPrivileges=true
+
+                [Install]
+                WantedBy=multi-user.target
+            mode: '0644'
+        register: caddy_service
+
+      - name: '{{ app_name | upper }}: Daemon Reload'
+        systemd: { daemon_reload: true }
+        when: caddy_service is changed
+
+      - name: '{{ app_name | upper }}: Enable and Start Service'
+        systemd:
+            name: '{{ app_name }}'
+            state: "{{ 'restarted' if (caddy_service is changed or caddy_config is changed or caddy_package is changed) else 'started' }}"
+            enabled: true

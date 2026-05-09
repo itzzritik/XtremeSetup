@@ -45,7 +45,6 @@
             - update
             - networking
             - sysctl
-            - docker
             - tools
             - hardening
             - git
@@ -62,5 +61,6 @@
             - hermes
             - opencode
             - caddy
+            - docker
         loop_control:
             loop_var: service

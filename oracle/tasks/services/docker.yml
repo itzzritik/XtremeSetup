@@ -2,14 +2,7 @@
 - vars:
       app_name: docker
   block:
-      - name: '{{ app_name | upper }}: Check if Docker is Installed'
-        command: docker --version
-        register: docker_check
-        failed_when: false
-        changed_when: false
-
-      - name: '{{ app_name | upper }}: Add Docker APT Repository'
-        when: docker_check.rc != 0
+      - name: '{{ app_name | upper }}: Add APT Repository'
         shell: |
             install -m 0755 -d /etc/apt/keyrings
             curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -19,7 +12,7 @@
         args:
             creates: /etc/apt/sources.list.d/docker.list
 
-      - name: '{{ app_name | upper }}: Install Docker Engine'
+      - name: '{{ app_name | upper }}: Install Engine'
         apt:
             name:
                 - docker-ce
@@ -28,9 +21,8 @@
                 - docker-buildx-plugin
                 - docker-compose-plugin
             state: present
-        when: docker_check.rc != 0
 
-      - name: '{{ app_name | upper }}: Enable and Start Docker'
+      - name: '{{ app_name | upper }}: Enable and Start Service'
         systemd:
             name: docker
             enabled: yes

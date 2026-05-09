@@ -4,42 +4,64 @@
       config:
           root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
   block:
-      - name: '{{ app_name | upper }}: Configure Directories'
+      - name: '{{ app_name | upper }}: Add APT Repository'
+        shell: |
+            install -m 0755 -d /usr/share/keyrings
+            curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | gpg --batch --yes --dearmor -o /usr/share/keyrings/cloudflare-main.gpg
+            echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" > /etc/apt/sources.list.d/cloudflared.list
+            apt-get update
+        args:
+            creates: /etc/apt/sources.list.d/cloudflared.list
+
+      - name: '{{ app_name | upper }}: Install Package'
+        apt:
+            name: cloudflared
+            state: present
+        register: cf_package
+
+      - name: '{{ app_name | upper }}: Configure Directory'
         file:
             path: '{{ config.root }}'
             state: directory
             mode: '0755'
 
-      - name: '{{ app_name | upper }}: Create docker-compose.yml'
+      - name: '{{ app_name | upper }}: Write Token EnvironmentFile'
         copy:
-            dest: '{{ config.root }}/docker-compose.yml'
-            content: |-
-                services:
-                  {{ app_name }}:
-                    container_name: {{ app_name }}
-                    image: cloudflare/cloudflared:latest
-                    network_mode: host
-                    restart: unless-stopped
-                    command: tunnel run --token {{ env.RITIK_CF_TUNNEL_TOKEN }}
-                    logging:
-                      driver: "json-file"
-                      options:
-                        max-size: "10m"
-                        max-file: "3"
+            dest: '{{ config.root }}/env'
+            content: 'TUNNEL_TOKEN={{ env.RITIK_CF_TUNNEL_TOKEN }}'
+            mode: '0600'
+            owner: root
+            group: root
+        no_log: true
+        register: cf_env
+
+      - name: '{{ app_name | upper }}: Create Systemd Service'
+        copy:
+            dest: '/etc/systemd/system/{{ app_name }}.service'
+            content: |
+                [Unit]
+                Description=Cloudflare Tunnel
+                After=network-online.target
+                Wants=network-online.target
+
+                [Service]
+                Type=notify
+                EnvironmentFile={{ config.root }}/env
+                ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run --token ${TUNNEL_TOKEN}
+                Restart=on-failure
+                RestartSec=5s
+
+                [Install]
+                WantedBy=multi-user.target
             mode: '0644'
-        no_log: true
+        register: cf_service
 
-      - name: '{{ app_name | upper }}: Stop and Remove Container'
-        command: docker compose down
-        args:
-            chdir: '{{ config.root }}'
-        failed_when: false
-        changed_when: false
-        no_log: true
+      - name: '{{ app_name | upper }}: Daemon Reload'
+        systemd: { daemon_reload: true }
+        when: cf_service is changed
 
-      - name: '{{ app_name | upper }}: Deploy Container'
-        command: docker compose up -d
-        args:
-            chdir: '{{ config.root }}'
-        changed_when: true
-        no_log: true
+      - name: '{{ app_name | upper }}: Enable and Start Service'
+        systemd:
+            name: '{{ app_name }}'
+            state: "{{ 'restarted' if (cf_service is changed or cf_env is changed or cf_package is changed) else 'started' }}"
+            enabled: true
