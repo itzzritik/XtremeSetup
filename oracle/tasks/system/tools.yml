@@ -189,6 +189,10 @@
             - gh
             - fzf
             - eza
+            - just
+            - go
+            - golangci-lint
+            - doppler
         loop_control:
             loop_var: brew_item
         become: true
@@ -199,9 +203,8 @@
             path: /home/ubuntu/.zshrc
             marker: '# {mark} JARVIS'
             block: |
-                export EDITOR="code-server --wait"
+                export EDITOR="code --wait"
                 alias cc="claude"
-                alias code="code-server"
                 alias hre="sudo systemctl restart hermes"
                 alias t="tmux new-session -A -s main"
                 alias ls="eza --icons"
