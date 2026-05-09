@@ -1,0 +1,175 @@
+---
+- vars:
+      app_name: aionui
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+      src: '/home/ubuntu/.{{ app_name }}/src'
+      repo: 'https://github.com/iOfficeAI/AionUi.git'
+      version: 'v1.9.25'
+      bun: '/home/ubuntu/.bun/bin/bun'
+  block:
+      - name: '{{ app_name | upper }}: Configure Directory'
+        file:
+            path: '{{ config.root }}'
+            state: directory
+            mode: '0755'
+            owner: ubuntu
+            group: ubuntu
+
+      - name: '{{ app_name | upper }}: Find Node Bin Path'
+        shell: 'export NVM_DIR=/home/ubuntu/.nvm && source /home/ubuntu/.nvm/nvm.sh >/dev/null && dirname $(which node)'
+        args:
+            executable: /bin/bash
+        register: node_bin
+        changed_when: false
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Build & Patch'
+        become: true
+        become_user: ubuntu
+        environment:
+            PATH: '/home/ubuntu/.bun/bin:{{ node_bin.stdout }}:/usr/local/bin:/usr/bin:/bin'
+        block:
+            - name: '{{ app_name | upper }}: Detect Current Tag'
+              command: 'git -C {{ src }} describe --tags --exact-match HEAD'
+              register: current_tag
+              failed_when: false
+              changed_when: false
+
+            - name: '{{ app_name | upper }}: Clone Source'
+              git:
+                  repo: '{{ repo }}'
+                  dest: '{{ src }}'
+                  version: '{{ version }}'
+                  depth: 1
+                  force: true
+              when: current_tag.stdout != version
+              register: src_change
+
+            - name: '{{ app_name | upper }}: Patch Auth (CF Access fronts this)'
+              blockinfile:
+                  path: '{{ src }}/{{ item.path }}'
+                  marker: '    // {mark} {{ item.marker }}'
+                  insertbefore: '{{ item.insertbefore | default(omit) }}'
+                  insertafter: '{{ item.insertafter | default(omit) }}'
+                  block: '{{ item.block }}'
+              loop:
+                  - path: 'src/process/webserver/auth/middleware/TokenMiddleware.ts'
+                    marker: 'AION_HTTP_AUTH_BYPASS'
+                    insertbefore: 'const token = TokenExtractor\.extract\(req\);'
+                    block: 'req.user = { id: "admin", username: "admin" } as any; return next();'
+                  - path: 'src/process/webserver/auth/middleware/TokenMiddleware.ts'
+                    marker: 'AION_WS_TOKEN_BYPASS'
+                    insertafter: 'async validateWebSocketToken\(token: string \| null\): Promise<boolean> \{'
+                    block: 'return true;'
+                  - path: 'src/process/webserver/websocket/WebSocketManager.ts'
+                    marker: 'AION_WS_CONN_BYPASS'
+                    insertafter: 'private async validateConnection\(ws: WebSocket, token: string \| null\): Promise<boolean> \{'
+                    block: 'return true;'
+              loop_control:
+                  label: '{{ item.marker }}'
+              register: auth_patch
+
+            - name: '{{ app_name | upper }}: Install Dependencies'
+              command: '{{ bun }} install --ignore-scripts --frozen-lockfile'
+              args:
+                  chdir: '{{ src }}'
+              when: src_change is changed or auth_patch is changed
+
+            - name: '{{ app_name | upper }}: Build Renderer'
+              command: '{{ bun }} run build:renderer:web'
+              args:
+                  chdir: '{{ src }}'
+              when: src_change is changed or auth_patch is changed
+
+            - name: '{{ app_name | upper }}: Build Server'
+              command: '{{ node_bin.stdout }}/node scripts/build-server.mjs'
+              args:
+                  chdir: '{{ src }}'
+              when: src_change is changed or auth_patch is changed
+              register: build_server
+
+      - name: '{{ app_name | upper }}: Configure Systemd Unit'
+        copy:
+            dest: '/etc/systemd/system/{{ app_name }}.service'
+            content: |
+                [Unit]
+                Description=AionUi WebUI
+                After=network.target
+
+                [Service]
+                Type=simple
+                User=ubuntu
+                Group=ubuntu
+                WorkingDirectory={{ src }}
+                Environment=HOME=/home/ubuntu
+                Environment=PATH=/home/ubuntu/.bun/bin:{{ node_bin.stdout }}:/usr/local/bin:/usr/bin:/bin
+                Environment=PORT={{ env.JARVIS_SERVICES[app_name].port }}
+                Environment=ALLOW_REMOTE=true
+                Environment=AIONUI_HOST=127.0.0.1
+                Environment=DATA_DIR={{ config.root }}
+                Environment=NODE_ENV=production
+                ExecStart={{ bun }} dist-server/server.mjs
+                Restart=always
+                RestartSec=10
+                MemoryMax=4G
+
+                [Install]
+                WantedBy=multi-user.target
+            mode: '0644'
+        register: unit_change
+
+      - name: '{{ app_name | upper }}: Daemon Reload'
+        systemd: { daemon_reload: true }
+        when: unit_change is changed
+
+      - name: '{{ app_name | upper }}: Enable and Start Service'
+        systemd:
+            name: '{{ app_name }}'
+            state: "{{ 'restarted' if (unit_change is changed or build_server is changed) else 'started' }}"
+            enabled: true
+
+      - name: '{{ app_name | upper }}: Wait for Service Port'
+        wait_for:
+            port: '{{ env.JARVIS_SERVICES[app_name].port }}'
+            host: 127.0.0.1
+            timeout: 60
+
+      - name: '{{ app_name | upper }}: Wait for SQLite Schema Init'
+        wait_for:
+            path: '{{ config.root }}/{{ app_name }}/{{ app_name }}.db'
+            timeout: 30
+
+      - name: '{{ app_name | upper }}: Pre-seed Telegram Plugin'
+        shell: |
+            /usr/bin/python3 - <<'PYEOF'
+            import os, sqlite3, base64, json, time
+            db = sqlite3.connect(os.environ['AIONUI_DB'])
+            token = os.environ['AIONUI_TG_TOKEN']
+            cfg = json.dumps({'credentials': {'token': 'b64:' + base64.b64encode(token.encode()).decode()}, 'config': {}})
+            row = db.execute("SELECT enabled, config FROM assistant_plugins WHERE id='telegram'").fetchone()
+            if row != (1, cfg):
+                now = int(time.time() * 1000)
+                db.execute(
+                    "INSERT INTO assistant_plugins (id, type, name, enabled, config, status, last_connected, created_at, updated_at) "
+                    "VALUES ('telegram', 'telegram', 'Telegram', 1, ?, 'stopped', NULL, ?, ?) "
+                    "ON CONFLICT(id) DO UPDATE SET enabled=1, config=excluded.config, updated_at=excluded.updated_at",
+                    (cfg, now, now),
+                )
+                db.commit()
+                print('seeded')
+            db.close()
+            PYEOF
+        environment:
+            AIONUI_TG_TOKEN: '{{ env.JARVIS_CODE_TELEGRAM_KEY }}'
+            AIONUI_DB: '{{ config.root }}/{{ app_name }}/{{ app_name }}.db'
+        no_log: true
+        register: tg_seed
+        changed_when: "'seeded' in (tg_seed.stdout | default(''))"
+
+      - name: '{{ app_name | upper }}: Restart for Telegram Plugin Pickup'
+        systemd:
+            name: '{{ app_name }}'
+            state: restarted
+        when: tg_seed is changed

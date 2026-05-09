@@ -17,6 +17,7 @@
                 - file
                 - bubblewrap
                 - tmux
+                - sqlite3
             state: present
 
       - name: '{{ app_name | upper }}: Enable unprivileged user namespace for bubblewrap'
@@ -136,6 +137,29 @@
             - opencode-ai
         loop_control:
             loop_var: npm_item
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Check bun'
+        stat:
+            path: /home/ubuntu/.bun/bin/bun
+        register: bun_check
+
+      - name: '{{ app_name | upper }}: Install bun'
+        shell: 'curl -fsSL https://bun.sh/install | bash'
+        args:
+            executable: /bin/bash
+        when: not bun_check.stat.exists
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Ensure bun sourced in zshrc'
+        blockinfile:
+            path: /home/ubuntu/.zshrc
+            marker: '# {mark} BUN'
+            block: |
+                export BUN_INSTALL="$HOME/.bun"
+                export PATH="$BUN_INSTALL/bin:$PATH"
         become: true
         become_user: ubuntu
 

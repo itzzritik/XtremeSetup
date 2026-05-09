@@ -38,9 +38,9 @@
                         reverse_proxy localhost:{{ env.JARVIS_SERVICES['vscode-web'].port }}
                     }
 
-                    @cloudcli host vibe.{{ env.RITIK_DOMAIN }}
-                    handle @cloudcli {
-                        reverse_proxy localhost:{{ env.JARVIS_SERVICES.cloudcli.port }}
+                    @aionui host vibe.{{ env.RITIK_DOMAIN }}
+                    handle @aionui {
+                        reverse_proxy localhost:{{ env.JARVIS_SERVICES.aionui.port }}
                     }
 
                     @opencode host opencode.{{ env.RITIK_DOMAIN }}

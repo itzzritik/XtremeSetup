@@ -58,8 +58,7 @@
         loop:
             - cloudflared
             - vscode-web
-            - cloudcli
-            - claude-telegram
+            - aionui
             - hermes
             - opencode
             - caddy
