@@ -1,7 +1,7 @@
 ---
 - vars:
       app_name: tools
-      nvm_init: 'export NVM_DIR=/home/ubuntu/.nvm && source /home/ubuntu/.nvm/nvm.sh'
+      fnm_init: 'export PATH=/home/linuxbrew/.linuxbrew/bin:$PATH && eval "$(fnm env --shell bash)"'
   block:
       - name: '{{ app_name | upper }}: Install apt packages'
         apt:
@@ -22,21 +22,17 @@
 
       - name: '{{ app_name | upper }}: Enable unprivileged user namespace for bubblewrap'
         sysctl:
-            name: kernel.apparmor_restrict_unprivileged_userns
-            value: '0'
-            state: present
+            name: '{{ ns_item.key }}'
+            value: '{{ ns_item.value }}'
             sysctl_set: true
+        loop:
+            - { key: kernel.apparmor_restrict_unprivileged_userns, value: '0' }
+            - { key: kernel.unprivileged_userns_clone, value: '1' }
+        loop_control:
+            loop_var: ns_item
+            label: '{{ ns_item.key }}'
         become: true
-        ignore_errors: true
-
-      - name: '{{ app_name | upper }}: Enable unprivileged user namespace clone for bubblewrap'
-        sysctl:
-            name: kernel.unprivileged_userns_clone
-            value: '1'
-            state: present
-            sysctl_set: true
-        become: true
-        ignore_errors: true
+        failed_when: false
 
       - name: '{{ app_name | upper }}: Set zsh as default shell'
         user:
@@ -73,59 +69,79 @@
         become: true
         become_user: ubuntu
 
-      - name: '{{ app_name | upper }}: Clone zsh-autosuggestions'
+      - name: '{{ app_name | upper }}: Clone zsh plugins'
         git:
-            repo: https://github.com/zsh-users/zsh-autosuggestions
-            dest: /home/ubuntu/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+            repo: 'https://github.com/zsh-users/{{ zsh_plugin }}'
+            dest: '/home/ubuntu/.oh-my-zsh/custom/plugins/{{ zsh_plugin }}'
             depth: 1
+        loop:
+            - zsh-autosuggestions
+            - zsh-syntax-highlighting
+        loop_control:
+            loop_var: zsh_plugin
         become: true
         become_user: ubuntu
 
-      - name: '{{ app_name | upper }}: Clone zsh-syntax-highlighting'
-        git:
-            repo: https://github.com/zsh-users/zsh-syntax-highlighting
-            dest: /home/ubuntu/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
-            depth: 1
-        become: true
-        become_user: ubuntu
-
-      - name: '{{ app_name | upper }}: Check nvm'
+      - name: '{{ app_name | upper }}: Check brew'
         stat:
-            path: /home/ubuntu/.nvm/nvm.sh
-        register: nvm_check
+            path: /home/linuxbrew/.linuxbrew/bin/brew
+        register: brew_check
 
-      - name: '{{ app_name | upper }}: Install nvm'
-        shell: >
-            curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash
-        when: not nvm_check.stat.exists
+      - name: '{{ app_name | upper }}: Install brew'
+        shell: NONINTERACTIVE=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        when: not brew_check.stat.exists
         become: true
         become_user: ubuntu
 
-      - name: '{{ app_name | upper }}: Ensure nvm sourced in zshrc'
+      - name: '{{ app_name | upper }}: Configure brew'
         blockinfile:
             path: /home/ubuntu/.zshrc
-            marker: '# {mark} NVM'
+            marker: '# {mark} BREW'
             block: |
-                export NVM_DIR="$HOME/.nvm"
-                [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-                [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+                eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Install Homebrew Packages'
+        shell: /home/linuxbrew/.linuxbrew/bin/brew install {{ brew_item }}
+        loop:
+            - gh
+            - fzf
+            - eza
+            - just
+            - go
+            - golangci-lint
+            - doppler
+            - fnm
+        loop_control:
+            loop_var: brew_item
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Ensure fnm sourced in zshrc'
+        blockinfile:
+            path: /home/ubuntu/.zshrc
+            marker: '# {mark} FNM'
+            block: |
+                eval "$(fnm env --use-on-cd --shell zsh)"
         become: true
         become_user: ubuntu
 
       - name: '{{ app_name | upper }}: Install Node.js LTS'
         shell: |
-            {{ nvm_init }}
-            nvm install --lts
-            nvm alias default lts/*
+            {{ fnm_init }}
+            fnm install --lts
+            fnm use lts-latest
+            fnm default "$(fnm current)"
         args:
             executable: /bin/bash
         register: node_install
-        changed_when: "'is already installed' not in node_install.stderr"
+        changed_when: "'already installed' not in node_install.stderr"
         become: true
         become_user: ubuntu
 
       - name: '{{ app_name | upper }}: Install Global npm Packages'
-        shell: '{{ nvm_init }} && npm install -g {{ npm_item }}'
+        shell: '{{ fnm_init }} && npm install -g {{ npm_item }}'
         args:
             executable: /bin/bash
         loop:
@@ -163,41 +179,6 @@
         become: true
         become_user: ubuntu
 
-      - name: '{{ app_name | upper }}: Check brew'
-        stat:
-            path: /home/linuxbrew/.linuxbrew/bin/brew
-        register: brew_check
-
-      - name: '{{ app_name | upper }}: Install brew'
-        shell: NONINTERACTIVE=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-        when: not brew_check.stat.exists
-        become: true
-        become_user: ubuntu
-
-      - name: '{{ app_name | upper }}: Configure brew'
-        blockinfile:
-            path: /home/ubuntu/.zshrc
-            marker: '# {mark} BREW'
-            block: |
-                eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-        become: true
-        become_user: ubuntu
-
-      - name: '{{ app_name | upper }}: Install Homebrew Packages'
-        shell: /home/linuxbrew/.linuxbrew/bin/brew install {{ brew_item }}
-        loop:
-            - gh
-            - fzf
-            - eza
-            - just
-            - go
-            - golangci-lint
-            - doppler
-        loop_control:
-            loop_var: brew_item
-        become: true
-        become_user: ubuntu
-
       - name: '{{ app_name | upper }}: Configure Shell Aliases'
         blockinfile:
             path: /home/ubuntu/.zshrc
@@ -213,5 +194,58 @@
                   local uri="vscode://vscode-remote/ssh-remote+{{ ansible_user }}@{{ ansible_host }}$(realpath ${1:-.})?windowId=_blank"
                   ${BROWSER:-echo} "$uri"
                 }
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Configure tmux'
+        blockinfile:
+            path: /home/ubuntu/.tmux.conf
+            marker: '# {mark} JARVIS'
+            create: true
+            mode: '0644'
+            block: |
+                # Behavior
+                set -g mouse on
+                setw -g monitor-activity on
+                set -g visual-activity off
+                set -sg escape-time 0
+                set -g history-limit 50000
+
+                # Saner indexing
+                set -g base-index 1
+                setw -g pane-base-index 1
+                set -g renumber-windows on
+
+                # Truecolor passthrough
+                set -g default-terminal "tmux-256color"
+                set -ga terminal-overrides ",xterm-256color:Tc"
+
+                # Window naming: folder:command
+                set -g automatic-rename on
+                set -g automatic-rename-format "#{b:pane_current_path}:#{pane_current_command}"
+
+                # Status bar palette
+                set -g status-style "bg=black,fg=white"
+                set -g status-left ""
+                set -g status-left-length 0
+                set -g status-right-length 100
+                set -g status-interval 5
+
+                # Window list
+                setw -g window-status-format "  #I:#W  "
+                setw -g window-status-current-format "#[fg=black,bg=green,bold]  #I:#W  #[fg=white,bg=black]"
+                setw -g window-status-style "fg=#888888"
+                setw -g window-status-activity-style "fg=yellow,bold"
+
+                # Right side — pipe-separated sections
+                set -g status-right "#{?client_prefix,#[fg=black#,bg=red#,bold] PFX #[fg=white#,bg=black] #[fg=#444444]│ ,}#[fg=yellow] RAM #(awk '/MemAvailable/{a=$2}/MemTotal/{t=$2}END{printf \"%.0f\", (1-a/t)*100}' /proc/meminfo)%% #[fg=#444444]│#[fg=magenta] CPU #(awk -v c=$(nproc) '{printf \"%.0f\", $1*100/c}' /proc/loadavg)%% #[fg=#444444]│#[fg=cyan] %l:%M %p #[fg=#444444]│#[fg=black,bg=green,bold] + new #[fg=white,bg=black] "
+
+                # Bindings
+                bind -n MouseDown1StatusRight new-window -c "#{pane_current_path}"
+                bind -n MouseDown3Status kill-window -t '{mouse}'
+                bind c new-window -c "#{pane_current_path}"
+                bind '"' split-window -v -c "#{pane_current_path}"
+                bind % split-window -h -c "#{pane_current_path}"
+                bind r source-file ~/.tmux.conf \; display-message "reloaded"
         become: true
         become_user: ubuntu

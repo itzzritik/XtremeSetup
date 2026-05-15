@@ -19,6 +19,10 @@ Don't re-run the full playbook to iterate.
 ## Conventions
 
 - Idempotent re-runs must report `changed=0` for touched services.
+- Ansible tasks are additive only — they describe the desired steady state.
+  Never add tasks that exist purely to clean up something (e.g. `state: absent`,
+  `docker rm -f`, "Remove Legacy X"). Cleanup is a one-time manual step on the
+  host; the playbook should reflect the world afterward, not the migration path.
 - Patch source files via `blockinfile` with named markers, not `replace` regex.
 - New playbooks must mirror the structure and style of existing siblings in the same
   `<host>/tasks/` directory (vars layout, task naming `'{{ app_name | upper }}: ...'`,

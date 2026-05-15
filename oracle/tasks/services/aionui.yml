@@ -16,20 +16,11 @@
             owner: ubuntu
             group: ubuntu
 
-      - name: '{{ app_name | upper }}: Find Node Bin Path'
-        shell: 'export NVM_DIR=/home/ubuntu/.nvm && source /home/ubuntu/.nvm/nvm.sh >/dev/null && dirname $(which node)'
-        args:
-            executable: /bin/bash
-        register: node_bin
-        changed_when: false
-        become: true
-        become_user: ubuntu
-
       - name: '{{ app_name | upper }}: Build & Patch'
         become: true
         become_user: ubuntu
         environment:
-            PATH: '/home/ubuntu/.bun/bin:{{ node_bin.stdout }}:/usr/local/bin:/usr/bin:/bin'
+            PATH: '/home/ubuntu/.bun/bin:/home/ubuntu/.local/share/fnm/aliases/default/bin:/usr/local/bin:/usr/bin:/bin'
         block:
             - name: '{{ app_name | upper }}: Detect Current Tag'
               command: 'git -C {{ src }} describe --tags --exact-match HEAD'
@@ -84,7 +75,7 @@
               when: src_change is changed or auth_patch is changed
 
             - name: '{{ app_name | upper }}: Build Server'
-              command: '{{ node_bin.stdout }}/node scripts/build-server.mjs'
+              command: '/home/ubuntu/.local/share/fnm/aliases/default/bin/node scripts/build-server.mjs'
               args:
                   chdir: '{{ src }}'
               when: src_change is changed or auth_patch is changed
@@ -104,7 +95,7 @@
                 Group=ubuntu
                 WorkingDirectory={{ src }}
                 Environment=HOME=/home/ubuntu
-                Environment=PATH=/home/ubuntu/.bun/bin:{{ node_bin.stdout }}:/usr/local/bin:/usr/bin:/bin
+                Environment=PATH=/home/ubuntu/.bun/bin:/home/ubuntu/.local/share/fnm/aliases/default/bin:/usr/local/bin:/usr/bin:/bin
                 Environment=PORT={{ env.JARVIS_SERVICES[app_name].port }}
                 Environment=ALLOW_REMOTE=true
                 Environment=AIONUI_HOST=127.0.0.1

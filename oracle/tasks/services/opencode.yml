@@ -15,8 +15,8 @@
                 User=ubuntu
                 WorkingDirectory=/home/ubuntu
                 Environment=HOME=/home/ubuntu
-                Environment=NVM_DIR=/home/ubuntu/.nvm
-                ExecStart=/bin/bash -c 'source /home/ubuntu/.nvm/nvm.sh && exec opencode web --port {{ env.JARVIS_SERVICES.opencode.port }} --hostname 127.0.0.1'
+                Environment=PATH=/home/ubuntu/.local/share/fnm/aliases/default/bin:/usr/local/bin:/usr/bin:/bin
+                ExecStart=/home/ubuntu/.local/share/fnm/aliases/default/bin/opencode web --port {{ env.JARVIS_SERVICES.opencode.port }} --hostname 127.0.0.1
                 Restart=always
                 RestartSec=5
 

@@ -29,25 +29,12 @@
       - name: '{{ app_name | upper }}: Setup Swap'
         block:
             - command: fallocate -l 4G /swapfile
-              args:
-                  creates: /swapfile
             - file:
                   path: /swapfile
                   mode: '0600'
             - command: mkswap /swapfile
-              args:
-                  creates: /swapfile
             - command: swapon /swapfile
             - lineinfile:
                   path: /etc/fstab
                   line: '/swapfile swap swap defaults 0 0'
-                  state: present
         when: "'/swapfile' not in swap_check.stdout"
-
-      - name: '{{ app_name | upper }}: Schedule Daily Reboot at 5 AM IST'
-        cron:
-            name: daily-reboot
-            hour: '5'
-            minute: '0'
-            job: /sbin/shutdown -r now
-            user: root
