@@ -32,9 +32,6 @@
               args:
                   executable: /bin/bash
 
-            - name: '{{ instance.hostname | upper }}: Restart Proxmox Host'
-              include_tasks: ../system/restart.yml
-
             - name: '{{ instance.hostname | upper }}: Create temporary directory for installation'
               tempfile:
                   state: directory
@@ -61,6 +58,7 @@
               shell: |
                   source /etc/profile
                   export TERM=xterm
+                  export STORAGE={{ instance.storage }}
                   rm -f *.qcow2* *.xz 2>/dev/null || true
                   ./haos-vm.sh
               args:
