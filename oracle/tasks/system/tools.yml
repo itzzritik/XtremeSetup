@@ -1,7 +1,7 @@
 ---
 - vars:
       app_name: tools
-      fnm_init: 'export PATH=/home/linuxbrew/.linuxbrew/bin:$PATH && eval "$(fnm env --shell bash)"'
+      fnm_init: 'export PATH=$HOME/.local/share/fnm:$PATH && eval "$(fnm env --shell bash)"'
   block:
       - name: '{{ app_name | upper }}: Install apt packages'
         apt:
@@ -56,16 +56,7 @@
         lineinfile:
             path: /home/ubuntu/.zshrc
             regexp: '^plugins='
-            line: 'plugins=(git z fzf zsh-autosuggestions zsh-syntax-highlighting)'
-        become: true
-        become_user: ubuntu
-
-      - name: '{{ app_name | upper }}: Set FZF_BASE for oh-my-zsh fzf plugin'
-        lineinfile:
-            path: /home/ubuntu/.zshrc
-            regexp: '^export FZF_BASE='
-            line: 'export FZF_BASE=/home/linuxbrew/.linuxbrew/opt/fzf'
-            insertbefore: '^source \$ZSH/oh-my-zsh.sh'
+            line: 'plugins=(git z zsh-autosuggestions zsh-syntax-highlighting)'
         become: true
         become_user: ubuntu
 
@@ -82,39 +73,79 @@
         become: true
         become_user: ubuntu
 
-      - name: '{{ app_name | upper }}: Check brew'
-        stat:
-            path: /home/linuxbrew/.linuxbrew/bin/brew
-        register: brew_check
+      - name: '{{ app_name | upper }}: Add GitHub CLI APT Repository'
+        shell: |
+            install -m 0755 -d /etc/apt/keyrings
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg
+            chmod a+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+            apt-get update
+        args:
+            creates: /etc/apt/sources.list.d/github-cli.list
 
-      - name: '{{ app_name | upper }}: Install brew'
-        shell: NONINTERACTIVE=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-        when: not brew_check.stat.exists
+      - name: '{{ app_name | upper }}: Add Doppler APT Repository'
+        shell: curl -sLf --tlsv1.2 --proto "=https" --retry 3 https://packages.doppler.com/public/cli/setup.deb.sh | bash
+        args:
+            creates: /etc/apt/sources.list.d/doppler-cli.list
+            executable: /bin/bash
+
+      - name: '{{ app_name | upper }}: Add Eza APT Repository'
+        shell: |
+            install -m 0755 -d /etc/apt/keyrings
+            curl -fsSL https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | gpg --batch --yes --dearmor -o /etc/apt/keyrings/gierens.gpg
+            chmod a+r /etc/apt/keyrings/gierens.gpg
+            echo "deb [signed-by=/etc/apt/keyrings/gierens.gpg] http://deb.gierens.de stable main" > /etc/apt/sources.list.d/gierens.list
+            apt-get update
+        args:
+            creates: /etc/apt/sources.list.d/gierens.list
+
+      - name: '{{ app_name | upper }}: Install developer apt packages'
+        apt:
+            name:
+                - gh
+                - doppler
+                - eza
+            state: present
+
+      - name: '{{ app_name | upper }}: Install Go'
+        shell: |
+            set -e
+            GO_VERSION=$(curl -fsSL "https://go.dev/VERSION?m=text" | head -1)
+            curl -fsSL "https://go.dev/dl/${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz" -o /tmp/go.tar.gz
+            tar -C /usr/local -xzf /tmp/go.tar.gz
+            rm /tmp/go.tar.gz
+        args:
+            creates: /usr/local/go/bin/go
+
+      - name: '{{ app_name | upper }}: Install golangci-lint'
+        shell: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b /usr/local/bin
+        args:
+            creates: /usr/local/bin/golangci-lint
+
+      - name: '{{ app_name | upper }}: Install just'
+        shell: |
+            mkdir -p /home/ubuntu/.local/bin
+            curl --proto "=https" --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /home/ubuntu/.local/bin
+        args:
+            creates: /home/ubuntu/.local/bin/just
+            executable: /bin/bash
         become: true
         become_user: ubuntu
 
-      - name: '{{ app_name | upper }}: Configure brew'
+      - name: '{{ app_name | upper }}: Install fnm'
+        shell: curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
+        args:
+            creates: /home/ubuntu/.local/share/fnm/fnm
+            executable: /bin/bash
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Ensure tool paths in zshrc'
         blockinfile:
             path: /home/ubuntu/.zshrc
-            marker: '# {mark} BREW'
+            marker: '# {mark} PATHS'
             block: |
-                eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-        become: true
-        become_user: ubuntu
-
-      - name: '{{ app_name | upper }}: Install Homebrew Packages'
-        shell: /home/linuxbrew/.linuxbrew/bin/brew install {{ brew_item }}
-        loop:
-            - gh
-            - fzf
-            - eza
-            - just
-            - go
-            - golangci-lint
-            - doppler
-            - fnm
-        loop_control:
-            loop_var: brew_item
+                export PATH="/usr/local/go/bin:$HOME/.local/share/fnm:$PATH"
         become: true
         become_user: ubuntu
 
@@ -141,9 +172,16 @@
         become_user: ubuntu
 
       - name: '{{ app_name | upper }}: Install Global npm Packages'
-        shell: '{{ fnm_init }} && npm install -g {{ npm_item }}'
+        shell: |
+            {{ fnm_init }}
+            BEFORE=$(npm list -g --depth=0 --json 2>/dev/null | jq -r '.dependencies["{{ npm_item }}"].version // "missing"')
+            npm install -g {{ npm_item }} >/dev/null 2>&1
+            AFTER=$(npm list -g --depth=0 --json 2>/dev/null | jq -r '.dependencies["{{ npm_item }}"].version // "missing"')
+            if [ "$BEFORE" = "$AFTER" ]; then echo "noop $AFTER"; else echo "diff $BEFORE -> $AFTER"; fi
         args:
             executable: /bin/bash
+        register: npm_install_result
+        changed_when: "'diff' in npm_install_result.stdout"
         loop:
             - typescript
             - pnpm
