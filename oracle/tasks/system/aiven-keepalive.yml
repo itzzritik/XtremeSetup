@@ -1,0 +1,61 @@
+---
+- vars:
+      app_name: aiven-keepalive
+      backend_env: '{{ env.JARVIS_PROJECTS_DIR }}/accrio/backend/.env'
+  block:
+      - name: '{{ app_name | upper }}: Verify Backend Env File Exists'
+        stat:
+            path: '{{ backend_env }}'
+        register: backend_env_check
+        failed_when: not backend_env_check.stat.exists
+
+      - name: '{{ app_name | upper }}: Install Database Clients'
+        apt:
+            name: [postgresql-client, redis-tools]
+            state: present
+
+      - name: '{{ app_name | upper }}: Create Systemd Service'
+        copy:
+            dest: /etc/systemd/system/{{ app_name }}.service
+            content: |
+                [Unit]
+                Description=Aiven keep-alive ping (Postgres + Redis)
+                After=network-online.target
+                Wants=network-online.target
+
+                [Service]
+                Type=oneshot
+                EnvironmentFile={{ backend_env }}
+                ExecStart=/usr/bin/psql -tAc "SELECT 1" "${DATABASE_URL}"
+                ExecStart=/usr/bin/redis-cli -u "${REDIS_URL}" PING
+            mode: '0644'
+        register: keepalive_service
+
+      - name: '{{ app_name | upper }}: Create Systemd Timer'
+        copy:
+            dest: /etc/systemd/system/{{ app_name }}.timer
+            content: |
+                [Unit]
+                Description=Run Aiven keep-alive every 6 hours
+
+                [Timer]
+                OnBootSec=2min
+                OnUnitActiveSec=6h
+                Persistent=true
+                Unit={{ app_name }}.service
+
+                [Install]
+                WantedBy=timers.target
+            mode: '0644'
+        register: keepalive_timer
+
+      - name: '{{ app_name | upper }}: Daemon Reload'
+        systemd:
+            daemon_reload: true
+        when: keepalive_service is changed or keepalive_timer is changed
+
+      - name: '{{ app_name | upper }}: Enable and Start Timer'
+        systemd:
+            name: '{{ app_name }}.timer'
+            state: "{{ 'restarted' if keepalive_timer is changed else 'started' }}"
+            enabled: true

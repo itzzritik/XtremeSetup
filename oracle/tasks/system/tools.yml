@@ -132,6 +132,14 @@
         become: true
         become_user: ubuntu
 
+      - name: '{{ app_name | upper }}: Install Antigravity CLI'
+        shell: set -o pipefail && curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /home/ubuntu/.local/bin
+        args:
+            creates: /home/ubuntu/.local/bin/agy
+            executable: /bin/bash
+        become: true
+        become_user: ubuntu
+
       - name: '{{ app_name | upper }}: Install fnm'
         shell: curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
         args:
@@ -145,7 +153,7 @@
             path: /home/ubuntu/.zshrc
             marker: '# {mark} PATHS'
             block: |
-                export PATH="/usr/local/go/bin:$HOME/.local/share/fnm:$PATH"
+                export PATH="$HOME/.local/bin:/usr/local/go/bin:$HOME/.local/share/fnm:$PATH"
         become: true
         become_user: ubuntu
 
@@ -232,6 +240,23 @@
                   local uri="vscode://vscode-remote/ssh-remote+{{ ansible_user }}@{{ ansible_host }}$(realpath ${1:-.})?windowId=_blank"
                   ${BROWSER:-echo} "$uri"
                 }
+                agy-ide() {
+                  local uri="antigravity-ide://vscode-remote/ssh-remote+{{ ansible_user }}@{{ ansible_host }}$(realpath ${1:-.})?windowId=_blank"
+                  ${BROWSER:-echo} "$uri"
+                }
+                # Kill process(es) listening on one or more ports: kp 8080  |  kp 8080 8081 5555
+                kp() {
+                  [ $# -eq 0 ] && {
+                    echo "kp - kill processes on given ports"
+                    echo "Usage: kp <port>...   e.g. kp 8080 8081"
+                    return 1
+                  }
+                  # ss, not lsof: lsof here has no IPv6 support and misses node/next-server (bind ::)
+                  local port pids
+                  pids=$(for port in "$@"; do ss -ltnpH "sport = :$port" 2>/dev/null; done | grep -oP 'pid=\K[0-9]+' | sort -u)
+                  [ -z "$pids" ] && { echo "No processes on: $*"; return 0; }
+                  echo "$pids" | xargs kill -9 && echo "Killed: $(echo $pids | tr '\n' ' ')"
+                }
         become: true
         become_user: ubuntu
 
@@ -270,13 +295,13 @@
                 set -g status-interval 5
 
                 # Window list
-                setw -g window-status-format "  #I:#W  "
-                setw -g window-status-current-format "#[fg=black,bg=green,bold]  #I:#W  #[fg=white,bg=black]"
+                setw -g window-status-format " #I:#W "
+                setw -g window-status-current-format "#[fg=black,bg=green,bold] #I:#W #[fg=white,bg=black]"
                 setw -g window-status-style "fg=#888888"
                 setw -g window-status-activity-style "fg=yellow,bold"
 
                 # Right side — pipe-separated sections
-                set -g status-right "#{?client_prefix,#[fg=black#,bg=red#,bold] PFX #[fg=white#,bg=black] #[fg=#444444]│ ,}#[fg=yellow] RAM #(awk '/MemAvailable/{a=$2}/MemTotal/{t=$2}END{printf \"%.0f\", (1-a/t)*100}' /proc/meminfo)%% #[fg=#444444]│#[fg=magenta] CPU #(awk -v c=$(nproc) '{printf \"%.0f\", $1*100/c}' /proc/loadavg)%% #[fg=#444444]│#[fg=cyan] %l:%M %p #[fg=#444444]│#[fg=black,bg=green,bold] + new #[fg=white,bg=black] "
+                set -g status-right "#{?client_prefix,#[fg=black#,bg=red#,bold] PFX #[fg=white#,bg=black] #[fg=#444444]│ ,}#[fg=yellow] RAM #(awk '/MemAvailable/{a=$2}/MemTotal/{t=$2}END{printf \"%.0f\", (1-a/t)*100}' /proc/meminfo)%% #[fg=#444444]│#[fg=magenta] CPU #(awk -v c=$(nproc) '{printf \"%.0f\", $1*100/c}' /proc/loadavg)%% #[fg=#444444]│#[fg=cyan] %H:%M #[fg=black,bg=green,bold] + #[fg=white,bg=black] "
 
                 # Bindings
                 bind -n MouseDown1StatusRight new-window -c "#{pane_current_path}"

@@ -1,0 +1,41 @@
+---
+# Local-mode runner for use ON the Oracle box itself (no Mac, no Doppler, no SSH).
+# Usage:
+#   cd /home/ubuntu/projects/others/XtremeSetup/oracle
+#   ansible-playbook oracle-local.yml --ask-become-pass
+#
+# Pass --extra-vars 'task=aiven-keepalive' (default) or any other task name under tasks/system/.
+
+- name: Apply Oracle System Task Locally
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: true
+  vars:
+      task: aiven-keepalive
+      # Surface Oracle host vars from inventory so templates that reference
+      # `{{ ansible_user }}` / `{{ ansible_host }}` (e.g. the vscode() helper)
+      # render with the real Oracle identity instead of localhost defaults.
+      ansible_user: "{{ hostvars['oracle'].ansible_user }}"
+      ansible_host: "{{ hostvars['oracle'].ansible_host }}"
+      env:
+          JARVIS_DIR: /home/ubuntu/.jarvis
+          JARVIS_PROJECTS_DIR: /home/ubuntu/projects
+          JARVIS_CONFIGS_DIR: /home/ubuntu/.jarvis/configs
+          JARVIS_TZ: Asia/Kolkata
+  tasks:
+      - name: Ensure Base Directories
+        file:
+            path: '{{ dir }}'
+            state: directory
+            mode: '0755'
+            owner: ubuntu
+            group: ubuntu
+        loop:
+            - '{{ env.JARVIS_DIR }}'
+            - '{{ env.JARVIS_CONFIGS_DIR }}'
+        loop_control:
+            loop_var: dir
+
+      - name: 'Execute System Task: {{ task }}'
+        include_tasks: 'tasks/system/{{ task }}.yml'
