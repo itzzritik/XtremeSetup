@@ -2,9 +2,9 @@
 # Local-mode runner for use ON the Oracle box itself (no Mac, no Doppler, no SSH).
 # Usage:
 #   cd /home/ubuntu/projects/others/XtremeSetup/oracle
-#   ansible-playbook oracle-local.yml --ask-become-pass
+#   ansible-playbook oracle-local.yml --ask-become-pass -e 'task=<name>'
 #
-# Pass --extra-vars 'task=aiven-keepalive' (default) or any other task name under tasks/system/.
+# `task` is required: any task name under tasks/system/.
 
 - name: Apply Oracle System Task Locally
   hosts: localhost
@@ -12,7 +12,6 @@
   gather_facts: false
   become: true
   vars:
-      task: aiven-keepalive
       # Surface Oracle host vars from inventory so templates that reference
       # `{{ ansible_user }}` / `{{ ansible_host }}` (e.g. the vscode() helper)
       # render with the real Oracle identity instead of localhost defaults.

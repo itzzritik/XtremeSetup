@@ -55,7 +55,6 @@ that the main env phase would normally provide.
 
 ```bash
 cd Oracle
-ansible-playbook oracle-local.yml                       # default task: aiven-keepalive
 ansible-playbook oracle-local.yml -e 'task=neveridle'   # any task under tasks/system/
 ```
 

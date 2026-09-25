@@ -49,7 +49,6 @@
             - hardening
             - git
             - neveridle
-            - aiven-keepalive
         loop_control:
             loop_var: task
 
