@@ -59,11 +59,11 @@
               regexp: 'https://vscode-sync\.trafficmanager\.net'
               replace: '{{ sync_proxy_url }}'
             - path: '{{ server.workbench_js }}'
-              regexp: 'secretStorageProvider:e\.remoteAuthority&&!t\?void 0:new YHi\(o\)'
-              replace: 'secretStorageProvider:new YHi(o)'
+              regexp: 'secretStorageProvider:e\.remoteAuthority&&!t\?void 0:new ([\w$]+)\((\w)\)'
+              replace: 'secretStorageProvider:new \1(\2)'
             - path: '{{ server.workbench_js }}'
-              regexp: 't&&e9t\.supported\(\)\?new e9t\(t\):new QHi'
-              replace: 'false?void 0:new QHi'
+              regexp: 't&&([\w$]+)\.supported\(\)\?new \1\(t\):new ([\w$]+)'
+              replace: 'false?void 0:new \2'
         loop_control:
             label: '{{ item.path | basename }}'
         register: cs_patches
@@ -75,6 +75,7 @@
             curl -sfL "https://main.vscode-cdn.net/stable/{{ vscode_commit.stdout }}/extensions/{{ item }}" -o '{{ server.extensions_dir }}/{{ item }}'
         args:
             creates: '{{ server.extensions_dir }}/{{ item }}'
+            executable: /bin/bash
         loop: '{{ missing_ext_browser_files }}'
         loop_control:
             label: '{{ item }}'

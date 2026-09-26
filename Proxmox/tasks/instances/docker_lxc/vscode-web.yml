@@ -1,0 +1,241 @@
+- vars:
+      app_name: vscode-web
+      mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+          local: '{{ instance.configs }}/{{ app_name }}'
+      server:
+          binary: '{{ config.root }}/server/bin/code-server'
+          product_json: '{{ config.root }}/server/product.json'
+          server_main: '{{ config.root }}/server/out/server-main.js'
+          workbench: '{{ config.root }}/server/out/vs/code/browser/workbench/workbench.html'
+          workbench_js: '{{ config.root }}/server/out/vs/code/browser/workbench/workbench.js'
+          extensions_dir: '{{ config.root }}/server/extensions'
+      sync_proxy_url: 'https://{{ env.JARVIS_SERVICES[app_name].subdomains[0] }}.{{ env.JARVIS_DOMAIN }}/_sync'
+      missing_ext_browser_files:
+          - github-authentication/dist/browser/extension.js
+          - emmet/dist/browser/emmetBrowserMain.js
+          - merge-conflict/dist/browser/mergeConflictMain.js
+          - git-base/dist/browser/extension.js
+      nerd_font:
+          family: 'FantasqueSansM Nerd Font Mono'
+          file: 'FantasqueSansMNerdFontMono-Regular.ttf'
+          url: 'https://github.com/ryanoasis/nerd-fonts/releases/latest/download/FantasqueSansMono.zip'
+  block:
+      - name: '{{ app_name | upper }}: Check Health Endpoint'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}/version'
+            method: GET
+            status_code: 200
+            timeout: 2
+        register: vscode_health
+        failed_when: false
+
+      - set_fact:
+            healthy:
+                app: '{{ (vscode_health.status | default(0)) == 200 }}'
+      - debug:
+            msg:
+                - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
+
+      - name: '{{ app_name | upper }}: Configure Directories'
+        file:
+            path: '{{ dir_item }}'
+            state: directory
+            mode: '0755'
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+        loop:
+            - '{{ config.root }}'
+            - '{{ config.root }}/fonts'
+            - '{{ config.root }}/data/User'
+        loop_control:
+            loop_var: dir_item
+
+      - name: '{{ app_name | upper }}: Install Server'
+        unarchive:
+            src: 'https://update.code.visualstudio.com/latest/server-linux-x64-web/stable'
+            dest: '{{ config.root }}'
+            remote_src: true
+            extra_opts:
+                - '--transform'
+                - 's,^vscode-server-linux-x64-web,server,'
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            creates: '{{ server.binary }}'
+
+      - name: '{{ app_name | upper }}: Read Server Commit ID'
+        slurp:
+            src: '{{ server.product_json }}'
+        register: vscode_product
+
+      - name: '{{ app_name | upper }}: Patch Server Source for Settings Sync Persistence'
+        replace:
+            path: '{{ patch_item.path }}'
+            regexp: '{{ patch_item.regexp }}'
+            replace: '{{ patch_item.replace }}'
+        loop:
+            - path: '{{ server.product_json }}'
+              regexp: 'https://vscode-sync\.trafficmanager\.net/?'
+              replace: '{{ sync_proxy_url }}/'
+            - path: '{{ server.server_main }}'
+              regexp: 'https://vscode-sync\.trafficmanager\.net'
+              replace: '{{ sync_proxy_url }}'
+            - path: '{{ server.workbench_js }}'
+              regexp: 'https://vscode-sync\.trafficmanager\.net'
+              replace: '{{ sync_proxy_url }}'
+            - path: '{{ server.workbench_js }}'
+              regexp: 'secretStorageProvider:e\.remoteAuthority&&!t\?void 0:new ([\w$]+)\((\w)\)'
+              replace: 'secretStorageProvider:new \1(\2)'
+            - path: '{{ server.workbench_js }}'
+              regexp: 't&&([\w$]+)\.supported\(\)\?new \1\(t\):new ([\w$]+)'
+              replace: 'false?void 0:new \2'
+        loop_control:
+            loop_var: patch_item
+            label: '{{ patch_item.path | basename }}'
+        register: vscode_patches
+
+      - name: '{{ app_name | upper }}: Install Missing Browser Extension Bundles'
+        shell: |
+            set -eo pipefail
+            mkdir -p "$(dirname '{{ server.extensions_dir }}/{{ ext_item }}')"
+            curl -sfL "https://main.vscode-cdn.net/stable/{{ (vscode_product.content | b64decode | from_json).commit }}/extensions/{{ ext_item }}" -o '{{ server.extensions_dir }}/{{ ext_item }}'
+        args:
+            creates: '{{ server.extensions_dir }}/{{ ext_item }}'
+            executable: /bin/bash
+        loop: '{{ missing_ext_browser_files }}'
+        loop_control:
+            loop_var: ext_item
+
+      - name: '{{ app_name | upper }}: Install Nerd Font'
+        unarchive:
+            src: '{{ nerd_font.url }}'
+            dest: '{{ config.root }}/fonts'
+            remote_src: true
+            include: ['{{ nerd_font.file }}']
+            creates: '{{ config.root }}/fonts/{{ nerd_font.file }}'
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+
+      - name: '{{ app_name | upper }}: Inject Nerd Font into workbench'
+        blockinfile:
+            path: '{{ server.workbench }}'
+            insertbefore: '</head>'
+            marker: '<!-- {mark} ANSIBLE NERD FONT -->'
+            block: |
+              <style>
+              @font-face {
+                font-family: '{{ nerd_font.family }}';
+                src: url('/_fonts/{{ nerd_font.file }}') format('truetype');
+              }
+              </style>
+        register: vscode_font
+
+      - name: '{{ app_name | upper }}: Seed User Settings'
+        copy:
+            dest: '{{ config.root }}/data/User/settings.json'
+            content: |
+                {
+                  "terminal.integrated.fontFamily": "'{{ nerd_font.family }}', Menlo, Monaco, monospace",
+                  "editor.fontFamily": "'{{ nerd_font.family }}', Menlo, Monaco, monospace"
+                }
+            mode: '0644'
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            force: false
+
+      - name: '{{ app_name | upper }}: Create Caddyfile'
+        copy:
+            dest: '{{ config.root }}/Caddyfile'
+            content: |-
+                :80 {
+                    handle_path /_fonts/* {
+                        root * /{{ app_name }}/fonts
+                        file_server
+                        header Cache-Control "public, max-age=31536000, immutable"
+                    }
+                    handle_path /_sync/* {
+                        reverse_proxy https://vscode-sync.trafficmanager.net {
+                            header_up Host vscode-sync.trafficmanager.net
+                            header_up -X-Forwarded-Host
+                            transport http {
+                                tls
+                                tls_server_name vscode-sync.trafficmanager.net
+                            }
+                        }
+                    }
+                    header Cache-Control "no-store, must-revalidate"
+                    header CDN-Cache-Control "no-store"
+                    header Cloudflare-CDN-Cache-Control "no-store"
+                    reverse_proxy {{ app_name }}:8000
+                }
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            mode: '0644'
+        register: vscode_caddyfile
+
+      - block:
+            - name: '{{ app_name | upper }}: Create docker-compose.yml'
+              copy:
+                  dest: '{{ config.root }}/docker-compose.yml'
+                  content: |-
+                      services:
+                        {{ app_name }}:
+                          container_name: {{ app_name }}
+                          image: mcr.microsoft.com/devcontainers/base:ubuntu
+                          restart: unless-stopped
+                          command: /{{ app_name }}/server/bin/code-server --host 0.0.0.0 --port 8000 --without-connection-token --accept-server-license-terms --server-data-dir /{{ app_name }} --default-folder /AppConfigs
+                          environment:
+                            - TZ={{ env.JARVIS_TZ }}
+                          volumes:
+                            - {{ config.local }}:/{{ app_name }}
+                            - /:/docker
+                            - {{ instance.configs }}:/AppConfigs
+                          healthcheck:
+                            test: ["CMD", "curl", "-f", "http://localhost:8000/version"]
+                            interval: 30s
+                            timeout: 10s
+                            retries: 3
+                            start_period: 30s
+                          logging:
+                            driver: "json-file"
+                            options:
+                              max-size: "10m"
+                              max-file: "3"
+                        {{ app_name }}-proxy:
+                          container_name: {{ app_name }}-proxy
+                          image: caddy:alpine
+                          restart: unless-stopped
+                          command: caddy run --config /{{ app_name }}/Caddyfile --adapter caddyfile
+                          depends_on:
+                            - {{ app_name }}
+                          ports:
+                            - "{{ env.JARVIS_SERVICES[app_name].port }}:80"
+                          volumes:
+                            - {{ config.local }}:/{{ app_name }}:ro
+                          logging:
+                            driver: "json-file"
+                            options:
+                              max-size: "10m"
+                              max-file: "3"
+                  owner: '{{ mapped_uid }}'
+                  group: '{{ mapped_uid }}'
+                  mode: '0666'
+            - name: '{{ app_name | upper }}: Start Docker Compose'
+              command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
+              register: vscode_compose
+              changed_when: "'Created' in vscode_compose.stderr or 'Recreated' in vscode_compose.stderr"
+            - name: '{{ app_name | upper }}: Wait for Service Ready'
+              wait_for:
+                  host: '{{ instance.ip }}'
+                  port: '{{ env.JARVIS_SERVICES[app_name].port }}'
+                  delay: 5
+                  timeout: 120
+        when: not healthy.app
+
+      - name: '{{ app_name | upper }}: Restart Containers'
+        command: pct exec {{ id }} -- docker restart {{ app_name }} {{ app_name }}-proxy
+        when: healthy.app and (vscode_patches is changed or vscode_font is changed or vscode_caddyfile is changed)
+  rescue:
+      - debug:
+            msg: '{{ app_name }} failed to deploy'

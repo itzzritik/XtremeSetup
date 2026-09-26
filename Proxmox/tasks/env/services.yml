@@ -105,10 +105,10 @@ JARVIS_SERVICES:
         port: 9898
         subdomains: [backup]
 
-    code:
+    vscode-web:
         id: 253
         name: Code
-        subtitle: VS Code Server
+        subtitle: VS Code Web
         logo: visual-studio-code.svg
         port: 8888
         subdomains: [code]

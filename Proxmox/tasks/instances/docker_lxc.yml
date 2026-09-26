@@ -121,7 +121,7 @@
             - backrest
             - voidauth
             - homer
-            - code
+            - vscode-web
             - alist
             - media
         loop_control:
