@@ -62,5 +62,6 @@
             - opencode
             - caddy
             - docker
+            - antigravity
         loop_control:
             loop_var: service
