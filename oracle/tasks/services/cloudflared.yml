@@ -19,6 +19,11 @@
             state: present
         register: cf_package
 
+      - name: '{{ app_name | upper }}: Read Installed Version'
+        command: dpkg-query -W -f='${Version}' cloudflared
+        register: cf_version
+        changed_when: false
+
       - name: '{{ app_name | upper }}: Configure Directory'
         file:
             path: '{{ config.root }}'
@@ -47,6 +52,8 @@
                 [Service]
                 Type=notify
                 EnvironmentFile={{ config.root }}/env
+                # restarts the service when apt upgrades cloudflared
+                Environment=CLOUDFLARED_VERSION={{ cf_version.stdout }}
                 ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run --token ${TUNNEL_TOKEN}
                 Restart=on-failure
                 RestartSec=5s

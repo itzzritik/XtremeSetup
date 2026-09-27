@@ -31,7 +31,6 @@
             mode: '0755'
             owner: ubuntu
             group: ubuntu
-            recurse: true
         loop:
             - '{{ env.JARVIS_DIR }}'
             - '{{ env.JARVIS_CONFIGS_DIR }}'
@@ -58,7 +57,6 @@
             - cloudflared
             - vscode-web
             - aionui
-            - hermes
             - opencode
             - caddy
             - docker

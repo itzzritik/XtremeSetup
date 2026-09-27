@@ -175,7 +175,8 @@
         shell: |
             {{ fnm_init }}
             BEFORE=$(npm list -g --depth=0 --json 2>/dev/null | jq -r '.dependencies["{{ npm_item }}"].version // "missing"')
-            npm install -g {{ npm_item }} >/dev/null 2>&1
+            # npm 12 skips install scripts unless allowlisted; opencode and claude download their binaries there
+            npm install -g {{ npm_item }} --allow-scripts={{ npm_item }} >/dev/null 2>&1
             AFTER=$(npm list -g --depth=0 --json 2>/dev/null | jq -r '.dependencies["{{ npm_item }}"].version // "missing"')
             if [ "$BEFORE" = "$AFTER" ]; then echo "noop $AFTER"; else echo "diff $BEFORE -> $AFTER"; fi
         args:
@@ -183,6 +184,7 @@
         register: npm_install_result
         changed_when: "'diff' in npm_install_result.stdout"
         loop:
+            - npm
             - typescript
             - pnpm
             - yarn
@@ -224,7 +226,6 @@
             block: |
                 export EDITOR="code --wait"
                 alias cc="claude"
-                alias hre="sudo systemctl restart hermes"
                 alias t="tmux new-session -A -s main"
                 alias ls="eza --icons"
                 alias ll="eza -la --icons --git"
