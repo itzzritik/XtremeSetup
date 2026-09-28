@@ -1,0 +1,12 @@
+- name: '{{ app_name | upper }}: Install Packages'
+  shell: |
+      {{ lxc_exec }} <<'EOF'
+      missing=$(for p in {{ lxc_apt | join(' ') }}; do dpkg-query -W -f='${Status}' $p 2>/dev/null | grep -q 'ok installed' || echo $p; done)
+      [ -z "$missing" ] && exit 0
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -qq
+      apt-get install -y -qq $missing >/dev/null
+      echo CHANGED
+      EOF
+  register: apt_result
+  changed_when: "'CHANGED' in apt_result.stdout"

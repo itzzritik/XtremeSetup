@@ -1,0 +1,44 @@
+- vars:
+      stage: '{{ env.JARVIS_DIR }}/stage/{{ id }}{{ lxc_file.dest }}'
+  block:
+      # pct pull/push exit 0 even on failure, so existence is checked explicitly
+      - name: 'LXC FILE: Pull {{ lxc_file.dest }}'
+        shell: |
+            mkdir -p "$(dirname '{{ stage }}')"
+            if pct exec {{ id }} -- test -f '{{ lxc_file.dest }}'; then
+                pct pull {{ id }} '{{ lxc_file.dest }}' '{{ stage }}'
+            else
+                rm -f '{{ stage }}'
+            fi
+        changed_when: false
+
+      - name: 'LXC FILE: Write {{ lxc_file.dest }}'
+        copy:
+            dest: '{{ stage }}'
+            content: '{{ lxc_file.content }}'
+        when: lxc_file.content is defined
+        register: file_write
+        no_log: '{{ lxc_file.secret | default(false) }}'
+
+      - name: 'LXC FILE: Update Block in {{ lxc_file.dest }}'
+        blockinfile:
+            path: '{{ stage }}'
+            create: true
+            marker: '{{ lxc_file.marker }}'
+            block: '{{ lxc_file.block }}'
+            insertafter: '{{ lxc_file.insertafter | default(omit) }}'
+            insertbefore: '{{ lxc_file.insertbefore | default(omit) }}'
+        when: lxc_file.block is defined
+        register: file_block
+
+      - name: 'LXC FILE: Push {{ lxc_file.dest }}'
+        shell: |
+            pct exec {{ id }} -- mkdir -p "$(dirname '{{ lxc_file.dest }}')"
+            pct push {{ id }} '{{ stage }}' '{{ lxc_file.dest }}' --perms {{ lxc_file.mode | default('0644') }}
+            pct exec {{ id }} -- test -f '{{ lxc_file.dest }}'
+        when: file_write is changed or file_block is changed
+
+      - name: 'LXC FILE: Track Change'
+        set_fact:
+            lxc_changed: '{{ lxc_changed | default([]) + [lxc_file.dest] }}'
+        when: file_write is changed or file_block is changed

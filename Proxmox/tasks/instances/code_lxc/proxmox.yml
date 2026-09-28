@@ -1,0 +1,81 @@
+---
+- vars:
+      app_name: proxmox
+      host_ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.proxmox.id }}'
+      ssh_key: /root/.ssh/proxmox
+      mount_point: /proxmox
+      fs_unit: /etc/systemd/system/proxmox-fs.service
+  block:
+      - name: '{{ app_name | upper }}: Install sshfs'
+        include_tasks: lxc_apt.yml
+        vars:
+            lxc_apt:
+                - sshfs
+
+      - name: '{{ app_name | upper }}: Generate SSH Key'
+        shell: |
+            {{ lxc_exec }} <<'EOF'
+            [ -f {{ ssh_key }} ] && exit 0
+            ssh-keygen -q -t ed25519 -N '' -C root@code -f {{ ssh_key }}
+            echo CHANGED
+            EOF
+        register: keygen_result
+        changed_when: "'CHANGED' in keygen_result.stdout"
+
+      - name: '{{ app_name | upper }}: Read Public Key'
+        command: pct exec {{ id }} -- cat {{ ssh_key }}.pub
+        register: proxmox_pubkey
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Authorize Key on Host'
+        ansible.posix.authorized_key:
+            user: root
+            key: '{{ proxmox_pubkey.stdout | trim }}'
+            key_options: 'from="{{ instance.ip }}"'
+            follow: true
+
+      - name: '{{ app_name | upper }}: Write Files'
+        include_tasks: lxc_file.yml
+        loop:
+            - dest: /root/.ssh/config
+              marker: '# {mark} PROXMOX'
+              mode: '0600'
+              block: |
+                  Host proxmox
+                      HostName {{ host_ip }}
+                      User root
+                      IdentityFile {{ ssh_key }}
+                      IdentitiesOnly yes
+                      StrictHostKeyChecking accept-new
+                      ServerAliveInterval 15
+            - dest: /root/.zshrc
+              marker: '# {mark} PROXMOX'
+              block: |
+                  alias pve="ssh proxmox"
+            - dest: '{{ fs_unit }}'
+              content: |
+                  [Unit]
+                  Description=Proxmox host filesystem at {{ mount_point }}
+                  After=network-online.target
+                  Wants=network-online.target
+
+                  [Service]
+                  Type=simple
+                  ExecStartPre=/bin/mkdir -p {{ mount_point }}
+                  ExecStart=/usr/bin/sshfs -f proxmox:/ {{ mount_point }} -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3
+                  ExecStopPost=-/usr/bin/fusermount3 -uz {{ mount_point }}
+                  Restart=always
+                  RestartSec=10
+
+                  [Install]
+                  WantedBy=multi-user.target
+        loop_control:
+            loop_var: lxc_file
+            label: '{{ lxc_file.dest }}'
+
+      - name: '{{ app_name | upper }}: Enable and Start Service'
+        include_tasks: lxc_service.yml
+        vars:
+            lxc_service:
+                name: proxmox-fs
+                restart: '{{ fs_unit in lxc_changed | default([]) }}'

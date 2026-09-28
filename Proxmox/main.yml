@@ -48,6 +48,7 @@
       #       - traefik_lxc
       #       - home_vm
       #       - docker_lxc
+      #       - code_lxc
       #       - storage_lxc
       #       - jellyfin_lxc
       #       - pihole_lxc

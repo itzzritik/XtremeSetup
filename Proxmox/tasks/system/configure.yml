@@ -16,6 +16,19 @@
   loop_control:
       loop_var: log_dir
 
+- name: '{{ prefix }}: Configure SSH'
+  copy:
+      dest: /etc/ssh/sshd_config.d/10-lan.conf
+      content: |
+          PerSourcePenaltyExemptList {{ env.JARVIS_NETWORK_PREFIX }}.0/24
+          PasswordAuthentication no
+      mode: '0644'
+  register: sshd_config
+
+- name: '{{ prefix }}: Reload SSH'
+  shell: sshd -t && systemctl reload ssh
+  when: sshd_config is changed
+
 - name: '{{ prefix }}: Install Security Tools'
   apt: { name: [argon2, python3-bcrypt] }
 

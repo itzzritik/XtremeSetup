@@ -1,0 +1,119 @@
+---
+- vars:
+      app_name: caddy
+      config:
+          local: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+      caddyfile: /etc/caddy/Caddyfile
+      unit: '/etc/systemd/system/{{ app_name }}.service'
+      svc: '{{ env.JARVIS_SERVICES }}'
+  block:
+      - name: '{{ app_name | upper }}: Add APT Repository'
+        shell: |
+            {{ lxc_exec }} <<'EOF'
+            [ -f /etc/apt/sources.list.d/caddy-stable.list ] && exit 0
+            install -m 0755 -d /usr/share/keyrings
+            curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --batch --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+            curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt -o /etc/apt/sources.list.d/caddy-stable.list
+            chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg /etc/apt/sources.list.d/caddy-stable.list
+            echo CHANGED
+            EOF
+        register: caddy_repo
+        changed_when: "'CHANGED' in caddy_repo.stdout"
+
+      - name: '{{ app_name | upper }}: Install Package'
+        include_tasks: lxc_apt.yml
+        vars:
+            lxc_apt:
+                - caddy
+
+      - name: '{{ app_name | upper }}: Write Config and Unit'
+        include_tasks: lxc_file.yml
+        loop:
+            - dest: '{{ caddyfile }}'
+              content: |
+                  :80 {
+                      @direct not remote_ip {{ env.JARVIS_NETWORK_PREFIX }}.{{ svc.traefik.id }}
+                      handle @direct {
+                          respond "Forbidden" 403
+                      }
+
+                      @codeserver host {{ svc['vscode-web'].subdomains[0] }}.{{ env.JARVIS_DOMAIN }}
+                      handle @codeserver {
+                          handle_path /_fonts/* {
+                              root * {{ env.JARVIS_CONFIGS_DIR }}/vscode-web/fonts
+                              file_server
+                              header Cache-Control "public, max-age=31536000, immutable"
+                          }
+                          handle_path /_sync/* {
+                              reverse_proxy https://vscode-sync.trafficmanager.net {
+                                  header_up Host vscode-sync.trafficmanager.net
+                                  header_up -X-Forwarded-Host
+                                  transport http {
+                                      tls
+                                      tls_server_name vscode-sync.trafficmanager.net
+                                  }
+                              }
+                          }
+                          header Cache-Control "no-store, must-revalidate"
+                          header CDN-Cache-Control "no-store"
+                          header Cloudflare-CDN-Cache-Control "no-store"
+                          reverse_proxy localhost:{{ svc['vscode-web'].app_port }}
+                      }
+
+                      @aionui host {{ svc.aionui.subdomains[0] }}.{{ env.JARVIS_DOMAIN }}
+                      handle @aionui {
+                          reverse_proxy localhost:{{ svc.aionui.app_port }}
+                      }
+
+                      @opencode host {{ svc.opencode.subdomains[0] }}.{{ env.JARVIS_DOMAIN }}
+                      handle @opencode {
+                          reverse_proxy localhost:{{ svc.opencode.app_port }} {
+                              header_up Host localhost
+                              header_up -X-Forwarded-Host
+                          }
+                      }
+
+                      @port_allowed header_regexp portnum Host ^{{ svc['code-ports'].host_regexp }}\.{{ env.JARVIS_DOMAIN | regex_escape }}$
+                      handle @port_allowed {
+                          reverse_proxy localhost:{re.portnum.1}
+                      }
+
+                      handle {
+                          respond "Forbidden" 403
+                      }
+                  }
+            - dest: '{{ unit }}'
+              content: |
+                  [Unit]
+                  Description=Caddy
+                  Documentation=https://caddyserver.com/docs/
+                  After=network-online.target
+                  Wants=network-online.target
+
+                  [Service]
+                  Type=notify
+                  Environment=XDG_CONFIG_HOME={{ config.local }}/config
+                  Environment=XDG_DATA_HOME={{ config.local }}/data
+                  ExecStart=/usr/bin/caddy run --environ --config {{ caddyfile }} --adapter caddyfile
+                  ExecReload=/usr/bin/caddy reload --config {{ caddyfile }} --adapter caddyfile --force
+                  TimeoutStopSec=5s
+                  LimitNOFILE=1048576
+                  Restart=on-failure
+                  RestartSec=5s
+
+                  [Install]
+                  WantedBy=multi-user.target
+        loop_control:
+            loop_var: lxc_file
+            label: '{{ lxc_file.dest }}'
+
+      - name: '{{ app_name | upper }}: Validate Config'
+        command: pct exec {{ id }} -- caddy validate --config {{ caddyfile }} --adapter caddyfile
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Enable and Start Service'
+        include_tasks: lxc_service.yml
+        vars:
+            lxc_service:
+                name: '{{ app_name }}'
+                restart: '{{ caddyfile in lxc_changed | default([]) or unit in lxc_changed | default([]) or apt_result is changed }}'

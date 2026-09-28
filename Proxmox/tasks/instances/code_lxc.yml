@@ -1,0 +1,128 @@
+- vars:
+      id: '{{ env.JARVIS_SERVICES.code.id }}'
+      instance:
+          hostname: code
+          memory: 8192
+          swap: 2048
+          cores: 6
+          disk: 64
+          storage: local-lvm
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+          subuid: '100000'
+          mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
+      paths:
+          projects: /mnt/ssd/Projects
+          configs: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}'
+      lxc_exec: 'pct exec {{ id }} --keep-env 0 -- env HOME=/root bash -se'
+
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        command: pct status {{ id }}
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Create Host Directories'
+        file:
+            path: '{{ dir_item }}'
+            state: directory
+            owner: '{{ instance.subuid }}'
+            group: '{{ instance.subuid }}'
+        loop:
+            - '{{ paths.projects }}'
+            - '{{ paths.configs }}'
+        loop_control:
+            loop_var: dir_item
+
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
+        when: instance_check.rc != 0
+        block:
+            - name: '{{ instance.hostname | upper }}: Download Template'
+              shell: |
+                  pveam update >&2
+                  TEMPLATE=$(pveam available | grep -oP 'ubuntu-(2[02468]|[3-9][02468])\.04-standard[^\s]+' | sort -V | tail -1)
+                  pveam download local "$TEMPLATE" >&2 || true
+                  echo "$TEMPLATE"
+              register: template_result
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Create LXC'
+              command: >
+                  pct create {{ id }} local:vztmpl/{{ template_result.stdout | trim }}
+                  --hostname {{ instance.hostname }}
+                  --cores {{ instance.cores }}
+                  --memory {{ instance.memory }}
+                  --swap {{ instance.swap }}
+                  --rootfs {{ instance.storage }}:{{ instance.disk }}
+                  --net0 name=eth0,bridge=vmbr0,firewall=0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
+                  --unprivileged 1
+                  --features nesting=1,keyctl=1,fuse=1
+                  --timezone host
+                  --ssh-public-keys /root/.ssh/authorized_keys
+                  --onboot 1
+
+            - name: '{{ instance.hostname | upper }}: Configure Mounts'
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ id }}.conf'
+                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
+                  block: |
+                      mp0: {{ paths.projects }},mp=/root/Projects
+                      mp1: {{ paths.configs }},mp={{ env.JARVIS_CONFIGS_DIR }}
+
+      - name: '{{ instance.hostname | upper }}: Start LXC'
+        command: pct start {{ id }}
+        when: "'status: running' not in instance_check.stdout"
+
+      - name: '{{ instance.hostname | upper }}: Wait for Network'
+        shell: pct exec {{ id }} -- ping -c 1 -W 2 {{ env.JARVIS_DNS_SERVERS[0] }}
+        register: network_check
+        until: network_check.rc == 0
+        retries: 10
+        delay: 3
+        changed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Write System Files'
+        include_tasks: code_lxc/lxc_file.yml
+        loop:
+            - dest: /etc/systemd/system/container-getty@1.service.d/override.conf
+              content: |
+                  [Service]
+                  ExecStart=
+                  ExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 $TERM
+            - dest: /etc/ssh/sshd_config.d/10-lan.conf
+              content: |
+                  PerSourcePenaltyExemptList {{ env.JARVIS_NETWORK_PREFIX }}.0/24
+        loop_control:
+            loop_var: lxc_file
+            label: '{{ lxc_file.dest }}'
+
+      - name: '{{ instance.hostname | upper }}: Enable Console Autologin'
+        command: pct exec {{ id }} -- bash -c 'systemctl daemon-reload && systemctl restart container-getty@1.service'
+        when: "'/etc/systemd/system/container-getty@1.service.d/override.conf' in lxc_changed | default([])"
+
+      - name: '{{ instance.hostname | upper }}: Reload SSH'
+        command: pct exec {{ id }} -- systemctl reload ssh
+        when: "'/etc/ssh/sshd_config.d/10-lan.conf' in lxc_changed | default([])"
+
+      - name: '{{ instance.hostname | upper }}: Deploy Apps'
+        include_tasks: 'code_lxc/{{ code_app_item }}.yml'
+        loop:
+            - update
+            - tools
+            - git
+            - docker
+            - proxmox
+            - agents
+            - vscode-web
+            - opencode
+            - aionui
+            - caddy
+            - antigravity
+        loop_control:
+            loop_var: code_app_item
+
+  rescue:
+      - debug:
+            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
+  become: true

@@ -194,10 +194,18 @@
 
                         routers:
                       {% for svc_key, svc in env.JARVIS_SERVICES.items() %}
-                      {% if svc.subdomains is defined or svc.root_domain | default(false) %}
+                      {% if svc.subdomains is defined or svc.root_domain | default(false) or svc.host_regexp is defined %}
                           {{ svc_key }}:
-                            rule: "{% if svc.root_domain | default(false) %}Host(`{{ env.JARVIS_DOMAIN }}`){% else %}{% for subdomain in svc.subdomains %}Host(`{{ subdomain }}.{{ env.JARVIS_DOMAIN }}`){% if not loop.last %} || {% endif %}{% endfor %}{% endif %}"
+                            rule: "{% if svc.host_regexp is defined %}HostRegexp(`^{{ svc.host_regexp }}[.]{{ env.JARVIS_DOMAIN | replace('.', '[.]') }}$`){% elif svc.root_domain | default(false) %}Host(`{{ env.JARVIS_DOMAIN }}`){% else %}{% for subdomain in svc.subdomains %}Host(`{{ subdomain }}.{{ env.JARVIS_DOMAIN }}`){% if not loop.last %} || {% endif %}{% endfor %}{% endif %}"
                             service: "{{ 'api@internal' if svc.is_internal | default(false) else svc_key }}"
+                      {% if svc.host_regexp is defined %}
+                            tls:
+                              certResolver: "{{ env.JARVIS_CERT_RESOLVER }}"
+                              domains:
+                                - main: "{{ env.JARVIS_DOMAIN }}"
+                                  sans:
+                                    - "*.{{ env.JARVIS_DOMAIN }}"
+                      {% endif %}
                       {% set all_middlewares = [] %}
                       {% if not svc.skip_auth | default(false) %}
                       {% set _ = all_middlewares.append('auth') %}
@@ -216,7 +224,7 @@
 
                         services:
                       {% for svc_key, svc in env.JARVIS_SERVICES.items() %}
-                      {% if (svc.subdomains is defined or svc.root_domain | default(false)) and not svc.is_internal | default(false) %}
+                      {% if (svc.subdomains is defined or svc.root_domain | default(false) or svc.host_regexp is defined) and not svc.is_internal | default(false) %}
                           {{ svc_key }}:
                             loadBalancer:
                               servers:

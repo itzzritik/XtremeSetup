@@ -1,6 +1,7 @@
 - vars:
       app_name: voidauth
       mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      image: 'voidauth/voidauth:1.16.0'
       config:
           root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
           local: '{{ instance.configs }}/{{ app_name }}'
@@ -20,75 +21,77 @@
       - debug:
             msg:
                 - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
+
+      - name: '{{ app_name | upper }}: Configure Directories'
+        file:
+            path: '{{ dir_item }}'
+            state: directory
+            mode: '0777'
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            recurse: true
+        loop:
+            - '{{ config.root }}'
+            - '{{ config.root }}/data'
+            - '{{ config.root }}/config'
+        loop_control:
+            loop_var: dir_item
+        when: not healthy.app
+
+      - name: '{{ app_name | upper }}: Create docker-compose.yml'
+        copy:
+            dest: '{{ config.root }}/docker-compose.yml'
+            content: |-
+                services:
+                  {{ app_name }}:
+                    container_name: {{ app_name }}
+                    image: {{ image }}
+                    platform: linux/amd64
+                    restart: unless-stopped
+                    ports:
+                      - {{ env.JARVIS_SERVICES[app_name].port }}:3000
+                    volumes:
+                      - {{ config.local }}/data:/app/db
+                      - {{ config.local }}/config:/app/config
+                    environment:
+                      - APP_URL=https://auth.{{ env.JARVIS_DOMAIN }}
+                      - APP_TITLE={{ env.JARVIS_BOT_NAME }} Auth
+                      - APP_COLOR=#6366f1
+                      - STORAGE_KEY={{ env.JARVIS_VOIDAUTH_STORAGE_KEY }}
+                      - DB_ADAPTER=sqlite
+                      - DEFAULT_REDIRECT=https://{{ env.JARVIS_DOMAIN }}
+                      - PASSWORD_STRENGTH=2
+                      - CONTACT_EMAIL={{ env.JARVIS_BOT_EMAIL }}
+                      - ENABLE_DEBUG=true
+                      - SIGNUP=true
+                      - SMTP_HOST=smtp.gmail.com
+                      - SMTP_PORT=587
+                      - SMTP_USER={{ env.JARVIS_BOT_EMAIL }}
+                      - SMTP_PASS={{ env.JARVIS_AUTH_GOOGLE_APP_PASSWORD }}
+                      - SMTP_FROM="hi@{{ env.JARVIS_DOMAIN }}"
+                    healthcheck:
+                      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 60s
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            mode: '0666'
+        register: voidauth_compose
+
       - block:
-            - name: '{{ app_name | upper }}: Create docker-compose.yml'
-              block:
-                  - name: '{{ app_name | upper }}: Configure Directories'
-                    file:
-                        path: '{{ dir_item }}'
-                        state: directory
-                        mode: '0777'
-                        owner: '{{ mapped_uid }}'
-                        group: '{{ mapped_uid }}'
-                        recurse: true
-                    loop:
-                        - '{{ config.root }}'
-                        - '{{ config.root }}/data'
-                        - '{{ config.root }}/config'
-                    loop_control:
-                        loop_var: dir_item
-                  - name: '{{ app_name | upper }}: Create docker-compose.yml'
-                    copy:
-                        dest: '{{ config.root }}/docker-compose.yml'
-                        content: |-
-                            services:
-                              {{ app_name }}:
-                                container_name: {{ app_name }}
-                                image: voidauth/voidauth:latest
-                                platform: linux/amd64
-                                restart: unless-stopped
-                                ports:
-                                  - {{ env.JARVIS_SERVICES[app_name].port }}:3000
-                                volumes:
-                                  - {{ config.local }}/data:/app/db
-                                  - {{ config.local }}/config:/app/config
-                                environment:
-                                  - APP_URL=https://auth.{{ env.JARVIS_DOMAIN }}
-                                  - APP_TITLE={{ env.JARVIS_BOT_NAME }} Auth
-                                  - APP_COLOR=#6366f1
-                                  - STORAGE_KEY={{ env.JARVIS_VOIDAUTH_STORAGE_KEY }}
-                                  - DB_ADAPTER=sqlite
-                                  - DEFAULT_REDIRECT=https://{{ env.JARVIS_DOMAIN }}
-                                  - PASSWORD_STRENGTH=2
-                                  - CONTACT_EMAIL={{ env.JARVIS_BOT_EMAIL }}
-                                  - ENABLE_DEBUG=true
-                                  - SIGNUP=true
-                                  - SMTP_HOST=smtp.gmail.com
-                                  - SMTP_PORT=587
-                                  - SMTP_USER={{ env.JARVIS_BOT_EMAIL }}
-                                  - SMTP_PASS={{ env.JARVIS_AUTH_GOOGLE_APP_PASSWORD }}
-                                  - SMTP_FROM="hi@{{ env.JARVIS_DOMAIN }}"
-                                healthcheck:
-                                  test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
-                                  interval: 30s
-                                  timeout: 10s
-                                  retries: 3
-                                  start_period: 60s
-                                logging:
-                                  driver: "json-file"
-                                  options:
-                                    max-size: "10m"
-                                    max-file: "3"
-                        owner: '{{ mapped_uid }}'
-                        group: '{{ mapped_uid }}'
-                        mode: '0666'
             - name: '{{ app_name | upper }}: Deploy Container'
               shell: |
                   pct exec {{ id }} -- bash -c "
                   docker stop {{ app_name }} 2>/dev/null || true
                   docker rm {{ app_name }} 2>/dev/null || true
-                  docker rmi voidauth/voidauth:latest 2>/dev/null || true
-                  docker pull --platform linux/amd64 voidauth/voidauth:latest
+                  docker pull --platform linux/amd64 {{ image }}
                   cd {{ config.local }} && docker compose up -d
                   "
               register: auth_compose
@@ -99,7 +102,8 @@
                   port: '{{ env.JARVIS_SERVICES[app_name].port }}'
                   delay: 10
                   timeout: 120
-        when: not healthy.app
+        when: not healthy.app or voidauth_compose is changed
+
       - block:
             - name: '{{ app_name | upper }}: Update Admin Credentials'
               shell: >
@@ -112,6 +116,19 @@
                   emailVerified = 1
                   WHERE username = 'auth_admin' OR username = '{{ env.JARVIS_ADMIN_USERNAME }}';"
               changed_when: false
+            - name: '{{ app_name | upper }}: Allow Admins on All Subdomains'
+              shell: >
+                  pct exec {{ id }} -- sqlite3 {{ config.local }}/data/db.sqlite
+                  "INSERT OR IGNORE INTO proxy_auth (id, domain, createdBy, updatedBy, createdAt, updatedAt, mfaRequired, maxSessionLength)
+                  SELECT '{{ (env.JARVIS_DOMAIN ~ '-proxyauth') | to_uuid }}', '*.{{ env.JARVIS_DOMAIN }}/*', id, id, strftime('%s','now') * 1000, strftime('%s','now') * 1000, 0, NULL
+                  FROM user WHERE username = '{{ env.JARVIS_ADMIN_USERNAME }}';
+                  INSERT OR IGNORE INTO proxy_auth_group (proxyAuthId, groupId, createdBy, updatedBy, createdAt, updatedAt)
+                  SELECT p.id, g.id, u.id, u.id, strftime('%s','now') * 1000, strftime('%s','now') * 1000
+                  FROM proxy_auth p, \"group\" g, user u
+                  WHERE p.domain = '*.{{ env.JARVIS_DOMAIN }}/*' AND g.name = 'auth_admins' AND u.username = '{{ env.JARVIS_ADMIN_USERNAME }}';
+                  SELECT total_changes();"
+              register: proxy_auth_rule
+              changed_when: proxy_auth_rule.stdout | trim != '0'
             - name: '{{ app_name | upper }}: Restart VoidAuth'
               shell: pct exec {{ id }} -- docker restart {{ app_name }}
               changed_when: false

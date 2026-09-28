@@ -1,0 +1,66 @@
+---
+- vars:
+      app_name: agents
+      config:
+          root: '{{ paths.configs }}/{{ app_name }}'
+          local: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+      # order matters: a folder link must exist before links to files inside it
+      agent_links:
+          - { path: /root/.claude, target: .claude, type: dir }
+          - { path: /root/.claude.json, target: .claude/.claude.json, type: file }
+          - { path: /root/.codex, target: .codex, type: dir }
+          - { path: /root/.gemini/config, target: .gemini, type: dir }
+          - { path: /root/.gemini/antigravity-cli/antigravity-oauth-token, target: .gemini/antigravity-cli/antigravity-oauth-token, type: file }
+  block:
+      - name: '{{ app_name | upper }}: Configure Directory'
+        file:
+            path: '{{ config.root }}'
+            state: directory
+            owner: '{{ instance.subuid }}'
+            group: '{{ instance.subuid }}'
+
+      - name: '{{ app_name | upper }}: Link Agent Configs'
+        shell: |
+            {{ lxc_exec }} <<'EOF'
+            link() {
+                path=$1 target={{ config.local }}/$2 type=$3
+                [ -L "$path" ] && [ "$(readlink "$path")" = "$target" ] && return 0
+                mkdir -p "$(dirname "$path")" "$(dirname "$target")"
+                if [ -L "$path" ]; then
+                    rm "$path"
+                elif [ -e "$path" ]; then
+                    if [ "$type" = dir ]; then
+                        rmdir "$target" 2>/dev/null || true
+                        [ -e "$target" ] && { echo "both $path and $target exist, merge them by hand" >&2; exit 1; }
+                        mv "$path" "$target"
+                    else
+                        mv -f "$path" "$target"
+                    fi
+                fi
+                [ "$type" = dir ] && mkdir -p "$target"
+                ln -s "$target" "$path"
+                echo "CHANGED $path"
+            }
+            {% for item in agent_links %}
+            link {{ item.path }} {{ item.target }} {{ item.type }}
+            {% endfor %}
+            EOF
+        register: link_result
+        changed_when: "'CHANGED' in link_result.stdout"
+
+      - name: '{{ app_name | upper }}: Create Instruction Files'
+        copy:
+            dest: '{{ file_item.dest }}'
+            content: '{{ file_item.content }}'
+            owner: '{{ instance.subuid }}'
+            group: '{{ instance.subuid }}'
+            force: false
+        loop:
+            - { dest: '{{ config.root }}/AGENTS.md', content: '' }
+            - { dest: '{{ config.root }}/.claude/CLAUDE.md', content: "@{{ config.local }}/AGENTS.md\n" }
+            - { dest: '{{ config.root }}/.gemini/GEMINI.md', content: "@{{ config.local }}/AGENTS.md\n" }
+            - { dest: '{{ config.root }}/.codex/AGENTS.md', content: "@{{ config.local }}/AGENTS.md\n" }
+        loop_control:
+            loop_var: file_item
+            label: '{{ file_item.dest | basename }}'
+

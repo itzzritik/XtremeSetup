@@ -1,0 +1,228 @@
+---
+- vars:
+      app_name: tools
+      fnm_init: 'export PATH=$HOME/.local/share/fnm:$PATH && eval "$(fnm env --shell bash)"'
+      zsh_plugins:
+          - zsh-autosuggestions
+          - zsh-syntax-highlighting
+      npm_packages:
+          - npm
+          - typescript
+          - pnpm
+          - yarn
+          - '@anthropic-ai/claude-code'
+          - '@openai/codex'
+          - opencode-ai
+  block:
+      - name: '{{ app_name | upper }}: Install apt packages'
+        include_tasks: lxc_apt.yml
+        vars:
+            lxc_apt:
+                - zsh
+                - git
+                - build-essential
+                - curl
+                - gnupg
+                - unzip
+                - htop
+                - jq
+                - procps
+                - file
+                - bubblewrap
+                - tmux
+                - sqlite3
+
+      - name: '{{ app_name | upper }}: Configure zsh'
+        shell: |
+            {{ lxc_exec }} <<'EOF'
+            if [ "$(getent passwd root | cut -d: -f7)" != /usr/bin/zsh ]; then
+                chsh -s /usr/bin/zsh root
+                echo CHANGED
+            fi
+            if [ ! -d /root/.oh-my-zsh ]; then
+                curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh | sh -s -- --unattended >/dev/null
+                echo CHANGED
+            fi
+            line='plugins=(git z zsh-autosuggestions zsh-syntax-highlighting)'
+            if ! grep -qxF "$line" /root/.zshrc; then
+                sed -i "s/^plugins=.*/$line/" /root/.zshrc
+                echo CHANGED
+            fi
+            for plugin in {{ zsh_plugins | join(' ') }}; do
+                dir=/root/.oh-my-zsh/custom/plugins/$plugin
+                [ -d $dir ] && continue
+                git clone -q --depth 1 https://github.com/zsh-users/$plugin $dir
+                echo CHANGED
+            done
+            EOF
+        register: zsh_result
+        changed_when: "'CHANGED' in zsh_result.stdout"
+
+      - name: '{{ app_name | upper }}: Add APT Repositories'
+        shell: |
+            {{ lxc_exec }} <<'EOF'
+            install -m 0755 -d /etc/apt/keyrings
+            if [ ! -f /etc/apt/sources.list.d/github-cli.list ]; then
+                curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg
+                chmod a+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+                echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+                echo CHANGED
+            fi
+            if [ ! -f /etc/apt/sources.list.d/doppler-cli.list ]; then
+                curl -sLf --tlsv1.2 --proto "=https" --retry 3 https://packages.doppler.com/public/cli/setup.deb.sh | bash >/dev/null
+                echo CHANGED
+            fi
+            if [ ! -f /etc/apt/sources.list.d/gierens.list ]; then
+                curl -fsSL https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | gpg --batch --yes --dearmor -o /etc/apt/keyrings/gierens.gpg
+                chmod a+r /etc/apt/keyrings/gierens.gpg
+                echo "deb [signed-by=/etc/apt/keyrings/gierens.gpg] http://deb.gierens.de stable main" > /etc/apt/sources.list.d/gierens.list
+                echo CHANGED
+            fi
+            EOF
+        register: repo_result
+        changed_when: "'CHANGED' in repo_result.stdout"
+
+      - name: '{{ app_name | upper }}: Install developer apt packages'
+        include_tasks: lxc_apt.yml
+        vars:
+            lxc_apt:
+                - gh
+                - doppler
+                - eza
+
+      - name: '{{ app_name | upper }}: Install Go, golangci-lint, just, fnm, bun'
+        shell: |
+            {{ lxc_exec }} <<'EOF'
+            if [ ! -x /usr/local/go/bin/go ]; then
+                GO_VERSION=$(curl -fsSL "https://go.dev/VERSION?m=text" | head -1)
+                curl -fsSL "https://go.dev/dl/${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz" | tar -C /usr/local -xz
+                echo CHANGED
+            fi
+            if [ ! -x /usr/local/bin/golangci-lint ]; then
+                curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b /usr/local/bin >/dev/null 2>&1
+                echo CHANGED
+            fi
+            if [ ! -x /root/.local/bin/just ]; then
+                mkdir -p /root/.local/bin
+                curl --proto "=https" --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /root/.local/bin >/dev/null 2>&1
+                echo CHANGED
+            fi
+            if [ ! -x /root/.local/share/fnm/fnm ]; then
+                curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell >/dev/null
+                echo CHANGED
+            fi
+            if [ ! -x /root/.bun/bin/bun ]; then
+                curl -fsSL https://bun.sh/install | bash >/dev/null 2>&1
+                echo CHANGED
+            fi
+            EOF
+        register: toolchain_result
+        changed_when: "'CHANGED' in toolchain_result.stdout"
+
+      - name: '{{ app_name | upper }}: Install Node.js LTS and Global npm Packages'
+        shell: |
+            {{ lxc_exec }} <<'EOF'
+            {{ fnm_init }}
+            fnm install --lts 2>&1 | grep -q 'already installed' || echo CHANGED
+            fnm use lts-latest >/dev/null
+            fnm default "$(fnm current)"
+            for pkg in {{ npm_packages | map('quote') | join(' ') }}; do
+                BEFORE=$(npm list -g --depth=0 --json 2>/dev/null | jq -r --arg p "$pkg" '.dependencies[$p].version // "missing"')
+                # npm 12 skips install scripts unless allowlisted; opencode and claude download their binaries there
+                npm install -g "$pkg" --allow-scripts="$pkg" >/dev/null 2>&1
+                AFTER=$(npm list -g --depth=0 --json 2>/dev/null | jq -r --arg p "$pkg" '.dependencies[$p].version // "missing"')
+                [ "$BEFORE" = "$AFTER" ] || echo "CHANGED $pkg $BEFORE -> $AFTER"
+            done
+            EOF
+        register: node_result
+        changed_when: "'CHANGED' in node_result.stdout"
+
+      - name: '{{ app_name | upper }}: Write Shell Config'
+        include_tasks: lxc_file.yml
+        loop:
+            - dest: /root/.zshrc
+              marker: '# {mark} PATHS'
+              block: |
+                  export PATH="$HOME/.local/bin:/usr/local/go/bin:$HOME/.local/share/fnm:$PATH"
+            - dest: /root/.zshrc
+              marker: '# {mark} FNM'
+              block: |
+                  eval "$(fnm env --use-on-cd --shell zsh)"
+            - dest: /root/.zshrc
+              marker: '# {mark} BUN'
+              block: |
+                  export BUN_INSTALL="$HOME/.bun"
+                  export PATH="$BUN_INSTALL/bin:$PATH"
+            - dest: /root/.zshrc
+              marker: '# {mark} JARVIS'
+              block: |
+                  export EDITOR="code --wait"
+                  alias cc="claude"
+                  alias t="tmux new-session -A -s main"
+                  alias ls="eza --icons"
+                  alias ll="eza -la --icons --git"
+                  vscode() {
+                    local uri="vscode://vscode-remote/ssh-remote+root@{{ instance.ip }}$(realpath ${1:-.})?windowId=_blank"
+                    ${BROWSER:-echo} "$uri"
+                  }
+                  kp() {
+                    [ $# -eq 0 ] && {
+                      echo "kp - kill processes on given ports"
+                      echo "Usage: kp <port>...   e.g. kp 8080 8081"
+                      return 1
+                    }
+                    # ss, not lsof: lsof here has no IPv6 support and misses node/next-server (bind ::)
+                    local port pids
+                    pids=$(for port in "$@"; do ss -ltnpH "sport = :$port" 2>/dev/null; done | grep -oP 'pid=\K[0-9]+' | sort -u)
+                    [ -z "$pids" ] && { echo "No processes on: $*"; return 0; }
+                    echo "$pids" | xargs kill -9 && echo "Killed: $(echo $pids | tr '\n' ' ')"
+                  }
+            - dest: /root/.tmux.conf
+              marker: '# {mark} JARVIS'
+              block: |
+                  # Behavior
+                  set -g mouse on
+                  setw -g monitor-activity on
+                  set -g visual-activity off
+                  set -sg escape-time 0
+                  set -g history-limit 50000
+
+                  # Saner indexing
+                  set -g base-index 1
+                  setw -g pane-base-index 1
+                  set -g renumber-windows on
+
+                  # Truecolor passthrough
+                  set -g default-terminal "tmux-256color"
+                  set -ga terminal-overrides ",xterm-256color:Tc"
+
+                  # Window naming: folder:command
+                  set -g automatic-rename on
+                  set -g automatic-rename-format "#{b:pane_current_path}:#{pane_current_command}"
+
+                  # Status bar palette
+                  set -g status-style "bg=black,fg=white"
+                  set -g status-left ""
+                  set -g status-left-length 0
+                  set -g status-right-length 100
+                  set -g status-interval 5
+
+                  # Window list
+                  setw -g window-status-format " #I:#W "
+                  setw -g window-status-current-format "#[fg=black,bg=green,bold] #I:#W #[fg=white,bg=black]"
+                  setw -g window-status-style "fg=#888888"
+                  setw -g window-status-activity-style "fg=yellow,bold"
+
+                  # Right side — pipe-separated sections
+                  set -g status-right "#{?client_prefix,#[fg=black#,bg=red#,bold] PFX #[fg=white#,bg=black] #[fg=#444444]│ ,}#[fg=yellow] RAM #(awk '/MemAvailable/{a=$2}/MemTotal/{t=$2}END{printf \"%.0f\", (1-a/t)*100}' /proc/meminfo)%% #[fg=#444444]│#[fg=magenta] CPU #(awk -v c=$(nproc) '{printf \"%.0f\", $1*100/c}' /proc/loadavg)%% #[fg=#444444]│#[fg=cyan] %H:%M #[fg=black,bg=green,bold] + #[fg=white,bg=black] "
+
+                  # Bindings
+                  bind -n MouseDown1StatusRight new-window -c "#{pane_current_path}"
+                  bind -n MouseDown3Status kill-window -t '{mouse}'
+                  bind c new-window -c "#{pane_current_path}"
+                  bind '"' split-window -v -c "#{pane_current_path}"
+                  bind % split-window -h -c "#{pane_current_path}"
+                  bind r source-file ~/.tmux.conf \; display-message "reloaded"
+        loop_control:
+            loop_var: lxc_file
+            label: '{{ lxc_file.dest }} {{ lxc_file.marker }}'

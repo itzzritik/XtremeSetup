@@ -1,0 +1,17 @@
+---
+- vars:
+      app_name: update
+  block:
+      - name: '{{ app_name | upper }}: Upgrade, Autoremove & Clean'
+        shell: |
+            {{ lxc_exec }} <<'EOF'
+            export DEBIAN_FRONTEND=noninteractive
+            [ -n "$(find /var/lib/apt/lists -maxdepth 0 -mmin -1440)" ] || apt-get update -qq
+            apt-get -s dist-upgrade | grep -q '^Inst' || exit 0
+            apt-get -y -qq -o Dpkg::Options::=--force-confold dist-upgrade >/dev/null
+            apt-get -y -qq autoremove --purge >/dev/null
+            apt-get -y -qq autoclean >/dev/null
+            echo CHANGED
+            EOF
+        register: upgrade_result
+        changed_when: "'CHANGED' in upgrade_result.stdout"

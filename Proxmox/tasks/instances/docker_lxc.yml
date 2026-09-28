@@ -115,13 +115,28 @@
                   delay: 5
                   timeout: 60
 
+      - name: '{{ instance.hostname | upper }}: Restrict Docker TCP to Host'
+        shell: |
+            pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+            rule="INPUT -p tcp --dport 2375 ! -i lo ! -s {{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.proxmox.id }} -j DROP"
+            conf=/etc/systemd/system/docker.service.d/firewall.conf
+            want=$(printf '[Service]\nExecStartPost=/bin/sh -c "iptables -C %s 2>/dev/null || iptables -I %s"\n' "$rule" "$rule")
+            if [ "$(cat $conf 2>/dev/null)" != "$want" ]; then
+                echo "$want" > $conf
+                systemctl daemon-reload
+                echo CHANGED
+            fi
+            iptables -C $rule 2>/dev/null || { iptables -I $rule; echo CHANGED; }
+            EOF
+        register: docker_firewall
+        changed_when: "'CHANGED' in docker_firewall.stdout"
+
       - name: '{{ instance.hostname | upper }}: Deploy Apps'
         include_tasks: 'docker_lxc/{{ docker_app_item }}.yml'
         loop:
             - backrest
             - voidauth
             - homer
-            - vscode-web
             - alist
             - media
         loop_control:

@@ -1,0 +1,23 @@
+- name: '{{ app_name | upper }}: Enable and Start {{ lxc_service.name }}'
+  shell: |
+      {{ lxc_exec }} <<'EOF'
+      {% if lxc_service.user | default(false) %}
+      export XDG_RUNTIME_DIR=/run/user/0
+      sc="systemctl --user"
+      {% else %}
+      sc=systemctl
+      {% endif %}
+      {% if lxc_service.restart | default(false) | bool %}
+      $sc daemon-reload
+      $sc enable -q {{ lxc_service.name }}
+      $sc restart {{ lxc_service.name }}
+      echo CHANGED
+      exit 0
+      {% endif %}
+      $sc is-enabled -q {{ lxc_service.name }} && $sc is-active -q {{ lxc_service.name }} && exit 0
+      $sc daemon-reload
+      $sc enable -q --now {{ lxc_service.name }}
+      echo CHANGED
+      EOF
+  register: service_result
+  changed_when: "'CHANGED' in service_result.stdout"

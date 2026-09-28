@@ -1,0 +1,41 @@
+---
+- vars:
+      app_name: opencode
+      node_bin: /root/.local/share/fnm/aliases/default/bin
+      unit: /etc/systemd/system/opencode.service
+  block:
+      - name: '{{ app_name | upper }}: Read Installed Version'
+        command: pct exec {{ id }} -- cat /root/.local/share/fnm/aliases/default/lib/node_modules/opencode-ai/package.json
+        register: opencode_pkg
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Write Systemd Unit'
+        include_tasks: lxc_file.yml
+        vars:
+            lxc_file:
+                dest: '{{ unit }}'
+                content: |
+                    [Unit]
+                    Description=OpenCode Web Server
+                    After=network.target
+
+                    [Service]
+                    Type=simple
+                    WorkingDirectory=/root/Projects
+                    Environment=HOME=/root
+                    Environment=PATH={{ node_bin }}:/usr/local/bin:/usr/bin:/bin
+                    # restarts the service when npm upgrades opencode-ai
+                    Environment=OPENCODE_VERSION={{ (opencode_pkg.stdout | from_json).version }}
+                    ExecStart={{ node_bin }}/opencode web --port {{ env.JARVIS_SERVICES[app_name].app_port }} --hostname 127.0.0.1
+                    Restart=always
+                    RestartSec=5
+
+                    [Install]
+                    WantedBy=multi-user.target
+
+      - name: '{{ app_name | upper }}: Enable and Start Service'
+        include_tasks: lxc_service.yml
+        vars:
+            lxc_service:
+                name: opencode
+                restart: '{{ unit in lxc_changed | default([]) }}'

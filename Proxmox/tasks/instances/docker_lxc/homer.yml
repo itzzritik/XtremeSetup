@@ -28,7 +28,7 @@
       - set_fact:
             healthy:
                 app: '{{ homer_health.status | default(0) == 200 }}'
-                config: '{{ healthy.app and homer_config_response.status | default(0) == 200 and "stylesheet" in (homer_config_response.content | default("") | from_yaml | default({})) }}'
+                config: '{{ homer_health.status | default(0) == 200 and homer_config_response.status | default(0) == 200 and "stylesheet" in (homer_config_response.content | default("") | from_yaml | default({})) }}'
       - debug:
             msg:
                 - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"

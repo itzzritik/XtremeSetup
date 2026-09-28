@@ -27,6 +27,7 @@
           - JARVIS_AUTH_X_CLIENT_SECRET
           - JARVIS_BOT_EMAIL
           - JARVIS_BOT_TELEGRAM_KEY
+          - JARVIS_CODE_TELEGRAM_KEY
           - JARVIS_CF_DNS_API_TOKEN
           - JARVIS_CF_TUNNEL_TOKEN
           - JARVIS_CF_R2_ENDPOINT
@@ -34,6 +35,8 @@
           - JARVIS_DOMAIN
           - JARVIS_GOOGLE_SERVICE_JSON
           - JARVIS_GITHUB_TOKEN_SSH
+          - JARVIS_GIT_SSH_PRIVATE_KEY
+          - JARVIS_GIT_SSH_PUBLIC_KEY
           - JARVIS_HA_DECRYPT_KEY
           - JARVIS_OPENCLAW_GATEWAY_TOKEN
           - JARVIS_POSTGRES_PASSWORD
@@ -61,7 +64,7 @@
   block:
       - name: Ensure Doppler is Installed
         homebrew:
-            name: dopplerhq/cli/doppler
+            name: doppler
             state: present
 
       - name: Retrieve Doppler Secrets

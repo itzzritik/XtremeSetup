@@ -1,0 +1,31 @@
+---
+- vars:
+      app_name: git
+  block:
+      - name: '{{ app_name | upper }}: Write SSH Keys'
+        include_tasks: lxc_file.yml
+        loop:
+            - dest: /root/.ssh/id_ed25519
+              content: "{{ env.JARVIS_GIT_SSH_PRIVATE_KEY }}\n"
+              mode: '0600'
+              secret: true
+            - dest: /root/.ssh/id_ed25519.pub
+              content: "{{ env.JARVIS_GIT_SSH_PUBLIC_KEY }}\n"
+        loop_control:
+            loop_var: lxc_file
+            label: '{{ lxc_file.dest }}'
+
+      # forged sets its own signing key; only default it when unset
+      - name: '{{ app_name | upper }}: Configure Git'
+        shell: |
+            {{ lxc_exec }} <<'EOF'
+            chmod 700 /root/.ssh
+            set_cfg() { [ "$(git config --global --get "$1")" = "$2" ] || { git config --global "$1" "$2"; echo "CHANGED $1"; }; }
+            set_cfg user.name {{ env.RITIK_NAME | quote }}
+            set_cfg user.email {{ env.RITIK_EMAIL | quote }}
+            set_cfg gpg.format ssh
+            git config --global --get user.signingkey >/dev/null || set_cfg user.signingkey /root/.ssh/id_ed25519.pub
+            set_cfg commit.gpgsign true
+            EOF
+        register: git_config
+        changed_when: "'CHANGED' in git_config.stdout"
