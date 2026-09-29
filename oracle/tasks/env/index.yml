@@ -23,7 +23,7 @@
   block:
       - name: Ensure Doppler is Installed
         homebrew:
-            name: dopplerhq/cli/doppler
+            name: doppler
             state: present
 
       - name: Retrieve Doppler Secrets

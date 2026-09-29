@@ -20,7 +20,6 @@
           node_bin: /root/.local/share/fnm/aliases/default/bin
           bun_bin: /root/.bun/bin
           local_bin: /root/.local/bin
-          runtime_dir: /run/user/0
           vscode_web: '{{ env.JARVIS_CONFIGS_DIR }}/vscode-web'
           claude: /root/.claude
           claude_json: /root/.claude.json
