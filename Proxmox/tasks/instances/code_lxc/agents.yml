@@ -5,6 +5,7 @@
           root: '{{ paths.configs }}/{{ app_name }}'
           local: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
       global_rules: '{{ config.local }}/AGENTS.md'
+      user_context: /usr/local/bin/user-context
       # order matters: a folder link must exist before links to files inside it
       agent_links:
           - { path: '{{ lxc_paths.claude }}', target: .claude, type: dir }
@@ -74,6 +75,25 @@
         loop_control:
             loop_var: file_item
             label: '{{ file_item.dest | basename }}'
+
+      - name: '{{ app_name | upper }}: Install Session Hooks'
+        include_tasks: lxc_file.yml
+        loop:
+            - dest: '{{ user_context }}'
+              mode: '0755'
+              content: "{{ lookup('file', 'agents/user-context') }}\n"
+            - dest: /etc/claude-code/managed-settings.json
+              content: |
+                  {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "{{ user_context }} claude"}]}]}}
+            - dest: /etc/codex/hooks.json
+              content: |
+                  {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "{{ user_context }} codex"}]}]}}
+            - dest: '{{ lxc_paths.gemini_config }}/hooks.json'
+              content: |
+                  {"user-context": {"PreInvocation": [{"type": "command", "command": "{{ user_context }} antigravity", "timeout": 10}]}}
+        loop_control:
+            loop_var: lxc_file
+            label: '{{ lxc_file.dest }}'
 
       - name: '{{ app_name | upper }}: Install MCP Sync'
         include_tasks: lxc_file.yml
