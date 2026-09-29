@@ -102,16 +102,16 @@
                 curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b /usr/local/bin >/dev/null 2>&1
                 echo CHANGED
             fi
-            if [ ! -x /root/.local/bin/just ]; then
-                mkdir -p /root/.local/bin
-                curl --proto "=https" --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /root/.local/bin >/dev/null 2>&1
+            if [ ! -x {{ lxc_paths.local_bin }}/just ]; then
+                mkdir -p {{ lxc_paths.local_bin }}
+                curl --proto "=https" --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to {{ lxc_paths.local_bin }} >/dev/null 2>&1
                 echo CHANGED
             fi
             if [ ! -x /root/.local/share/fnm/fnm ]; then
                 curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell >/dev/null
                 echo CHANGED
             fi
-            if [ ! -x /root/.bun/bin/bun ]; then
+            if [ ! -x {{ lxc_paths.bun_bin }}/bun ]; then
                 curl -fsSL https://bun.sh/install | bash >/dev/null 2>&1
                 echo CHANGED
             fi

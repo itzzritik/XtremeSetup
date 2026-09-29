@@ -2,7 +2,7 @@
   shell: |
       {{ lxc_exec }} <<'EOF'
       {% if lxc_service.user | default(false) %}
-      export XDG_RUNTIME_DIR=/run/user/0
+      export XDG_RUNTIME_DIR={{ lxc_paths.runtime_dir }}
       sc="systemctl --user"
       {% else %}
       sc=systemctl

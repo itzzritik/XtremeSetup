@@ -1,11 +1,10 @@
 ---
 - vars:
       app_name: opencode
-      node_bin: /root/.local/share/fnm/aliases/default/bin
       unit: /etc/systemd/system/opencode.service
   block:
       - name: '{{ app_name | upper }}: Read Installed Version'
-        command: pct exec {{ id }} -- cat /root/.local/share/fnm/aliases/default/lib/node_modules/opencode-ai/package.json
+        command: pct exec {{ id }} -- cat {{ lxc_paths.node_bin | dirname }}/lib/node_modules/opencode-ai/package.json
         register: opencode_pkg
         changed_when: false
 
@@ -21,12 +20,12 @@
 
                     [Service]
                     Type=simple
-                    WorkingDirectory=/root/Projects
+                    WorkingDirectory={{ lxc_paths.projects }}
                     Environment=HOME=/root
-                    Environment=PATH={{ node_bin }}:/usr/local/bin:/usr/bin:/bin
+                    Environment=PATH={{ lxc_env_path }}
                     # restarts the service when npm upgrades opencode-ai
                     Environment=OPENCODE_VERSION={{ (opencode_pkg.stdout | from_json).version }}
-                    ExecStart={{ node_bin }}/opencode web --port {{ env.JARVIS_SERVICES[app_name].app_port }} --hostname 127.0.0.1
+                    ExecStart={{ lxc_paths.node_bin }}/opencode web --port {{ env.JARVIS_SERVICES[app_name].app_port }} --hostname 127.0.0.1
                     Restart=always
                     RestartSec=5
 

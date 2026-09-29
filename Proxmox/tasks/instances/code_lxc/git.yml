@@ -1,15 +1,16 @@
 ---
 - vars:
       app_name: git
+      ssh_key: /root/.ssh/id_ed25519
   block:
       - name: '{{ app_name | upper }}: Write SSH Keys'
         include_tasks: lxc_file.yml
         loop:
-            - dest: /root/.ssh/id_ed25519
+            - dest: '{{ ssh_key }}'
               content: "{{ env.JARVIS_GIT_SSH_PRIVATE_KEY }}\n"
               mode: '0600'
               secret: true
-            - dest: /root/.ssh/id_ed25519.pub
+            - dest: '{{ ssh_key }}.pub'
               content: "{{ env.JARVIS_GIT_SSH_PUBLIC_KEY }}\n"
         loop_control:
             loop_var: lxc_file
@@ -24,7 +25,7 @@
             set_cfg user.name {{ env.RITIK_NAME | quote }}
             set_cfg user.email {{ env.RITIK_EMAIL | quote }}
             set_cfg gpg.format ssh
-            git config --global --get user.signingkey >/dev/null || set_cfg user.signingkey /root/.ssh/id_ed25519.pub
+            git config --global --get user.signingkey >/dev/null || set_cfg user.signingkey {{ ssh_key }}.pub
             set_cfg commit.gpgsign true
             EOF
         register: git_config

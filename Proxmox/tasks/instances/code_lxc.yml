@@ -15,6 +15,20 @@
           projects: /mnt/ssd/Projects
           configs: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}'
       lxc_exec: 'pct exec {{ id }} --keep-env 0 -- env HOME=/root bash -se'
+      lxc_paths:
+          projects: /root/Projects
+          node_bin: /root/.local/share/fnm/aliases/default/bin
+          bun_bin: /root/.bun/bin
+          local_bin: /root/.local/bin
+          runtime_dir: /run/user/0
+          vscode_web: '{{ env.JARVIS_CONFIGS_DIR }}/vscode-web'
+          claude: /root/.claude
+          claude_json: /root/.claude.json
+          codex: /root/.codex
+          opencode: /root/.config/opencode
+          gemini_config: /root/.gemini/config
+          gemini_token: /root/.gemini/antigravity-cli/antigravity-oauth-token
+      lxc_env_path: '{{ lxc_paths.node_bin }}:{{ lxc_paths.bun_bin }}:/usr/local/bin:/usr/bin:/bin'
 
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
@@ -67,7 +81,7 @@
                   path: '/etc/pve/lxc/{{ id }}.conf'
                   marker: '# {mark} ANSIBLE MANAGED BLOCK'
                   block: |
-                      mp0: {{ paths.projects }},mp=/root/Projects
+                      mp0: {{ paths.projects }},mp={{ lxc_paths.projects }}
                       mp1: {{ paths.configs }},mp={{ env.JARVIS_CONFIGS_DIR }}
 
       - name: '{{ instance.hostname | upper }}: Start LXC'

@@ -3,7 +3,7 @@
       app_name: antigravity
       daemon: antigravity-cli-daemon
       instance_name: '{{ env.JARVIS_BOT_NAME }}'
-      agy: /root/.local/bin/agy
+      agy: '{{ lxc_paths.local_bin }}/agy'
       units_dir: /root/.config/systemd/user
       watcher: /usr/local/lib/{{ app_name }}/watch.sh
       config:
@@ -13,7 +13,7 @@
         shell: |
             {{ lxc_exec }} <<'EOF'
             BEFORE=$({{ agy }} --version 2>/dev/null || echo "missing")
-            curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /root/.local/bin >/dev/null 2>&1
+            curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir {{ lxc_paths.local_bin }} >/dev/null 2>&1
             {{ agy }} update >/dev/null 2>&1
             AFTER=$({{ agy }} --version 2>/dev/null || echo "missing")
             [ "$BEFORE" = "$AFTER" ] || echo "CHANGED $BEFORE -> $AFTER"
@@ -28,7 +28,7 @@
                 loginctl enable-linger root
                 echo CHANGED
             fi
-            for i in $(seq 30); do [ -S /run/user/0/systemd/private ] && exit 0; sleep 1; done
+            for i in $(seq 30); do [ -S {{ lxc_paths.runtime_dir }}/systemd/private ] && exit 0; sleep 1; done
             exit 1
             EOF
         register: linger_result
@@ -52,7 +52,7 @@
                   # Token refreshes keep the same refresh_token, so this only fires on a new sign-in or agy version.
                   STAMP={{ config.local }}/fingerprint
                   mkdir -p "$(dirname "$STAMP")"
-                  NOW="$(jq -r ".token.refresh_token // empty" /root/.gemini/antigravity-cli/antigravity-oauth-token 2>/dev/null | sha256sum) $({{ agy }} --version 2>/dev/null)"
+                  NOW="$(jq -r ".token.refresh_token // empty" {{ lxc_paths.gemini_token }} 2>/dev/null | sha256sum) $({{ agy }} --version 2>/dev/null)"
                   [ "$NOW" = "$(cat "$STAMP" 2>/dev/null)" ] && exit 0
                   echo "$NOW" > "$STAMP"
                   if systemctl --user is-enabled -q {{ daemon }}; then
@@ -66,7 +66,7 @@
                   Description=Restart antigravity remote-control on sign-in or update
 
                   [Path]
-                  PathChanged=/root/.gemini/antigravity-cli/antigravity-oauth-token
+                  PathChanged={{ lxc_paths.gemini_token }}
                   PathChanged={{ agy }}
 
                   [Install]
@@ -98,7 +98,7 @@
       - name: '{{ app_name | upper }}: Register Remote Control Daemon'
         shell: |
             {{ lxc_exec }} <<'EOF'
-            export XDG_RUNTIME_DIR=/run/user/0
+            export XDG_RUNTIME_DIR={{ lxc_paths.runtime_dir }}
             if [ ! -f {{ units_dir }}/{{ daemon }}.service ]; then
                 out=$({{ agy }} remote-control start --name {{ instance_name | quote }} 2>&1) || {
                     echo "$out" | grep -q 'not signed in' && exit 0

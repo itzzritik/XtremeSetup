@@ -3,7 +3,7 @@
       app_name: vscode-web
       config:
           root: '{{ paths.configs }}/{{ app_name }}'
-          local: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+          local: '{{ lxc_paths.vscode_web }}'
       server:
           binary: '{{ config.root }}/server/bin/code-server'
           product_json: '{{ config.root }}/server/product.json'
@@ -156,7 +156,7 @@
                     [Service]
                     Type=simple
                     Environment=HOME=/root
-                    ExecStart={{ config.local }}/server/bin/code-server --host 127.0.0.1 --port {{ env.JARVIS_SERVICES[app_name].app_port }} --without-connection-token --accept-server-license-terms --server-data-dir {{ config.local }} --default-folder /root/Projects
+                    ExecStart={{ config.local }}/server/bin/code-server --host 127.0.0.1 --port {{ env.JARVIS_SERVICES[app_name].app_port }} --without-connection-token --accept-server-license-terms --server-data-dir {{ config.local }} --default-folder {{ lxc_paths.projects }}
                     Restart=on-failure
                     RestartSec=10
                     MemoryMax=6G

@@ -40,7 +40,7 @@
                       @codeserver host {{ svc['vscode-web'].subdomains[0] }}.{{ env.JARVIS_DOMAIN }}
                       handle @codeserver {
                           handle_path /_fonts/* {
-                              root * {{ env.JARVIS_CONFIGS_DIR }}/vscode-web/fonts
+                              root * {{ lxc_paths.vscode_web }}/fonts
                               file_server
                               header Cache-Control "public, max-age=31536000, immutable"
                           }
