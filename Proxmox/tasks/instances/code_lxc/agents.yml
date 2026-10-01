@@ -95,6 +95,12 @@
             loop_var: lxc_file
             label: '{{ lxc_file.dest }}'
 
+      - name: '{{ app_name | upper }}: Find MCP Server Folders'
+        find:
+            paths: '{{ config.root }}/mcp'
+            file_type: directory
+        register: mcp_folders
+
       - name: '{{ app_name | upper }}: Install MCP Sync'
         include_tasks: lxc_file.yml
         loop:
@@ -121,6 +127,9 @@
 
                   [Path]
                   PathModified={{ mcp_sync.source }}
+                  {% for folder in mcp_folders.files | map(attribute='path') | map('basename') | sort %}
+                  PathModified={{ mcp_sync.source }}/{{ folder }}
+                  {% endfor %}
 
                   [Install]
                   WantedBy=multi-user.target

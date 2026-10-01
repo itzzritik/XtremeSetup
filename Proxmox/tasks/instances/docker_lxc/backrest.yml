@@ -78,7 +78,7 @@
                                   "id": "{{ env.JARVIS_BOT_NAME | lower }}-configs",
                                   "repo": "r2-backup",
                                   "paths": ["{{ instance.configs }}"],
-                                  "excludes": ["**/cache/**", "**/.cache/**", "**/logs/**", "**/agents/.codex/.tmp/**", "**/agents/.claude/plugins/marketplaces/**", "**/agents/.claude/backups/**", "**/agents/**/shell-snapshots/**", "**/agents/**/shell_snapshots/**", "**/agents/**/*.lock"],
+                                  "excludes": ["**/cache/**", "**/.cache/**", "**/logs/**", "**/agents/.codex/.tmp/**", "**/agents/.claude/plugins/marketplaces/**", "**/agents/.claude/backups/**", "**/agents/**/shell-snapshots/**", "**/agents/**/shell_snapshots/**", "**/agents/**/*.lock", "**/agents/.claude/projects/**", "**/agents/.claude/file-history/**", "**/agents/.claude/session-env/**", "**/agents/.claude/skills/synced/**", "**/agents/.claude/plugins/plugin-catalog-cache.json", "**/agents/.codex/sessions/**", "**/agents/.codex/skills/.system/**", "**/agents/.codex/*.sqlite*"],
                                   "schedule": {
                                     "cron": "0 2 */2 * *",
                                     "clock": "CLOCK_LOCAL"

@@ -249,6 +249,20 @@
         become: true
         become_user: ubuntu
 
+      - name: '{{ app_name | upper }}: Clone tmux plugins'
+        git:
+            repo: 'https://github.com/tmux-plugins/{{ tmux_plugin }}'
+            dest: '/home/ubuntu/.tmux/plugins/{{ tmux_plugin }}'
+            depth: 1
+        loop:
+            - tpm
+            - tmux-resurrect
+            - tmux-continuum
+        loop_control:
+            loop_var: tmux_plugin
+        become: true
+        become_user: ubuntu
+
       - name: '{{ app_name | upper }}: Configure tmux'
         blockinfile:
             path: /home/ubuntu/.tmux.conf
@@ -277,27 +291,39 @@
                 set -g automatic-rename-format "#{b:pane_current_path}:#{pane_current_command}"
 
                 # Status bar palette
-                set -g status-style "bg=black,fg=white"
-                set -g status-left ""
-                set -g status-left-length 0
+                set -g status-style "bg=#161616,fg=white"
+                set -g status-left "#{?@picker,#[range=user|sessions]#[fg=black#,bg=red#,bold] ✕ #[norange fg=white#,bg=#161616] #[range=user|newsession]#[fg=black#,bg=green#,bold] + new #[norange fg=white#,bg=#161616],#[range=user|sessions]#[fg=black#,bg=cyan#,bold] #S #[norange fg=white#,bg=#161616]} "
+                set -g status-left-length 30
                 set -g status-right-length 100
                 set -g status-interval 5
 
                 # Window list
-                setw -g window-status-format " #I:#W "
-                setw -g window-status-current-format "#[fg=black,bg=green,bold] #I:#W #[fg=white,bg=black]"
-                setw -g window-status-style "fg=#888888"
+                setw -g window-status-format "#{?@picker,, #I:#W }"
+                setw -g window-status-current-format "#{?@picker,,#[fg=black#,bg=green#,bold] #I:#W #[fg=white#,bg=#161616]}"
+                setw -g window-status-style "fg=#d0d0d0"
                 setw -g window-status-activity-style "fg=yellow,bold"
 
                 # Right side — pipe-separated sections
-                set -g status-right "#{?client_prefix,#[fg=black#,bg=red#,bold] PFX #[fg=white#,bg=black] #[fg=#444444]│ ,}#[fg=yellow] RAM #(awk '/MemAvailable/{a=$2}/MemTotal/{t=$2}END{printf \"%.0f\", (1-a/t)*100}' /proc/meminfo)%% #[fg=#444444]│#[fg=magenta] CPU #(awk -v c=$(nproc) '{printf \"%.0f\", $1*100/c}' /proc/loadavg)%% #[fg=#444444]│#[fg=cyan] %H:%M #[fg=black,bg=green,bold] + #[fg=white,bg=black] "
+                set -g status-right "#{?@picker,,#{?client_prefix,#[fg=black#,bg=red#,bold] PFX #[fg=white#,bg=#161616] #[fg=#444444]│ ,}#[fg=cyan] %H:%M #[fg=black#,bg=green#,bold] + #[fg=white#,bg=#161616] }"
 
                 # Bindings
-                bind -n MouseDown1StatusRight new-window -c "#{pane_current_path}"
-                bind -n MouseDown3Status kill-window -t '{mouse}'
+                set-hook -g pane-mode-changed 'set -gF @picker "#{==:#{pane_mode},tree-mode}"'
+                bind -n MouseDown1StatusRight if -F '#{!=:#{@picker},1}' 'new-window -c "#{pane_current_path}"'
+                bind -n MouseDown1Status if -F '#{==:#{mouse_status_range},sessions}' { if -F '#{==:#{pane_mode},tree-mode}' 'send-keys q' 'choose-tree -Zs' } { if -F '#{==:#{mouse_status_range},newsession}' { send-keys q; command-prompt -p 'new session:' "new -A -s '%%'" } { if -F '#{!=:#{@picker},1}' 'select-window -t=' } }
+                bind -n MouseDown3Status if -F '#{==:#{mouse_status_range},window}' "kill-window -t '{mouse}'"
                 bind c new-window -c "#{pane_current_path}"
                 bind '"' split-window -v -c "#{pane_current_path}"
                 bind % split-window -h -c "#{pane_current_path}"
                 bind r source-file ~/.tmux.conf \; display-message "reloaded"
+
+                # Persist sessions across reboot
+                set -g @plugin 'tmux-plugins/tpm'
+                set -g @plugin 'tmux-plugins/tmux-resurrect'
+                set -g @plugin 'tmux-plugins/tmux-continuum'
+                set -g @resurrect-capture-pane-contents 'on'
+                set -g @resurrect-processes 'ssh "~npm" "~pnpm" "~yarn" "~bun" "~node" "~python" "~uv" "~docker compose" "~make" "~go run"'
+                set -g @continuum-restore 'on'
+                set -g @continuum-save-interval '15'
+                run '~/.tmux/plugins/tpm/tpm'
         become: true
         become_user: ubuntu

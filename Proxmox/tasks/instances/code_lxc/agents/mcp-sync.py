@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Makes every agent's MCP servers exactly match agents/mcp/*.json. Never prints secret values.
+# Makes every agent's MCP servers exactly match agents/mcp/*/mcp.json. Never prints secret values.
 import fcntl
 import glob
 import json
@@ -41,8 +41,12 @@ def write(path, text):
 
 def load_servers():
     servers = {}
-    for path in sorted(glob.glob(f'{SOURCE}/*.json')):
-        name = os.path.basename(path)[:-5]
+    # mcp/{name}/mcp.json, plus the older flat mcp/{name}.json; the folder wins if both exist
+    found = [(os.path.basename(os.path.dirname(p)), p) for p in sorted(glob.glob(f'{SOURCE}/*/mcp.json'))]
+    found += [(os.path.basename(p)[:-5], p) for p in sorted(glob.glob(f'{SOURCE}/*.json'))]
+    for name, path in found:
+        if name in servers:
+            continue
         try:
             spec = json.loads(read(path))
             required = 'url' if spec['type'] == 'http' else 'command'

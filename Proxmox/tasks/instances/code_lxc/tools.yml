@@ -5,6 +5,10 @@
       zsh_plugins:
           - zsh-autosuggestions
           - zsh-syntax-highlighting
+      tmux_plugins:
+          - tpm
+          - tmux-resurrect
+          - tmux-continuum
       npm_packages:
           - npm
           - typescript
@@ -13,6 +17,7 @@
           - '@anthropic-ai/claude-code'
           - '@openai/codex'
           - opencode-ai
+          - '@playwright/mcp'
   block:
       - name: '{{ app_name | upper }}: Install apt packages'
         include_tasks: lxc_apt.yml
@@ -119,7 +124,7 @@
         register: toolchain_result
         changed_when: "'CHANGED' in toolchain_result.stdout"
 
-      - name: '{{ app_name | upper }}: Install Node.js LTS and Global npm Packages'
+      - name: '{{ app_name | upper }}: Install Node.js LTS, Global npm Packages and Playwright Chrome'
         shell: |
             {{ lxc_exec }} <<'EOF'
             {{ fnm_init }}
@@ -133,9 +138,24 @@
                 AFTER=$(npm list -g --depth=0 --json 2>/dev/null | jq -r --arg p "$pkg" '.dependencies[$p].version // "missing"')
                 [ "$BEFORE" = "$AFTER" ] || echo "CHANGED $pkg $BEFORE -> $AFTER"
             done
+            out=$(node "$(npm root -g)/@playwright/mcp/node_modules/playwright-core/cli.js" install chrome 2>&1)
+            grep -q 'already installed' <<< "$out" || echo "CHANGED chrome"
             EOF
         register: node_result
         changed_when: "'CHANGED' in node_result.stdout"
+
+      - name: '{{ app_name | upper }}: Install tmux plugins'
+        shell: |
+            {{ lxc_exec }} <<'EOF'
+            for plugin in {{ tmux_plugins | join(' ') }}; do
+                dir=/root/.tmux/plugins/$plugin
+                [ -d $dir ] && continue
+                git clone -q --depth 1 https://github.com/tmux-plugins/$plugin $dir
+                echo CHANGED
+            done
+            EOF
+        register: tmux_result
+        changed_when: "'CHANGED' in tmux_result.stdout"
 
       - name: '{{ app_name | upper }}: Write Shell Config'
         include_tasks: lxc_file.yml
@@ -158,6 +178,7 @@
               block: |
                   export EDITOR="code --wait"
                   alias cc="claude"
+                  alias agyy="agy --dangerously-skip-permissions"
                   alias t="tmux new-session -A -s main"
                   alias ls="eza --icons"
                   alias ll="eza -la --icons --git"
@@ -201,28 +222,40 @@
                   set -g automatic-rename-format "#{b:pane_current_path}:#{pane_current_command}"
 
                   # Status bar palette
-                  set -g status-style "bg=black,fg=white"
-                  set -g status-left ""
-                  set -g status-left-length 0
+                  set -g status-style "bg=#161616,fg=white"
+                  set -g status-left "#{?@picker,#[range=user|sessions]#[fg=black#,bg=red#,bold] ✕ #[norange fg=white#,bg=#161616] #[range=user|newsession]#[fg=black#,bg=green#,bold] + new #[norange fg=white#,bg=#161616],#[range=user|sessions]#[fg=black#,bg=cyan#,bold] #S #[norange fg=white#,bg=#161616]} "
+                  set -g status-left-length 30
                   set -g status-right-length 100
                   set -g status-interval 5
 
                   # Window list
-                  setw -g window-status-format " #I:#W "
-                  setw -g window-status-current-format "#[fg=black,bg=green,bold] #I:#W #[fg=white,bg=black]"
-                  setw -g window-status-style "fg=#888888"
+                  setw -g window-status-format "#{?@picker,, #I:#W }"
+                  setw -g window-status-current-format "#{?@picker,,#[fg=black#,bg=green#,bold] #I:#W #[fg=white#,bg=#161616]}"
+                  setw -g window-status-style "fg=#d0d0d0"
                   setw -g window-status-activity-style "fg=yellow,bold"
 
                   # Right side — pipe-separated sections
-                  set -g status-right "#{?client_prefix,#[fg=black#,bg=red#,bold] PFX #[fg=white#,bg=black] #[fg=#444444]│ ,}#[fg=yellow] RAM #(awk '/MemAvailable/{a=$2}/MemTotal/{t=$2}END{printf \"%.0f\", (1-a/t)*100}' /proc/meminfo)%% #[fg=#444444]│#[fg=magenta] CPU #(awk -v c=$(nproc) '{printf \"%.0f\", $1*100/c}' /proc/loadavg)%% #[fg=#444444]│#[fg=cyan] %H:%M #[fg=black,bg=green,bold] + #[fg=white,bg=black] "
+                  set -g status-right "#{?@picker,,#{?client_prefix,#[fg=black#,bg=red#,bold] PFX #[fg=white#,bg=#161616] #[fg=#444444]│ ,}#[fg=cyan] %H:%M #[fg=black#,bg=green#,bold] + #[fg=white#,bg=#161616] }"
 
                   # Bindings
-                  bind -n MouseDown1StatusRight new-window -c "#{pane_current_path}"
-                  bind -n MouseDown3Status kill-window -t '{mouse}'
+                  set-hook -g pane-mode-changed 'set -gF @picker "#{==:#{pane_mode},tree-mode}"'
+                  bind -n MouseDown1StatusRight if -F '#{!=:#{@picker},1}' 'new-window -c "#{pane_current_path}"'
+                  bind -n MouseDown1Status if -F '#{==:#{mouse_status_range},sessions}' { if -F '#{==:#{pane_mode},tree-mode}' 'send-keys q' 'choose-tree -Zs' } { if -F '#{==:#{mouse_status_range},newsession}' { send-keys q; command-prompt -p 'new session:' "new -A -s '%%'" } { if -F '#{!=:#{@picker},1}' 'select-window -t=' } }
+                  bind -n MouseDown3Status if -F '#{==:#{mouse_status_range},window}' "kill-window -t '{mouse}'"
                   bind c new-window -c "#{pane_current_path}"
                   bind '"' split-window -v -c "#{pane_current_path}"
                   bind % split-window -h -c "#{pane_current_path}"
                   bind r source-file ~/.tmux.conf \; display-message "reloaded"
+
+                  # Persist sessions across reboot
+                  set -g @plugin 'tmux-plugins/tpm'
+                  set -g @plugin 'tmux-plugins/tmux-resurrect'
+                  set -g @plugin 'tmux-plugins/tmux-continuum'
+                  set -g @resurrect-capture-pane-contents 'on'
+                  set -g @resurrect-processes 'ssh "~npm" "~pnpm" "~yarn" "~bun" "~node" "~python" "~uv" "~docker compose" "~make" "~go run"'
+                  set -g @continuum-restore 'on'
+                  set -g @continuum-save-interval '15'
+                  run '~/.tmux/plugins/tpm/tpm'
         loop_control:
             loop_var: lxc_file
             label: '{{ lxc_file.dest }} {{ lxc_file.marker }}'
