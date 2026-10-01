@@ -1,62 +1,257 @@
-- set_fact:
+- vars:
       stack_name: media
-
-- name: '{{ stack_name | upper }}: Create Library Directories'
-  vars:
       mapped_uid: '{{ instance.subuid | int + 1000 }}'
-  file:
-      path: '{{ media_dir }}'
-      state: directory
-      mode: '0777'
-      owner: '{{ mapped_uid }}'
-      group: '{{ mapped_uid }}'
-  loop:
-      - '/mnt/ssd/Media'
-      - '/mnt/ssd/Media/Downloads'
-      - '/mnt/ssd/Media/Downloads/movies'
-      - '/mnt/ssd/Media/Downloads/tv'
-      - '/mnt/ssd/Media/Downloads/anime'
-      - '/mnt/ssd/Media/Movies'
-      - '/mnt/ssd/Media/TV'
-      - '/mnt/ssd/Media/Anime'
-  loop_control:
-      loop_var: media_dir
-
-- name: '{{ stack_name | upper }}: Deploy Provider Apps'
-  include_tasks: 'media/{{ media_app }}.yml'
-  loop:
-      - qbittorrent
-      - radarr
-      - sonarr
-      - sonarr_anime
-  loop_control:
-      loop_var: media_app
-
-- name: '{{ stack_name | upper }}: Extract Dependency API Keys'
+      library: /media/ssd/Media:/media
+      svc: '{{ env.JARVIS_SERVICES }}'
+      media_apps:
+          - name: flaresolverr
+            image: ghcr.io/flaresolverr/flaresolverr:v3.5.2
+            ports: ['{{ svc.flaresolverr.port }}:8191']
+            environment: ['LOG_LEVEL=info']
+            config_mount: ''
+          - name: qbittorrent
+            image: lscr.io/linuxserver/qbittorrent:5.2.4_v2.0.15-ls479
+            lsio: true
+            ports: ['{{ svc.qbittorrent.port }}:8080', '6881:6881', '6881:6881/udp']
+            environment: ['DOCKER_MODS=ghcr.io/vuetorrent/vuetorrent-lsio-mod:latest', 'WEBUI_PORT=8080']
+            config_mount: /config/qBittorrent
+            volumes: ['{{ library }}']
+            health: ['CMD', 'curl', '-fs', 'http://localhost:8080']
+          - name: radarr
+            image: lscr.io/linuxserver/radarr:6.4.4.10685-ls318
+            lsio: true
+            ports: ['{{ svc.radarr.port }}:7878']
+            volumes: ['{{ library }}']
+            health: ['CMD', 'curl', '-fs', 'http://localhost:7878/ping']
+          - name: sonarr
+            image: lscr.io/linuxserver/sonarr:4.0.20.3014-ls326
+            lsio: true
+            ports: ['{{ svc.sonarr.port }}:8989']
+            volumes: ['{{ library }}']
+            health: ['CMD', 'curl', '-fs', 'http://localhost:8989/ping']
+          - name: prowlarr
+            image: lscr.io/linuxserver/prowlarr:2.6.5.5623-ls162
+            lsio: true
+            ports: ['{{ svc.prowlarr.port }}:9696']
+            health: ['CMD', 'curl', '-fs', 'http://localhost:9696/ping']
+          - name: bazarr
+            image: lscr.io/linuxserver/bazarr:v1.6.2-ls366
+            lsio: true
+            ports: ['{{ svc.bazarr.port }}:6767']
+            volumes: ['{{ library }}']
+            health: ['CMD', 'curl', '-fs', 'http://localhost:6767/']
+          - name: jellyseerr
+            image: ghcr.io/seerr-team/seerr:v3.5.0
+            init: true
+            ports: ['{{ svc.jellyseerr.port }}:5055']
+            environment: ['LOG_LEVEL=info']
+            config_mount: /app/config
+            health: ['CMD-SHELL', 'wget -q --spider http://localhost:5055/api/v1/status || exit 1']
+          - name: recyclarr
+            image: ghcr.io/recyclarr/recyclarr:8.7.2
+            environment: ['CRON_SCHEDULE=@daily']
+      media_sync:
+          host: '{{ instance.ip }}'
+          configs: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}'
+          uid: '{{ mapped_uid | int }}'
+          steps: [qbittorrent, arrs, recyclarr, prowlarr, bazarr, jellyfin, jellyseerr]
+          recyclarr:
+              lxc: '{{ id }}'
+          qbittorrent:
+              port: '{{ svc.qbittorrent.port }}'
+              categories:
+                  movies: /media/Downloads/movies
+                  tv: /media/Downloads/tv
+              prefs:
+                  save_path: /media/Downloads
+                  temp_path: /media/Downloads/incomplete
+                  temp_path_enabled: true
+                  auto_tmm_enabled: true
+                  torrent_changed_tmm_enabled: true
+                  save_path_changed_tmm_enabled: true
+                  category_changed_tmm_enabled: true
+                  listen_port: 6881
+                  upnp: false
+                  alternative_webui_enabled: true
+                  alternative_webui_path: /vuetorrent
+                  web_ui_host_header_validation_enabled: false
+                  web_ui_username: '{{ env.JARVIS_ADMIN_USERNAME }}'
+                  max_ratio_enabled: true
+                  max_ratio: 2
+                  max_seeding_time_enabled: true
+                  max_seeding_time: 10080
+                  max_ratio_act: 0
+          arrs:
+              - name: radarr
+                kind: radarr
+                port: '{{ svc.radarr.port }}'
+                roots: [/media/Movies]
+                category: movies
+                prowlarr_name: Radarr
+                sync_categories: [2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080]
+                media_management: &media_management
+                    copyUsingHardlinks: true
+                    importExtraFiles: true
+                    extraFileExtensions: 'srt,ass,ssa,sub,idx,sup'
+                    deleteEmptyFolders: true
+                    minimumFreeSpaceWhenImporting: 20480
+              - name: sonarr
+                kind: sonarr
+                port: '{{ svc.sonarr.port }}'
+                roots: [/media/TV, /media/Anime]
+                category: tv
+                prowlarr_name: Sonarr
+                sync_categories: [5000, 5010, 5020, 5030, 5040, 5045, 5050, 5060, 5070, 5080]
+                media_management: *media_management
+          prowlarr:
+              port: '{{ svc.prowlarr.port }}'
+              flaresolverr: 'http://{{ instance.ip }}:{{ svc.flaresolverr.port }}'
+              indexers:
+                  - { definition: 1337x, flaresolverr: true }
+                  - { definition: eztv, flaresolverr: true }
+                  - { definition: Knaben }
+                  - { definition: thepiratebay }
+                  - { definition: limetorrents }
+                  - { definition: nyaasi, url: 'https://nyaa.iss.ink/' }
+                  - { definition: SubsPlease }
+                  - { definition: tokyotosho }
+          bazarr:
+              port: '{{ svc.bazarr.port }}'
+              settings:
+                  general-enabled_providers: [embeddedsubtitles, podnapisi, yifysubtitles, subf2m, animetosho]
+                  general-serie_default_enabled: true
+                  general-serie_default_profile: 1
+                  general-movie_default_enabled: true
+                  general-movie_default_profile: 1
+                  general-use_embedded_subs: true
+                  general-upgrade_subs: true
+                  general-subfolder: current
+                  general-single_language: false
+              languages: [en]
+              language_profiles:
+                  - profileId: 1
+                    name: English
+                    cutoff: null
+                    items: [{ id: 1, language: en, audio_exclude: 'False', audio_only_include: 'False', hi: 'False', forced: 'False' }]
+                    mustContain: []
+                    mustNotContain: []
+                    originalFormat: false
+                    tag: null
+          jellyfin:
+              url: 'http://{{ env.JARVIS_NETWORK_PREFIX }}.{{ svc.jellyfin.id }}:{{ svc.jellyfin.port }}'
+              encoding:
+                  HardwareAccelerationType: qsv
+                  VaapiDevice: /dev/dri/renderD128
+                  EnableHardwareEncoding: true
+                  HardwareDecodingCodecs: [h264, hevc, mpeg2video, vc1, vp8, vp9]
+                  EnableDecodingColorDepth10Hevc: true
+                  EnableDecodingColorDepth10Vp9: true
+                  EnableTonemapping: true
+                  EnableVppTonemapping: true
+                  TranscodingTempPath: /var/lib/jellyfin/transcodes
+              libraries:
+                  - { name: Movies, type: movies, path: /media/ssd/Media/Movies, options: { AutomaticallyAddToCollection: true, EnableRealtimeMonitor: true } }
+                  - { name: TV Shows, type: tvshows, path: /media/ssd/Media/TV, options: { EnableRealtimeMonitor: true } }
+                  - { name: Anime, type: tvshows, path: /media/ssd/Media/Anime, options: { EnableRealtimeMonitor: true } }
+          jellyseerr:
+              port: '{{ svc.jellyseerr.port }}'
+              email: '{{ env.JARVIS_ADMIN_USERNAME }}@{{ env.JARVIS_DOMAIN }}'
+              libraries: [Movies, TV Shows, Anime]
+              main:
+                  applicationUrl: 'https://{{ svc.jellyseerr.subdomains[0] }}.{{ env.JARVIS_DOMAIN }}'
+              servers:
+                  radarr:
+                      profile: UHD Bluray + WEB
+                      external_url: 'https://{{ svc.radarr.subdomains[0] }}.{{ env.JARVIS_DOMAIN }}'
+                      extra: { minimumAvailability: released }
+                  sonarr:
+                      profile: WEB-2160p (Combined)
+                      anime_profile: '[Anime] Remux-1080p'
+                      external_url: 'https://{{ svc.sonarr.subdomains[0] }}.{{ env.JARVIS_DOMAIN }}'
+                      extra: { enableSeasonFolders: true }
   block:
-      - name: '{{ stack_name | upper }}: Extract API Key'
-        shell: |
-            pct exec {{ id }} -- cat {{ instance.configs }}/media/{{ arr_item }}/config.xml | grep -oP '(?<=<ApiKey>)[^<]+'
-        loop:
-            - radarr
-            - sonarr
-            - sonarr-anime
+      - name: '{{ stack_name | upper }}: Create Library Directories'
+        file:
+            path: "{{ media_dir | regex_replace('^/media', '/mnt/ssd/Media') }}"
+            state: directory
+            mode: '0777'
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+        loop: "{{ ['/media', '/media/Downloads'] + media_sync.qbittorrent.categories.values() | list + media_sync.arrs | map(attribute='roots') | flatten }}"
         loop_control:
-            loop_var: arr_item
-        register: arr_keys
-        changed_when: false
-        failed_when: false
+            loop_var: media_dir
 
-      - set_fact:
-            radarr_api: "{{ arr_keys.results[0].stdout | default('') }}"
-            sonarr_api: "{{ arr_keys.results[1].stdout | default('') }}"
-            sonarr_anime_api: "{{ arr_keys.results[2].stdout | default('') }}"
+      - name: '{{ stack_name | upper }}: Deploy Apps'
+        include_tasks: media/compose.yml
+        loop: '{{ media_apps }}'
+        loop_control:
+            loop_var: media_app
+            label: '{{ media_app.name }}'
 
-- name: '{{ stack_name | upper }}: Deploy Consumer Apps'
-  include_tasks: 'media/{{ media_app }}.yml'
-  loop:
-      - prowlarr
-      - bazarr
-      - jellyseerr
-  loop_control:
-      loop_var: media_app
+      - name: '{{ stack_name | upper }}: Write Recyclarr Config'
+        copy:
+            dest: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}/recyclarr/recyclarr.yml'
+            content: |
+                radarr:
+                  movies:
+                    base_url: http://{{ instance.ip }}:{{ svc.radarr.port }}
+                    api_key: !secret radarr_apikey
+                    delete_old_custom_formats: true
+                    quality_definition:
+                      type: movie
+                    quality_profiles:
+                      - trash_id: 64fb5f9858489bdac2af690e27c8f42f
+                        reset_unmatched_scores:
+                          enabled: true
+                        qualities:
+                          - name: Bluray-2160p
+                          - name: WEB 2160p
+                            qualities: [WEBDL-2160p, WEBRip-2160p]
+                          - name: Bluray-1080p
+                          - name: WEB 1080p
+                            qualities: [WEBDL-1080p, WEBRip-1080p]
+                    media_naming:
+                      folder: jellyfin-tmdb
+                      movie:
+                        rename: true
+                        standard: jellyfin-tmdb
+                sonarr:
+                  tv:
+                    base_url: http://{{ instance.ip }}:{{ svc.sonarr.port }}
+                    api_key: !secret sonarr_apikey
+                    delete_old_custom_formats: true
+                    quality_definition:
+                      type: series
+                    quality_profiles:
+                      - trash_id: c4cadd6b35b95f62c3d47a408e53e2f7
+                        reset_unmatched_scores:
+                          enabled: true
+                      - trash_id: 20e0fc959f1f1704bed501f23bdae76f
+                        reset_unmatched_scores:
+                          enabled: true
+                    media_naming:
+                      series: jellyfin-tvdb
+                      season: default
+                      episodes:
+                        rename: true
+                        standard: default
+                        daily: default
+                        anime: default
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            mode: '0666'
+
+      - name: '{{ stack_name | upper }}: Install Media Sync'
+        copy:
+            content: "{{ lookup('file', 'media/media-sync.py') }}\n"
+            dest: '{{ env.JARVIS_DIR }}/media-sync.py'
+            mode: '0755'
+
+      - name: '{{ stack_name | upper }}: Sync App Settings'
+        command: python3 {{ env.JARVIS_DIR }}/media-sync.py
+        environment:
+            MEDIA_SYNC: '{{ media_sync | to_json }}'
+            MEDIA_USER: '{{ env.JARVIS_ADMIN_USERNAME }}'
+            MEDIA_PASSWORD: '{{ env.JARVIS_ADMIN_PASSWORD }}'
+        register: media_sync_result
+        changed_when: "'CHANGED' in media_sync_result.stdout"

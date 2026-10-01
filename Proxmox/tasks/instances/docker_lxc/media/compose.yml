@@ -1,0 +1,37 @@
+- vars:
+      app_dir: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}/{{ media_app.name }}'
+      app_local: '{{ instance.configs }}/{{ stack_name }}/{{ media_app.name }}'
+      config_mount: "{{ media_app.config_mount | default('/config') }}"
+      base_service:
+          container_name: '{{ media_app.name }}'
+          image: '{{ media_app.image }}'
+          restart: unless-stopped
+          security_opt: ['no-new-privileges:true']
+          environment: "{{ ['TZ=' ~ env.JARVIS_TZ] + (['PUID=' ~ docker_user, 'PGID=' ~ docker_user] if media_app.lsio | default(false) else []) + media_app.environment | default([]) }}"
+          volumes: "{{ ([app_local ~ ':' ~ config_mount] if config_mount else []) + media_app.volumes | default([]) }}"
+          logging:
+              driver: json-file
+              options: { max-size: 10m, max-file: '3' }
+      service: >-
+          {{ base_service
+             | combine({'init': true} if media_app.init | default(false) else {})
+             | combine({'ports': media_app.ports} if media_app.ports is defined else {})
+             | combine({'healthcheck': {'test': media_app.health, 'interval': '30s', 'timeout': '10s', 'retries': 3, 'start_period': '60s'}} if media_app.health is defined else {}) }}
+  block:
+      - name: '{{ media_app.name | upper }}: Create Config Directory'
+        shell: mkdir -p '{{ app_dir }}' && chown {{ mapped_uid }}:{{ mapped_uid }} '{{ app_dir }}'
+        args:
+            creates: '{{ app_dir }}'
+
+      - name: '{{ media_app.name | upper }}: Write docker-compose.yml'
+        copy:
+            dest: '{{ app_dir }}/docker-compose.yml'
+            content: "{{ {'services': {media_app.name: service}} | to_nice_yaml(indent=2, sort_keys=false) }}"
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            mode: '0666'
+
+      - name: '{{ media_app.name | upper }}: Start Container'
+        command: pct exec {{ id }} --keep-env 0 -- docker compose -f {{ app_local }}/docker-compose.yml up -d --wait --wait-timeout 300
+        register: compose_up
+        changed_when: compose_up.stderr is search('Creat|Recreat')

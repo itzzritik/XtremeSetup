@@ -187,15 +187,6 @@ JARVIS_SERVICES:
         subdomains: [sonarr]
         section: 'Media Server'
 
-    sonarr-anime:
-        id: 253
-        name: Anime
-        subtitle: Anime Manager
-        logo: anilist.svg
-        port: 8990
-        subdomains: [anime]
-        section: 'Media Server'
-
     bazarr:
         id: 253
         name: Bazarr
@@ -205,6 +196,14 @@ JARVIS_SERVICES:
         subdomains: [bazarr]
         section: 'Media Server'
 
+    flaresolverr:
+        id: 253
+        name: FlareSolverr
+        subtitle: Cloudflare Solver for Prowlarr
+        logo: flaresolverr.svg
+        port: 8191
+        hidden: true
+
     jellyseerr:
         id: 253
         name: Jellyseerr
@@ -213,7 +212,6 @@ JARVIS_SERVICES:
         port: 5055
         subdomains: [request]
         section: 'Media Server'
-        skip_auth: true
 
     zeroclaw:
         id: 247

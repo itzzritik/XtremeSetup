@@ -12,21 +12,18 @@
       paths:
           config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/etc'
           data: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/lib'
+      jellyfin_version: '12.1+ubu2404'
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
-        uri:
-            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES.jellyfin.port }}'
-            timeout: 5
+        command: pct status {{ id }}
         register: instance_check
         failed_when: false
         changed_when: false
 
       - name: '{{ instance.hostname | upper }}: Create Config Directory on Host'
-        file:
-            path: '{{ dir_item }}'
-            state: directory
-            mode: '0777'
-            recurse: true
+        shell: mkdir -p '{{ dir_item }}' && chmod 0777 '{{ dir_item }}'
+        args:
+            creates: '{{ dir_item }}'
         loop:
             - '{{ paths.config }}'
             - '{{ paths.data }}'
@@ -34,7 +31,7 @@
             loop_var: dir_item
 
       - name: '{{ instance.hostname | upper }}: Provision Instance'
-        when: instance_check.status | default(0) != 200
+        when: instance_check.rc != 0
         block:
             - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
               shell: pct stop {{ id }}; pct destroy {{ id }}
@@ -104,6 +101,28 @@
 
             - name: '{{ instance.hostname | upper }}: Start LXC'
               command: pct start {{ id }}
+
+      - name: '{{ instance.hostname | upper }}: Install Jellyfin {{ jellyfin_version }}'
+        shell: |
+            pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+            if [ "$(dpkg-query -W -f='${Version}' jellyfin-server 2>/dev/null)" != '{{ jellyfin_version }}' ]; then
+                apt-get update -qq
+                DEBIAN_FRONTEND=noninteractive apt-get install -y -qq jellyfin={{ jellyfin_version }} jellyfin-server={{ jellyfin_version }} jellyfin-web={{ jellyfin_version }} >/dev/null
+                echo CHANGED
+            fi
+            systemctl is-active -q jellyfin || { systemctl enable --now -q jellyfin; echo CHANGED; }
+            EOF
+        register: jellyfin_package
+        changed_when: "'CHANGED' in jellyfin_package.stdout"
+
+      - name: '{{ instance.hostname | upper }}: Wait for Jellyfin'
+        uri:
+            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES.jellyfin.port }}/health'
+            return_content: true
+        register: jellyfin_health
+        until: jellyfin_health.content | default('') == 'Healthy'
+        retries: 60
+        delay: 10
 
   rescue:
       - debug:

@@ -47,10 +47,10 @@
       #   loop:
       #       - traefik_lxc
       #       - home_vm
+      #       - jellyfin_lxc
       #       - docker_lxc
       #       - code_lxc
       #       - storage_lxc
-      #       - jellyfin_lxc
       #       - pihole_lxc
       #       - zeroclaw_lxc
       #   when: not (item.endswith('_vm') and not run_vms)

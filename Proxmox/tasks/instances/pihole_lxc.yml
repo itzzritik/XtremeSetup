@@ -25,7 +25,6 @@
         changed_when: false
 
       - name: '{{ instance.hostname | upper }}: Create Config Directories on Host'
-        # create-only: pihole-FTL re-owns /etc/pihole to its own user on every start
         shell: mkdir -p '{{ dir_item }}' && chown {{ instance.subuid }}:{{ instance.subuid }} '{{ dir_item }}'
         args:
             creates: '{{ dir_item }}'
@@ -139,7 +138,6 @@
       - name: '{{ instance.hostname | upper }}: Configure DNS and Blocklists'
         shell: |
             pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
-            # FTL prints arrays unquoted: [ 1.1.1.1, 9.9.9.9 ]
             norm() { tr -d ' "' <<< "$1"; }
             set_config() {
                 [ "$(norm "$(pihole-FTL --config "$1")")" = "$(norm "$2")" ] && return
@@ -147,7 +145,6 @@
                 echo "CHANGED $1"
             }
             set_config dns.upstreams '{{ pihole.upstreams | to_json }}'
-            # unprivileged LXC can't set the clock, so FTL's NTP only logs errors
             set_config ntp.sync.active false
             set_config ntp.ipv4.active false
             set_config ntp.ipv6.active false

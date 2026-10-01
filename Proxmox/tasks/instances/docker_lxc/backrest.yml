@@ -142,14 +142,11 @@
                 live = json.load(open(f'{root}/config.json'))
             except (OSError, ValueError):
                 live = {}
-            # keep the fields Backrest writes itself: repo guid, sync identity, modno
             guids = {r['id']: r['guid'] for r in live.get('repos', []) if r.get('guid')}
             for repo in desired['repos']:
                 if repo['id'] in guids:
                     repo['guid'] = guids[repo['id']]
-                    # Backrest refuses to start with autoInitialize on an already initialized repo
                     repo.pop('autoInitialize', None)
-            # the hash is salted fresh every run, so it is filled in here instead of the template
             for user in desired['auth']['users']:
                 if user['passwordBcrypt'] == '__BCRYPT__':
                     user['passwordBcrypt'] = os.environ['BACKREST_BCRYPT']
@@ -164,7 +161,7 @@
             os.replace(tmp, f'{root}/config.json')
             EOF
         environment:
-            BACKREST_BCRYPT: '{{ env.JARVIS_ADMIN_PASSWORD_BCRYPT }}'
+            BACKREST_BCRYPT: '{{ env.JARVIS_ADMIN_PASSWORD_BCRYPT | b64encode }}'
         register: config_apply
         when: config_template is changed or not healthy.config
       - block:

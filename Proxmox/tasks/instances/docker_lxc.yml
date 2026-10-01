@@ -16,9 +16,7 @@
 
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
-        uri:
-            url: 'http://{{ instance.ip }}:2375/version'
-            timeout: 5
+        command: pct status {{ id }}
         register: instance_check
         failed_when: false
         changed_when: false
@@ -27,12 +25,11 @@
         file:
             path: '{{ env.JARVIS_CONFIGS_DIR }}'
             state: directory
-            mode: '0755'
             owner: '{{ instance.subuid }}'
             group: '{{ instance.subuid }}'
 
       - name: '{{ instance.hostname | upper }}: Provision Instance'
-        when: instance_check.status | default(0) != 200
+        when: instance_check.rc != 0
         block:
             - name: '{{ instance.hostname | upper }}: Cleanup Existing LXC'
               shell: pct stop {{ id }} 2>/dev/null; pct destroy {{ id }} 2>/dev/null; true
