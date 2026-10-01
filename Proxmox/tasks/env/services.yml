@@ -39,7 +39,7 @@ JARVIS_SERVICES:
         id: 240
         name: Vibe
         subtitle: AionUi Agent Workspace
-        logo: lobe-chat.svg
+        logo: agentgateway.svg
         port: 80
         app_port: 41789
         subdomains: [vibe]
@@ -48,7 +48,7 @@ JARVIS_SERVICES:
         id: 240
         name: OpenCode
         subtitle: AI Coding Agent
-        logo: openhands.svg
+        logo: https://cdn.jsdelivr.net/gh/sst/opencode@dev/packages/console/app/src/asset/brand/opencode-logo-dark-square.svg
         port: 80
         app_port: 34521
         subdomains: [opencode]

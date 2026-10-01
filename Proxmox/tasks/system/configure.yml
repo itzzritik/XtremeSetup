@@ -73,7 +73,7 @@
             {
               "name": "{{ service.name }}",
               "subtitle": "{{ service.subtitle | default(service.name) }}",
-              "logo": "{{ env.JARVIS_ICON_CDN }}{{ service.logo }}",
+              "logo": "{{ service.logo if '//' in service.logo else env.JARVIS_ICON_CDN ~ service.logo }}",
               "url": "https://{{ service.subdomains[0] }}.{{ env.JARVIS_DOMAIN }}",
               "ip": "http{{ 's' if service.https | default(false) }}://{{ env.JARVIS_NETWORK_PREFIX }}.{{ service.id }}{{ (':' ~ service.port) if service.port not in [80, 443] }}",
               "path": "{{ service.path | default('') }}",

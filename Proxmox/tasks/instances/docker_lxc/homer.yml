@@ -111,7 +111,7 @@
                                     {% if s.smart_card is not defined -%}
                                     subtitle: "{{ s.subtitle }}"
                                     {% endif -%}
-                                    logo: "{{ env.JARVIS_ICON_CDN }}{{ s.logo }}"
+                                    logo: "{{ s.logo if '//' in s.logo else env.JARVIS_ICON_CDN ~ s.logo }}"
                                     {% if s.smart_card is defined -%}
                                     {% for sc_k, sc_v in s.smart_card.items() -%}
                                     {{ sc_k }}: {{ sc_v | to_json }}
@@ -134,7 +134,7 @@
                                     {% if s.smart_card is not defined -%}
                                     subtitle: "{{ s.subtitle }}"
                                     {% endif -%}
-                                    logo: "{{ env.JARVIS_ICON_CDN }}{{ s.logo }}"
+                                    logo: "{{ s.logo if '//' in s.logo else env.JARVIS_ICON_CDN ~ s.logo }}"
                                     {% if s.smart_card is defined -%}
                                     {% for sc_k, sc_v in s.smart_card.items() -%}
                                     {{ sc_k }}: {{ sc_v | to_json }}
