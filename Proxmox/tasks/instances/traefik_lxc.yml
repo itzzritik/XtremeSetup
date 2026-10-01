@@ -189,8 +189,8 @@
 
                           pihole-redirect:
                             redirectRegex:
-                              regex: "^https?://pihole\\.{{ env.JARVIS_DOMAIN | replace('.', '\\.') }}/?$"
-                              replacement: "https://pihole.{{ env.JARVIS_DOMAIN }}/admin/"
+                              regex: "^https?://{{ env.JARVIS_SERVICES.pihole.subdomains[0] }}\\.{{ env.JARVIS_DOMAIN | replace('.', '\\.') }}/?$"
+                              replacement: "https://{{ env.JARVIS_SERVICES.pihole.subdomains[0] }}.{{ env.JARVIS_DOMAIN }}/admin/"
 
                         routers:
                       {% for svc_key, svc in env.JARVIS_SERVICES.items() %}

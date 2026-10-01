@@ -14,10 +14,7 @@
         register: backrest_health
         failed_when: false
       - name: '{{ app_name | upper }}: Validate Config JSON'
-        shell: |
-            [ -f "{{ config.local }}/config.json" ] && \
-            [ -s "{{ config.local }}/config.json" ] && \
-            jq empty "{{ config.local }}/config.json" 2>/dev/null
+        command: python3 -c "import json, sys; json.load(open(sys.argv[1]))" '{{ config.root }}/config.json'
         register: backrest_config_valid
         failed_when: false
         changed_when: false
@@ -45,56 +42,6 @@
                         - '{{ config.root }}/data'
                     loop_control:
                         loop_var: dir_item
-                  - name: '{{ app_name | upper }}: Create config.json'
-                    copy:
-                        dest: '{{ config.root }}/config.json'
-                        content: |
-                            {
-                              "version": 6,
-                              "instance": "backrest",
-                              "auth": {
-                                "users": [
-                                  {
-                                    "name": "{{ env.JARVIS_ADMIN_USERNAME }}",
-                                    "passwordBcrypt": "{{ env.JARVIS_ADMIN_PASSWORD_BCRYPT }}"
-                                  }
-                                ]
-                              },
-                              "repos": [
-                                {
-                                  "id": "r2-backup",
-                                  "uri": "s3:{{ env.JARVIS_CF_R2_ENDPOINT }}/configs",
-                                  "password": "{{ env.JARVIS_ADMIN_PASSWORD }}",
-                                  "env": ["AWS_ACCESS_KEY_ID={{ env.JARVIS_CF_R2_TOKENS.split(':')[0] }}", "AWS_SECRET_ACCESS_KEY={{ env.JARVIS_CF_R2_TOKENS.split(':')[1] }}"],
-                                  "autoInitialize": true,
-                                  "prunePolicy": {
-                                    "maxUnusedPercent": 25
-                                  },
-                                  "flags": ["--verbose"]
-                                }
-                              ],
-                              "plans": [
-                                {
-                                  "id": "{{ env.JARVIS_BOT_NAME | lower }}-configs",
-                                  "repo": "r2-backup",
-                                  "paths": ["{{ instance.configs }}"],
-                                  "excludes": ["**/cache/**", "**/.cache/**", "**/logs/**", "**/agents/.codex/.tmp/**", "**/agents/.claude/plugins/marketplaces/**", "**/agents/.claude/backups/**", "**/agents/**/shell-snapshots/**", "**/agents/**/shell_snapshots/**", "**/agents/**/*.lock", "**/agents/.claude/projects/**", "**/agents/.claude/file-history/**", "**/agents/.claude/session-env/**", "**/agents/.claude/skills/synced/**", "**/agents/.claude/plugins/plugin-catalog-cache.json", "**/agents/.codex/sessions/**", "**/agents/.codex/skills/.system/**", "**/agents/.codex/*.sqlite*"],
-                                  "schedule": {
-                                    "cron": "0 2 */2 * *",
-                                    "clock": "CLOCK_LOCAL"
-                                  },
-                                  "retention": {
-                                    "policyKeepLastN": 5,
-                                    "policyKeepDaily": 7,
-                                    "policyKeepWeekly": 4,
-                                    "policyKeepMonthly": 6
-                                  }
-                                }
-                              ]
-                            }
-                        owner: '{{ mapped_uid }}'
-                        group: '{{ mapped_uid }}'
-                        mode: '0666'
                   - name: '{{ app_name | upper }}: Generate Smart Restore Script'
                     copy:
                         dest: /tmp/smart-restore.sh
@@ -132,6 +79,94 @@
                     delegate_to: localhost
                     become: false
         when: not healthy.config
+      - name: '{{ app_name | upper }}: Render Config Template'
+        copy:
+            dest: '{{ config.root }}/config.ansible.json'
+            content: |
+                {
+                  "version": 6,
+                  "instance": "backrest",
+                  "auth": {
+                    "users": [
+                      {
+                        "name": "{{ env.JARVIS_ADMIN_USERNAME }}",
+                        "passwordBcrypt": "__BCRYPT__"
+                      }
+                    ]
+                  },
+                  "repos": [
+                    {
+                      "id": "r2-backup",
+                      "uri": "s3:{{ env.JARVIS_CF_R2_ENDPOINT }}/configs",
+                      "password": "{{ env.JARVIS_ADMIN_PASSWORD }}",
+                      "env": ["AWS_ACCESS_KEY_ID={{ env.JARVIS_CF_R2_TOKENS.split(':')[0] }}", "AWS_SECRET_ACCESS_KEY={{ env.JARVIS_CF_R2_TOKENS.split(':')[1] }}"],
+                      "autoInitialize": true,
+                      "prunePolicy": {
+                        "maxUnusedPercent": 25
+                      },
+                      "flags": ["--verbose"]
+                    }
+                  ],
+                  "plans": [
+                    {
+                      "id": "{{ env.JARVIS_BOT_NAME | lower }}-configs",
+                      "repo": "r2-backup",
+                      "paths": ["{{ instance.configs }}"],
+                      "excludes": ["**/cache/**", "**/.cache/**", "**/logs/**", "**/agents/.codex/.tmp/**", "**/agents/.claude/plugins/marketplaces/**", "**/agents/.claude/backups/**", "**/agents/**/shell-snapshots/**", "**/agents/**/shell_snapshots/**", "**/agents/**/*.lock", "**/agents/.claude/projects/**", "**/agents/.claude/file-history/**", "**/agents/.claude/session-env/**", "**/agents/.claude/skills/synced/**", "**/agents/.claude/plugins/plugin-catalog-cache.json", "**/agents/.codex/sessions/**", "**/agents/.codex/skills/.system/**", "**/agents/.codex/*.sqlite*", "**/vscode-web/server/**", "**/vscode-web/extensions/*/**"],
+                      "schedule": {
+                        "cron": "0 2 */2 * *",
+                        "clock": "CLOCK_LOCAL"
+                      },
+                      "retention": {
+                        "policyTimeBucketed": {
+                          "keepLastN": 5,
+                          "daily": 7,
+                          "weekly": 4,
+                          "monthly": 6
+                        }
+                      }
+                    }
+                  ]
+                }
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            mode: '0666'
+        register: config_template
+      - name: '{{ app_name | upper }}: Apply Config Template'
+        shell: |
+            python3 - <<'EOF'
+            import json, os
+            root = '{{ config.root }}'
+            desired = json.load(open(f'{root}/config.ansible.json'))
+            try:
+                live = json.load(open(f'{root}/config.json'))
+            except (OSError, ValueError):
+                live = {}
+            # keep the fields Backrest writes itself: repo guid, sync identity, modno
+            guids = {r['id']: r['guid'] for r in live.get('repos', []) if r.get('guid')}
+            for repo in desired['repos']:
+                if repo['id'] in guids:
+                    repo['guid'] = guids[repo['id']]
+                    # Backrest refuses to start with autoInitialize on an already initialized repo
+                    repo.pop('autoInitialize', None)
+            # the hash is salted fresh every run, so it is filled in here instead of the template
+            for user in desired['auth']['users']:
+                if user['passwordBcrypt'] == '__BCRYPT__':
+                    user['passwordBcrypt'] = os.environ['BACKREST_BCRYPT']
+            for key in ('sync', 'modno'):
+                if key in live:
+                    desired[key] = live[key]
+            tmp = f'{root}/config.json.tmp'
+            with open(tmp, 'w') as f:
+                json.dump(desired, f, indent=2)
+            os.chown(tmp, {{ mapped_uid }}, {{ mapped_uid }})
+            os.chmod(tmp, 0o666)
+            os.replace(tmp, f'{root}/config.json')
+            EOF
+        environment:
+            BACKREST_BCRYPT: '{{ env.JARVIS_ADMIN_PASSWORD_BCRYPT }}'
+        register: config_apply
+        when: config_template is changed or not healthy.config
       - block:
             - name: '{{ app_name | upper }}: Create docker-compose.yml'
               copy:
@@ -185,7 +220,7 @@
         when: not healthy.app
       - name: '{{ app_name | upper }}: Restart for Config Update'
         command: pct exec {{ id }} -- docker restart {{ app_name }}
-        when: healthy.app and (not healthy.config)
+        when: healthy.app and config_apply is changed
         changed_when: true
   rescue:
       - debug:

@@ -13,23 +13,22 @@
       paths:
           config_pihole: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/etc-pihole'
           config_dnsmasq: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/etc-dnsmasq.d'
+      pihole:
+          upstreams: ['1.1.1.1', '1.0.0.1', '9.9.9.9']
+          adlists:
+              - https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
-        uri:
-            url: 'http://{{ instance.ip }}/admin'
-            timeout: 5
+        command: pct status {{ id }}
         register: instance_check
         failed_when: false
         changed_when: false
 
       - name: '{{ instance.hostname | upper }}: Create Config Directories on Host'
-        file:
-            path: '{{ dir_item }}'
-            state: directory
-            mode: '0777'
-            owner: '{{ instance.subuid }}'
-            group: '{{ instance.subuid }}'
-            recurse: true
+        # create-only: pihole-FTL re-owns /etc/pihole to its own user on every start
+        shell: mkdir -p '{{ dir_item }}' && chown {{ instance.subuid }}:{{ instance.subuid }} '{{ dir_item }}'
+        args:
+            creates: '{{ dir_item }}'
         loop:
             - '{{ paths.config_pihole }}'
             - '{{ paths.config_dnsmasq }}'
@@ -37,7 +36,7 @@
             loop_var: dir_item
 
       - name: '{{ instance.hostname | upper }}: Provision Instance'
-        when: instance_check.status | default(0) != 200
+        when: instance_check.rc != 0
         block:
             - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
               shell: pct stop {{ id }}; pct destroy {{ id }}
@@ -136,6 +135,45 @@
             - name: '{{ instance.hostname | upper }}: Remove Password Script from Container'
               command: pct exec {{ id }} -- rm -f /tmp/set_password.sh
               ignore_errors: true
+
+      - name: '{{ instance.hostname | upper }}: Configure DNS and Blocklists'
+        shell: |
+            pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+            # FTL prints arrays unquoted: [ 1.1.1.1, 9.9.9.9 ]
+            norm() { tr -d ' "' <<< "$1"; }
+            set_config() {
+                [ "$(norm "$(pihole-FTL --config "$1")")" = "$(norm "$2")" ] && return
+                pihole-FTL --config "$1" "$2" >/dev/null
+                echo "CHANGED $1"
+            }
+            set_config dns.upstreams '{{ pihole.upstreams | to_json }}'
+            # unprivileged LXC can't set the clock, so FTL's NTP only logs errors
+            set_config ntp.sync.active false
+            set_config ntp.ipv4.active false
+            set_config ntp.ipv6.active false
+            db=/etc/pihole/gravity.db
+            refresh=false
+            for list in {{ pihole.adlists | map('quote') | join(' ') }}; do
+                added=$(pihole-FTL sqlite3 $db "INSERT OR IGNORE INTO adlist (address, enabled) VALUES ('$list', 1); SELECT changes();")
+                [ "$added" = 0 ] || { echo "CHANGED adlist $list"; refresh=true; }
+            done
+            [ "$(pihole-FTL sqlite3 $db 'SELECT count(*) FROM gravity;')" = 0 ] && refresh=true
+            if $refresh; then
+                pihole -g >/dev/null
+                echo CHANGED gravity
+                [ "$(pihole-FTL sqlite3 $db 'SELECT count(*) FROM gravity;')" != 0 ] || { echo 'gravity is still empty' >&2; exit 1; }
+            fi
+            EOF
+        register: config_result
+        changed_when: "'CHANGED' in config_result.stdout"
+
+      - name: '{{ instance.hostname | upper }}: Verify DNS Resolves'
+        command: dig +short +time=3 @{{ instance.ip }} cloudflare.com
+        register: dns_check
+        until: dns_check.stdout | length > 0
+        retries: 5
+        delay: 3
+        changed_when: false
 
   rescue:
       - debug:

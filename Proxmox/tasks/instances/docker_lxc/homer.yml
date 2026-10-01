@@ -101,10 +101,11 @@
                               homerDomainUrl: "https://{{ env.JARVIS_DOMAIN }}"
                               homerIpUrl: "http://{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.homer.id }}:{{ env.JARVIS_SERVICES.homer.port }}"
                             services:
-                              - name: "Apps"
-                                icon: "fas fa-th"
+                            {% for section, icon in [('Apps', 'fas fa-th'), ('Media Server', 'fas fa-film'), ('Coding Server', 'fas fa-code')] %}
+                              - name: "{{ section }}"
+                                icon: "{{ icon }}"
                                 items:
-                            {% for k,s in env.JARVIS_SERVICES.items() if not s.hidden|default(false) and s.section|default('Apps') == 'Apps' %}
+                            {% for k,s in env.JARVIS_SERVICES.items() if not s.hidden|default(false) and s.section|default('Apps') == section %}
                             {% set protocol = 'https' if s.https|default(false) else 'http' %}
                             {% set portSuffix = '' if (s.port==80 and protocol=='http') or (s.port==443 and protocol=='https') else ':'+s.port|string %}
                                   - name: "{{ s.name }}"
@@ -124,27 +125,6 @@
                                     tag: "open {{ k }}"
                             {% endfor %}
 
-                              - name: "Media Server"
-                                icon: "fas fa-film"
-                                items:
-                            {% for k,s in env.JARVIS_SERVICES.items() if not s.hidden|default(false) and s.section|default('Apps') == 'Media Server' %}
-                            {% set protocol = 'https' if s.https|default(false) else 'http' %}
-                            {% set portSuffix = '' if (s.port==80 and protocol=='http') or (s.port==443 and protocol=='https') else ':'+s.port|string %}
-                                  - name: "{{ s.name }}"
-                                    {% if s.smart_card is not defined -%}
-                                    subtitle: "{{ s.subtitle }}"
-                                    {% endif -%}
-                                    logo: "{{ s.logo if '//' in s.logo else env.JARVIS_ICON_CDN ~ s.logo }}"
-                                    {% if s.smart_card is defined -%}
-                                    {% for sc_k, sc_v in s.smart_card.items() -%}
-                                    {{ sc_k }}: {{ sc_v | to_json }}
-                                    {% endfor -%}
-                                    {% endif -%}
-                                    url: "https://{% if s.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ s.subdomains[0] | default(k) }}.{{ env.JARVIS_DOMAIN }}{% endif %}{{ s.path | default('') }}"
-                                    endpoint: "https://{% if s.root_domain | default(false) %}{{ env.JARVIS_DOMAIN }}{% else %}{{ s.subdomains[0] | default(k) }}.{{ env.JARVIS_DOMAIN }}{% endif %}"
-                                    ip: "{{ protocol }}://{{ env.JARVIS_NETWORK_PREFIX }}.{{ s.id }}{{ portSuffix }}{{ s.path|default('') }}"
-                                    target: "_blank"
-                                    tag: "open {{ k }}"
                             {% endfor %}
                         owner: '{{ mapped_uid }}'
                         group: '{{ mapped_uid }}'

@@ -34,6 +34,7 @@ JARVIS_SERVICES:
         port: 80
         app_port: 27193
         subdomains: [code]
+        section: 'Coding Server'
 
     aionui:
         id: 240
@@ -43,6 +44,7 @@ JARVIS_SERVICES:
         port: 80
         app_port: 41789
         subdomains: [vibe]
+        section: 'Coding Server'
 
     opencode:
         id: 240
@@ -52,6 +54,7 @@ JARVIS_SERVICES:
         port: 80
         app_port: 34521
         subdomains: [opencode]
+        section: 'Coding Server'
 
     code-ports:
         id: 240
@@ -84,6 +87,7 @@ JARVIS_SERVICES:
         port: 8096
         subdomains: [media, jellyfin]
         skip_auth: true
+        section: 'Media Server'
 
     home:
         id: 250
