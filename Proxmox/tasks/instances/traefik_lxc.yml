@@ -13,6 +13,8 @@
       paths:
           config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}'
           cloudflared_config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/cloudflared'
+      traefik_version: '3.7.13'
+      cloudflared_version: '2026.9.3'
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
         uri:
@@ -23,13 +25,9 @@
         changed_when: false
 
       - name: '{{ instance.hostname | upper }}: Create Config Directories on Host'
-        file:
-            path: '{{ dir_item }}'
-            state: directory
-            mode: '0777'
-            owner: '{{ instance.subuid }}'
-            group: '{{ instance.subuid }}'
-            recurse: true
+        shell: mkdir -p '{{ dir_item }}' && chown {{ instance.subuid }}:{{ instance.subuid }} '{{ dir_item }}'
+        args:
+            creates: '{{ dir_item }}'
         loop:
             - '{{ paths.config }}'
             - '{{ paths.config }}/dynamic'
@@ -120,6 +118,7 @@
                   group: '{{ instance.subuid }}'
 
             - name: '{{ instance.hostname | upper }}: Update static config'
+              register: traefik_static
               copy:
                   dest: '{{ paths.config }}/traefik.yml'
                   content: |
@@ -238,31 +237,64 @@
                   group: '{{ instance.subuid }}'
                   mode: '0666'
 
+            - name: '{{ instance.hostname | upper }}: Install Traefik {{ traefik_version }}'
+              shell: |
+                  pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+                  [ "$(traefik version | awk '/^Version:/{print $2}')" = '{{ traefik_version }}' ] && exit 0
+                  curl -fsSL https://github.com/traefik/traefik/releases/download/v{{ traefik_version }}/traefik_v{{ traefik_version }}_linux_amd64.tar.gz | tar -xz -C /usr/bin traefik
+                  echo CHANGED
+                  EOF
+              register: traefik_binary
+              changed_when: "'CHANGED' in traefik_binary.stdout"
+
             - name: '{{ instance.hostname | upper }}: Configure Service Override'
               shell: |
-                  pct exec {{ id }} -- bash -c "mkdir -p /etc/systemd/system/traefik.service.d && \
-                  echo '[Service]' > /etc/systemd/system/traefik.service.d/override.conf && \
-                  echo 'Environment=\"CF_DNS_API_TOKEN={{ env.JARVIS_CF_DNS_API_TOKEN }}\"' >> /etc/systemd/system/traefik.service.d/override.conf"
+                  pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+                  f=/etc/systemd/system/traefik.service.d/override.conf
+                  want='[Service]
+                  ExecStart=
+                  ExecStart=/usr/bin/traefik --configFile=/etc/traefik/traefik.yml
+                  Environment="CF_DNS_API_TOKEN={{ env.JARVIS_CF_DNS_API_TOKEN }}"'
+                  [ "$(cat $f 2>/dev/null)" = "$want" ] && exit 0
+                  mkdir -p "${f%/*}" && printf '%s\n' "$want" > $f && systemctl daemon-reload
+                  echo CHANGED
+                  EOF
+              register: traefik_override
+              changed_when: "'CHANGED' in traefik_override.stdout"
+              no_log: true
 
             - name: '{{ instance.hostname | upper }}: Restart service'
-              shell: pct exec {{ id }} -- bash -c "systemctl daemon-reload && systemctl restart traefik"
+              command: pct exec {{ id }} --keep-env 0 -- systemctl restart traefik
+              when: traefik_static is changed or traefik_override is changed or traefik_binary is changed
 
       - name: '{{ instance.hostname | upper }}: Configure tunnel'
         block:
-            - name: '{{ instance.hostname | upper }}: Check if Cloudflared is installed'
-              shell: pct exec {{ id }} -- bash -c "cloudflared --version"
-              register: cloudflared_check
-              failed_when: false
-              changed_when: false
-
-            - name: '{{ instance.hostname | upper }}: Install Cloudflared'
-              shell: pct exec {{ id }} -- bash -c "wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && dpkg -i cloudflared-linux-amd64.deb && rm cloudflared-linux-amd64.deb"
-              when: cloudflared_check.rc != 0
+            - name: '{{ instance.hostname | upper }}: Install Cloudflared {{ cloudflared_version }}'
+              shell: |
+                  pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+                  [ "$(cloudflared --version 2>/dev/null | awk '{print $3}')" = '{{ cloudflared_version }}' ] && exit 0
+                  curl -fsSL -o /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/download/{{ cloudflared_version }}/cloudflared-linux-amd64.deb
+                  dpkg -i /tmp/cloudflared.deb >/dev/null && rm -f /tmp/cloudflared.deb
+                  echo CHANGED
+                  EOF
+              register: cloudflared_binary
+              changed_when: "'CHANGED' in cloudflared_binary.stdout"
 
             - name: '{{ instance.hostname | upper }}: Configure Cloudflared Service'
               shell: |
-                  pct exec {{ id }} -- bash -c "cloudflared service uninstall || true"
-                  pct exec {{ id }} -- bash -c "cloudflared service install {{ env.JARVIS_CF_TUNNEL_TOKEN }}"
+                  pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+                  if ! systemctl cat cloudflared 2>/dev/null | grep -qF -- '{{ env.JARVIS_CF_TUNNEL_TOKEN }}'; then
+                      cloudflared service uninstall >/dev/null 2>&1 || true
+                      cloudflared service install '{{ env.JARVIS_CF_TUNNEL_TOKEN }}' >/dev/null 2>&1
+                      echo CHANGED
+                  elif {{ 'true' if cloudflared_binary is changed else 'false' }}; then
+                      systemctl restart cloudflared
+                      echo CHANGED
+                  fi
+                  EOF
+              register: cloudflared_service
+              changed_when: "'CHANGED' in cloudflared_service.stdout"
+              no_log: true
               when: env.JARVIS_CF_TUNNEL_TOKEN is defined and env.JARVIS_CF_TUNNEL_TOKEN | length > 0
 
   rescue:

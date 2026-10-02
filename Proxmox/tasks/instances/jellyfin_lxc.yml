@@ -107,9 +107,10 @@
             pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
             if [ "$(dpkg-query -W -f='${Version}' jellyfin-server 2>/dev/null)" != '{{ jellyfin_version }}' ]; then
                 apt-get update -qq
-                DEBIAN_FRONTEND=noninteractive apt-get install -y -qq jellyfin={{ jellyfin_version }} jellyfin-server={{ jellyfin_version }} jellyfin-web={{ jellyfin_version }} >/dev/null
+                DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --allow-change-held-packages jellyfin={{ jellyfin_version }} jellyfin-server={{ jellyfin_version }} jellyfin-web={{ jellyfin_version }} >/dev/null
                 echo CHANGED
             fi
+            apt-mark showhold | grep -qx jellyfin-server || { apt-mark hold -qq jellyfin jellyfin-server jellyfin-web >/dev/null; echo CHANGED; }
             systemctl is-active -q jellyfin || { systemctl enable --now -q jellyfin; echo CHANGED; }
             EOF
         register: jellyfin_package

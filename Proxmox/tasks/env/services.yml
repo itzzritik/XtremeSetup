@@ -220,6 +220,7 @@ JARVIS_SERVICES:
         logo: azirevpn.svg
         port: 42617
         subdomains: [claw]
+        hidden: true
 
     # moltis:
     #     id: 249

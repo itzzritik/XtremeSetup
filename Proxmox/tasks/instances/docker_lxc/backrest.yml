@@ -1,6 +1,7 @@
 - vars:
       app_name: backrest
       mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      image: 'garethgeorge/backrest:v1.14.1'
       config:
           root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
           local: '{{ instance.configs }}/{{ app_name }}'
@@ -164,43 +165,45 @@
             BACKREST_BCRYPT: '{{ env.JARVIS_ADMIN_PASSWORD_BCRYPT | b64encode }}'
         register: config_apply
         when: config_template is changed or not healthy.config
+      - name: '{{ app_name | upper }}: Create docker-compose.yml'
+        copy:
+            dest: '{{ config.root }}/docker-compose.yml'
+            content: |-
+                services:
+                  {{ app_name }}:
+                    container_name: {{ app_name }}
+                    image: {{ image }}
+                    user: "0:0"
+                    restart: unless-stopped
+                    ports:
+                      - "{{ env.JARVIS_SERVICES[app_name].port }}:9898"
+                    volumes:
+                      - {{ config.local}}/data:/data
+                      - {{ config.local}}:/config
+                      - {{ instance.configs }}:{{ instance.configs }}:ro
+                      - /media/ssd:/media/ssd
+                    environment:
+                      - BACKREST_DATA=/data
+                      - BACKREST_CONFIG=/config/config.json
+                      - XDG_CACHE_HOME=/cache
+                      - TZ={{ env.JARVIS_TZ }}
+                    healthcheck:
+                      test: ["CMD", "curl", "-fs", "http://localhost:9898"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 60s
+                    logging:
+                      driver: "json-file"
+                      options:
+                        max-size: "10m"
+                        max-file: "3"
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            mode: '0666'
+        register: backrest_compose_file
+
       - block:
-            - name: '{{ app_name | upper }}: Create docker-compose.yml'
-              copy:
-                  dest: '{{ config.root }}/docker-compose.yml'
-                  content: |-
-                      services:
-                        {{ app_name }}:
-                          container_name: {{ app_name }}
-                          image: garethgeorge/backrest
-                          user: "0:0"
-                          restart: unless-stopped
-                          ports:
-                            - "{{ env.JARVIS_SERVICES[app_name].port }}:9898"
-                          volumes:
-                            - {{ config.local}}/data:/data
-                            - {{ config.local}}:/config
-                            - {{ instance.configs }}:{{ instance.configs }}:ro
-                            - /media/ssd:/media/ssd
-                          environment:
-                            - BACKREST_DATA=/data
-                            - BACKREST_CONFIG=/config/config.json
-                            - XDG_CACHE_HOME=/cache
-                            - TZ={{ env.JARVIS_TZ }}
-                          healthcheck:
-                            test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9898"]
-                            interval: 30s
-                            timeout: 10s
-                            retries: 3
-                            start_period: 60s
-                          logging:
-                            driver: "json-file"
-                            options:
-                              max-size: "10m"
-                              max-file: "3"
-                  owner: '{{ mapped_uid }}'
-                  group: '{{ mapped_uid }}'
-                  mode: '0666'
             - name: '{{ app_name | upper }}: Cleanup Existing Container'
               command: pct exec {{ id }} -- bash -c "docker stop {{ app_name }} 2>/dev/null || true; docker rm {{ app_name }} 2>/dev/null || true"
               changed_when: false
@@ -214,7 +217,7 @@
                   port: '{{ env.JARVIS_SERVICES[app_name].port }}'
                   delay: 5
                   timeout: 30
-        when: not healthy.app
+        when: not healthy.app or backrest_compose_file is changed
       - name: '{{ app_name | upper }}: Restart for Config Update'
         command: pct exec {{ id }} -- docker restart {{ app_name }}
         when: healthy.app and config_apply is changed

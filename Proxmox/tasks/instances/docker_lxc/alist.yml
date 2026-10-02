@@ -1,6 +1,7 @@
 - vars:
       app_name: alist
       mapped_uid: '{{ instance.subuid | int + 1000 }}'
+      image: 'xhofe/alist:v3.64.0-aio'
       config:
           root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
           local: '{{ instance.configs }}/{{ app_name }}'
@@ -29,51 +30,43 @@
                 - "{{ app_name | title }} App Status: {{ 'Healthy' if healthy.app else 'Unhealthy' }}"
                 - "{{ app_name | title }} Config Status: {{ 'Healthy' if healthy.config else 'Unhealthy' }}"
 
+      - name: '{{ app_name | upper }}: Configure Directories'
+        shell: mkdir -p '{{ config.root }}' && chown {{ mapped_uid }}:{{ mapped_uid }} '{{ config.root }}'
+        args:
+            creates: '{{ config.root }}'
+
+      - name: '{{ app_name | upper }}: Create docker-compose.yml'
+        copy:
+            dest: '{{ config.root }}/docker-compose.yml'
+            content: |-
+                services:
+                  {{ app_name }}:
+                    container_name: {{ app_name }}
+                    image: {{ image }}
+                    restart: unless-stopped
+                    ports:
+                      - "{{ env.JARVIS_SERVICES[app_name].port }}:{{ env.JARVIS_SERVICES[app_name].port }}"
+                    volumes:
+                      - {{ config.local }}:/opt/alist/data
+                      - /media/ssd:/media/ssd
+                    environment:
+                      - TZ={{ env.JARVIS_TZ }}
+                      - PUID=0
+                      - PGID=0
+                      - UMASK=022
+                    healthcheck:
+                      test: ["CMD", "curl", "-f", "http://localhost:{{ env.JARVIS_SERVICES[app_name].port }}/"]
+                      interval: 30s
+                      timeout: 10s
+                      retries: 3
+                      start_period: 30s
+            owner: '{{ instance.subuid }}'
+            group: '{{ instance.subuid }}'
+            mode: '0666'
+            force: true
+        register: alist_compose_file
+
       - block:
-            - name: '{{ app_name | upper }}: Configure Directories'
-              file:
-                  path: '{{ dir_item }}'
-                  state: directory
-                  mode: '0777'
-                  owner: '{{ mapped_uid }}'
-                  group: '{{ mapped_uid }}'
-                  recurse: true
-              loop:
-                  - '{{ config.root }}'
-                  - '{{ config.local }}'
-              loop_control:
-                  loop_var: dir_item
-
-            - name: '{{ app_name | upper }}: Create docker-compose.yml'
-              copy:
-                  dest: '{{ config.root }}/docker-compose.yml'
-                  content: |-
-                      services:
-                        {{ app_name }}:
-                          container_name: {{ app_name }}
-                          image: xhofe/alist:latest-aio
-                          restart: unless-stopped
-                          ports:
-                            - "{{ env.JARVIS_SERVICES[app_name].port }}:{{ env.JARVIS_SERVICES[app_name].port }}"
-                          volumes:
-                            - {{ config.local }}:/opt/alist/data
-                            - /media/ssd:/media/ssd
-                          environment:
-                            - TZ={{ env.JARVIS_TZ }}
-                            - PUID=0
-                            - PGID=0
-                            - UMASK=022
-                          healthcheck:
-                            test: ["CMD", "curl", "-f", "http://localhost:{{ env.JARVIS_SERVICES[app_name].port }}/"]
-                            interval: 30s
-                            timeout: 10s
-                            retries: 3
-                            start_period: 30s
-                  owner: '{{ mapped_uid }}'
-                  group: '{{ mapped_uid }}'
-                  mode: '0666'
-                  force: true
-
             - name: '{{ app_name | upper }}: Start Docker Compose'
               command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
               register: alist_compose
@@ -84,7 +77,7 @@
                   host: '{{ instance.ip }}'
                   port: '{{ env.JARVIS_SERVICES[app_name].port }}'
                   timeout: 60
-        when: not healthy.app
+        when: not healthy.app or alist_compose_file is changed
 
       - block:
             - name: '{{ app_name | upper }}: Wait for Database'
@@ -132,6 +125,7 @@
                   mode: '0644'
                   owner: '{{ mapped_uid }}'
                   group: '{{ mapped_uid }}'
+        when: not healthy.config
 
   rescue:
       - debug:

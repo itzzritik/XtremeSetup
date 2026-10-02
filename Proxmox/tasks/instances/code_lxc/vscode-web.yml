@@ -1,6 +1,7 @@
 ---
 - vars:
       app_name: vscode-web
+      vscode_version: '1.140.0'
       config:
           root: '{{ paths.configs }}/{{ app_name }}'
           local: '{{ lxc_paths.vscode_web }}'
@@ -37,9 +38,15 @@
         loop_control:
             loop_var: dir_item
 
-      - name: '{{ app_name | upper }}: Install Server'
+      - name: '{{ app_name | upper }}: Read Installed Server Version'
+        command: python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['version'])" '{{ server.product_json }}'
+        register: vscode_installed
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Install Server {{ vscode_version }}'
         unarchive:
-            src: 'https://update.code.visualstudio.com/latest/server-linux-x64-web/stable'
+            src: 'https://update.code.visualstudio.com/{{ vscode_version }}/server-linux-x64-web/stable'
             dest: '{{ config.root }}'
             remote_src: true
             extra_opts:
@@ -47,7 +54,8 @@
                 - 's,^vscode-server-linux-x64-web,server,'
             owner: '{{ instance.subuid }}'
             group: '{{ instance.subuid }}'
-            creates: '{{ server.binary }}'
+        register: vscode_server
+        when: vscode_installed.stdout != vscode_version
 
       - name: '{{ app_name | upper }}: Read Server Commit ID'
         slurp:
@@ -169,4 +177,4 @@
         vars:
             lxc_service:
                 name: vscode-web
-                restart: '{{ unit in lxc_changed | default([]) or vscode_patches is changed or vscode_font is changed }}'
+                restart: '{{ unit in lxc_changed | default([]) or vscode_server is changed or vscode_patches is changed or vscode_font is changed }}'
