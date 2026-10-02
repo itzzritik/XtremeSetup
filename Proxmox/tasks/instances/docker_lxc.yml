@@ -134,7 +134,7 @@
             - backrest
             - voidauth
             - homer
-            - alist
+            - openlist
             - media
         loop_control:
             loop_var: docker_app_item

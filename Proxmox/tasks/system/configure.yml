@@ -16,6 +16,12 @@
   loop_control:
       loop_var: log_dir
 
+- name: '{{ prefix }}: Keep Config Permissions Open'
+  cron:
+      name: Fix JARVIS_CONFIGS_DIR permissions
+      minute: '0'
+      job: 'find {{ env.JARVIS_CONFIGS_DIR }} -path {{ env.JARVIS_CONFIGS_DIR }}/traefik/acme.json -prune -o -exec chmod a+rwX {} +'
+
 - name: '{{ prefix }}: Configure SSH'
   copy:
       dest: /etc/ssh/sshd_config.d/10-lan.conf

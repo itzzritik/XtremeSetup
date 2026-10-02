@@ -12,9 +12,7 @@
           mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
-        uri:
-            url: 'http://{{ instance.ip }}:{{ env.JARVIS_SERVICES[app_name].port }}'
-            timeout: 5
+        command: pct status {{ id }}
         register: instance_check
         failed_when: false
         changed_when: false
@@ -115,7 +113,7 @@
         register: zeroclaw_config
 
       - name: '{{ instance.hostname | upper }}: Provision Infrastructure'
-        when: instance_check.status | default(0) != 200
+        when: instance_check.rc != 0
         block:
             - name: '{{ instance.hostname | upper }}: Stop and Destroy LXC'
               shell: pct stop {{ id }}; pct destroy {{ id }}
@@ -230,7 +228,7 @@
 
       - name: '{{ instance.hostname | upper }}: Restart on Config Change'
         shell: pct exec {{ id }} -- systemctl restart zeroclaw
-        when: (zeroclaw_config is changed or zeroclaw_service is changed) and instance_check.status | default(0) == 200
+        when: (zeroclaw_config is changed or zeroclaw_service is changed) and instance_check.rc == 0
 
       - name: '{{ instance.hostname | upper }}: Verify Service'
         shell: pct exec {{ id }} -- systemctl is-active zeroclaw

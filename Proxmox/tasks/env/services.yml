@@ -212,6 +212,7 @@ JARVIS_SERVICES:
         port: 5055
         subdomains: [request]
         section: 'Media Server'
+        skip_auth: true
 
     zeroclaw:
         id: 247
@@ -230,7 +231,7 @@ JARVIS_SERVICES:
     #     port: 13131
     #     subdomains: [claw]
 
-    alist:
+    openlist:
         id: 253
         name: Files
         subtitle: NAS & File Manager

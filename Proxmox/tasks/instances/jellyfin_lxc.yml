@@ -12,7 +12,7 @@
       paths:
           config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/etc'
           data: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/lib'
-      jellyfin_version: '12.1+ubu2404'
+      jellyfin_version: '12.1'
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
         command: pct status {{ id }}
@@ -105,9 +105,16 @@
       - name: '{{ instance.hostname | upper }}: Install Jellyfin {{ jellyfin_version }}'
         shell: |
             pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
-            if [ "$(dpkg-query -W -f='${Version}' jellyfin-server 2>/dev/null)" != '{{ jellyfin_version }}' ]; then
+            . /etc/os-release
+            want="{{ jellyfin_version }}+ubu${VERSION_ID//./}"
+            src=/etc/apt/sources.list.d/jellyfin.sources
+            if ! grep -qx "Suites: $VERSION_CODENAME" $src || grep -q '^Enabled:' $src; then
+                sed -i -e "s/^Suites: .*/Suites: $VERSION_CODENAME/" -e '/^Enabled:/d' $src
+                echo CHANGED
+            fi
+            if [ "$(dpkg-query -W -f='${Version}' jellyfin-server 2>/dev/null)" != "$want" ]; then
                 apt-get update -qq
-                DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --allow-change-held-packages jellyfin={{ jellyfin_version }} jellyfin-server={{ jellyfin_version }} jellyfin-web={{ jellyfin_version }} >/dev/null
+                DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --allow-change-held-packages jellyfin=$want jellyfin-server=$want jellyfin-web=$want >/dev/null
                 echo CHANGED
             fi
             apt-mark showhold | grep -qx jellyfin-server || { apt-mark hold -qq jellyfin jellyfin-server jellyfin-web >/dev/null; echo CHANGED; }

@@ -17,6 +17,8 @@
           upstreams: ['1.1.1.1', '1.0.0.1', '9.9.9.9']
           adlists:
               - https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+          dnsmasq_lines:
+              - 'address=/{{ env.JARVIS_DOMAIN }}/{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.traefik.id }}'
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
         command: pct status {{ id }}
@@ -109,31 +111,12 @@
                   delay: 5
                   timeout: 60
 
-            - name: '{{ instance.hostname | upper }}: Create Password Set Script'
-              copy:
-                  dest: '/tmp/pihole_password_set_{{ id }}.sh'
-                  content: |
-                      #!/bin/bash
-                      set -e
-                      export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
-                      pihole -a -p ''
-                  mode: '0666'
-              no_log: true
-
-            - name: '{{ instance.hostname | upper }}: Push Password Script to Container'
-              command: pct push {{ id }} /tmp/pihole_password_set_{{ id }}.sh /tmp/set_password.sh
-
-            - name: '{{ instance.hostname | upper }}: Execute Password Script'
-              command: pct exec {{ id }} -- bash /tmp/set_password.sh
+            - name: '{{ instance.hostname | upper }}: Clear Web Password'
+              command: pct exec {{ id }} --keep-env 0 -- pihole-FTL --config webserver.api.pwhash ''
               register: set_password
               until: set_password.rc == 0
               retries: 10
               delay: 5
-              no_log: true
-
-            - name: '{{ instance.hostname | upper }}: Remove Password Script from Container'
-              command: pct exec {{ id }} -- rm -f /tmp/set_password.sh
-              ignore_errors: true
 
       - name: '{{ instance.hostname | upper }}: Configure DNS and Blocklists'
         shell: |
@@ -145,6 +128,7 @@
                 echo "CHANGED $1"
             }
             set_config dns.upstreams '{{ pihole.upstreams | to_json }}'
+            set_config misc.dnsmasq_lines '{{ pihole.dnsmasq_lines | to_json }}'
             set_config ntp.sync.active false
             set_config ntp.ipv4.active false
             set_config ntp.ipv6.active false

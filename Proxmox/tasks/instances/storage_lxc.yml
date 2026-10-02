@@ -228,6 +228,7 @@
             echo "SMB: $(systemctl is-active smbd)"
             echo "NFS: $(systemctl is-active nfs-kernel-server)"
             '
+        changed_when: false
         register: service_status
         failed_when: false
 

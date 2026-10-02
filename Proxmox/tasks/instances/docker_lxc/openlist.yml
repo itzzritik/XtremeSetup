@@ -1,7 +1,7 @@
 - vars:
-      app_name: alist
+      app_name: openlist
       mapped_uid: '{{ instance.subuid | int + 1000 }}'
-      image: 'xhofe/alist:v3.64.0-aio'
+      image: 'openlistteam/openlist:v4.2.6-aio'
       config:
           root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
           local: '{{ instance.configs }}/{{ app_name }}'
@@ -12,18 +12,18 @@
             method: GET
             status_code: 200
             timeout: 2
-        register: alist_health
+        register: openlist_health
         failed_when: false
 
       - name: '{{ app_name | upper }}: Check Configuration State'
         stat:
             path: '{{ config.root }}/.password_set'
-        register: alist_config_state
+        register: openlist_config_state
 
       - set_fact:
             healthy:
-                app: '{{ alist_health.status | default(0) == 200 }}'
-                config: '{{ alist_config_state.stat.exists }}'
+                app: '{{ openlist_health.status | default(0) == 200 }}'
+                config: '{{ openlist_config_state.stat.exists }}'
 
       - debug:
             msg:
@@ -43,16 +43,15 @@
                   {{ app_name }}:
                     container_name: {{ app_name }}
                     image: {{ image }}
+                    user: '0:0'
                     restart: unless-stopped
                     ports:
                       - "{{ env.JARVIS_SERVICES[app_name].port }}:{{ env.JARVIS_SERVICES[app_name].port }}"
                     volumes:
-                      - {{ config.local }}:/opt/alist/data
+                      - {{ config.local }}:/opt/openlist/data
                       - /media/ssd:/media/ssd
                     environment:
                       - TZ={{ env.JARVIS_TZ }}
-                      - PUID=0
-                      - PGID=0
                       - UMASK=022
                     healthcheck:
                       test: ["CMD", "curl", "-f", "http://localhost:{{ env.JARVIS_SERVICES[app_name].port }}/"]
@@ -64,20 +63,20 @@
             group: '{{ instance.subuid }}'
             mode: '0666'
             force: true
-        register: alist_compose_file
+        register: openlist_compose_file
 
       - block:
             - name: '{{ app_name | upper }}: Start Docker Compose'
               command: pct exec {{ id }} -- bash -c "cd {{ config.local }} && docker compose up -d"
-              register: alist_compose
-              changed_when: "'Created' in alist_compose.stderr or 'Recreated' in alist_compose.stderr"
+              register: openlist_compose
+              changed_when: "'Created' in openlist_compose.stderr or 'Recreated' in openlist_compose.stderr"
 
             - name: '{{ app_name | upper }}: Wait for Port'
               wait_for:
                   host: '{{ instance.ip }}'
                   port: '{{ env.JARVIS_SERVICES[app_name].port }}'
                   timeout: 60
-        when: not healthy.app or alist_compose_file is changed
+        when: not healthy.app or openlist_compose_file is changed
 
       - block:
             - name: '{{ app_name | upper }}: Wait for Database'
@@ -87,14 +86,14 @@
                   timeout: 60
 
             - name: '{{ app_name | upper }}: Set Admin Password'
-              command: pct exec {{ id }} -- docker exec {{ app_name }} ./alist admin set {{ env.JARVIS_ADMIN_PASSWORD }}
-              register: alist_password
+              command: pct exec {{ id }} -- docker exec {{ app_name }} ./openlist admin set {{ env.JARVIS_ADMIN_PASSWORD }}
+              register: openlist_password
               changed_when: true
 
             - name: '{{ app_name | upper }}: Rename Admin User'
               shell: |
                   pct exec {{ id }} -- sqlite3 {{ config.local }}/data.db "UPDATE x_users SET username='{{ env.JARVIS_ADMIN_USERNAME }}' WHERE username='admin';"
-              register: alist_user_rename
+              register: openlist_user_rename
               changed_when: true
 
             - name: '{{ app_name | upper }}: Add Local Storage'
@@ -105,16 +104,16 @@
                   ) VALUES (
                       '/ssd', 'Local', 30, 'work', '{\"root_folder_path\":\"/media/ssd\",\"thumbnail\":false,\"thumb_cache_folder\":\"\",\"show_hidden\":true,\"mkdir_perm\":\"777\"}', datetime('now'), 0, 0, 'name', 'asc', '', 0, '302_redirect', '', 0
                   );"
-              register: alist_storage_add
+              register: openlist_storage_add
               changed_when: true
 
             - name: '{{ app_name | upper }}: Enable Guest User'
               shell: |
                   pct exec {{ id }} -- sqlite3 {{ config.local }}/data.db "UPDATE x_users SET disabled=0 WHERE username='guest';"
-              register: alist_guest_enable
+              register: openlist_guest_enable
               changed_when: true
 
-            - name: '{{ app_name | upper }}: Restart Alist (Apply Config)'
+            - name: '{{ app_name | upper }}: Restart OpenList (Apply Config)'
               command: pct exec {{ id }} -- docker restart {{ app_name }}
               changed_when: true
 

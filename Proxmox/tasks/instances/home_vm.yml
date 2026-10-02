@@ -12,16 +12,14 @@
           port: '{{ env.JARVIS_SERVICES.home.port }}'
           mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
   block:
-      - name: '{{ instance.hostname | upper }}: Check if VM is already running'
-        uri:
-            url: 'http://{{ instance.ip }}:{{ instance.port }}'
-            timeout: 5
+      - name: '{{ instance.hostname | upper }}: Check if VM exists'
+        command: qm status {{ id }}
         register: instance_check
         failed_when: false
         changed_when: false
 
       - name: '{{ instance.hostname | upper }}: Provision VM'
-        when: instance_check.status | default(0) != 200
+        when: instance_check.rc != 0
         block:
             - name: '{{ instance.hostname | upper }}: Stop and destroy existing VM if present'
               shell: |
