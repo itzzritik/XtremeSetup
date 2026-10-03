@@ -1,0 +1,105 @@
+---
+- vars:
+      app_name: databases
+      config:
+          root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+      types:
+          postgres:
+              port: 5432
+              data: /var/lib/postgresql
+              link: 'postgres://postgres:<%s>@%s:5432/postgres?sslmode=verify-full'
+          redis:
+              port: 6379
+              data: /data
+              link: 'rediss://default:<%s>@%s:6379'
+      doppler_args: '--project {{ env.DOPPLER_PROJECT }} --config {{ env.DOPPLER_CONFIG }}'
+  block:
+      - name: '{{ app_name | upper }}: Ensure Passwords'
+        shell: |
+            set -o pipefail
+            doppler secrets get {{ db.password_key }} {{ doppler_args }} --plain 2>/dev/null && exit 0
+            openssl rand -hex 16 | tr -d '\n' | doppler secrets set {{ db.password_key }} {{ doppler_args }} --silent >/dev/null
+            doppler secrets get {{ db.password_key }} {{ doppler_args }} --plain
+            echo generated >&2
+        args:
+            executable: /bin/bash
+        delegate_to: localhost
+        become: false
+        register: passwords
+        changed_when: "'generated' in passwords.stderr"
+        no_log: true
+        loop: '{{ env.JARVIS_DATABASES }}'
+        loop_control:
+            loop_var: db
+            label: '{{ db.name }}'
+
+      - name: '{{ app_name | upper }}: Configure Directory'
+        file:
+            path: '{{ config.root }}'
+            state: directory
+            mode: '0755'
+            owner: ubuntu
+            group: ubuntu
+
+      - name: '{{ app_name | upper }}: Create docker-compose.yml'
+        copy:
+            dest: '{{ config.root }}/docker-compose.yml'
+            content: |
+                services:
+                {% for result in passwords.results %}
+                {% set db = result.db %}
+                  db-{{ db.name }}:
+                    container_name: db-{{ db.name }}
+                    image: {{ db.image }}
+                    restart: unless-stopped
+                {% if db.type == 'postgres' %}
+                    environment:
+                      POSTGRES_PASSWORD: "{{ result.stdout }}"
+                {% else %}
+                    command: ["redis-server", "--requirepass", "{{ result.stdout }}"]
+                {% endif %}
+                    ports:
+                      - "127.0.0.1:{{ db.port }}:{{ types[db.type].port }}"
+                    volumes:
+                      - db-{{ db.name }}-data:{{ types[db.type].data }}
+                {% endfor %}
+                volumes:
+                {% for db in env.JARVIS_DATABASES %}
+                  db-{{ db.name }}-data:
+                    name: db-{{ db.name }}-data
+                {% endfor %}
+            mode: '0600'
+            owner: ubuntu
+            group: ubuntu
+        no_log: true
+
+      - name: '{{ app_name | upper }}: Start Docker Compose'
+        command: docker compose up -d --pull always
+        args:
+            chdir: '{{ config.root }}'
+        register: compose_up
+        changed_when: compose_up.stderr is search('Created|Recreated|Started')
+
+      - name: '{{ app_name | upper }}: DNS Records'
+        community.general.cloudflare_dns:
+            api_token: '{{ env.RITIK_CF_DNS_API_TOKEN }}'
+            zone: '{{ env.RITIK_DOMAIN }}'
+            record: '{{ db.name }}'
+            type: A
+            value: '{{ ansible_host }}'
+            proxied: false
+            solo: true
+        delegate_to: localhost
+        become: false
+        loop: '{{ env.JARVIS_DATABASES }}'
+        loop_control:
+            loop_var: db
+            label: '{{ db.host }}'
+
+      - name: '{{ app_name | upper }}: Connection Links'
+        debug:
+            msg: '{{ types[db.type].link | format(db.password_key, db.host) }}'
+        loop: '{{ env.JARVIS_DATABASES }}'
+        loop_control:
+            loop_var: db
+            label: '{{ db.name }}'

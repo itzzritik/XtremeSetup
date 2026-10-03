@@ -11,3 +11,7 @@ JARVIS_SERVICES:
         name: OpenCode
         subdomain: opencode
         port: '34521'
+
+JARVIS_DATABASES:
+    - { name: pg, type: postgres, image: 'postgres:18-alpine' }
+    - { name: redis, type: redis, image: 'redis:alpine' }

@@ -3,22 +3,16 @@
       app_name: caddy
       config:
           root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
+      binary: /usr/local/bin/caddy
+      download: 'https://caddyserver.com/api/download?os=linux&arch=arm64&p=github.com%2Fmholt%2Fcaddy-l4&p=github.com%2Fcaddy-dns%2Fcloudflare'
   block:
-      - name: '{{ app_name | upper }}: Add APT Repository'
-        shell: |
-            install -m 0755 -d /usr/share/keyrings
-            curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --batch --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-            curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt -o /etc/apt/sources.list.d/caddy-stable.list
-            chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg /etc/apt/sources.list.d/caddy-stable.list
-            apt-get update
-        args:
-            creates: /etc/apt/sources.list.d/caddy-stable.list
-
-      - name: '{{ app_name | upper }}: Install Package'
-        apt:
-            name: caddy
-            state: present
-        register: caddy_package
+      - name: '{{ app_name | upper }}: Install Binary'
+        get_url:
+            url: '{{ download }}'
+            dest: '{{ binary }}'
+            mode: '0755'
+            force: true
+        register: caddy_binary
 
       - name: '{{ app_name | upper }}: Configure Directories'
         file:
@@ -31,10 +25,70 @@
             - '{{ config.root }}'
             - '{{ config.root }}/data'
 
+      - name: '{{ app_name | upper }}: Write Token EnvironmentFile'
+        copy:
+            dest: '{{ config.root }}/env'
+            content: 'CF_API_TOKEN={{ env.RITIK_CF_DNS_API_TOKEN }}'
+            mode: '0600'
+            owner: root
+            group: root
+        no_log: true
+        register: caddy_env
+
       - name: '{{ app_name | upper }}: Create Caddyfile'
         copy:
             dest: '{{ config.root }}/Caddyfile'
             content: |-
+                {
+                    layer4 {
+                {% set pg_dbs = env.JARVIS_DATABASES | selectattr('type', 'equalto', 'postgres') | list %}
+                {% set redis_dbs = env.JARVIS_DATABASES | selectattr('type', 'equalto', 'redis') | list %}
+                {% if pg_dbs %}
+                        :5432 {
+                            @postgres postgres {
+                                tls enabled
+                            }
+                            route @postgres {
+                                postgres_tls
+                                subroute {
+                {% for db in pg_dbs %}
+                                    @{{ db.name }} tls sni {{ db.host }}
+                                    route @{{ db.name }} {
+                                        tls {
+                                            connection_policy {
+                                                alpn postgresql
+                                            }
+                                        }
+                                        proxy 127.0.0.1:{{ db.port }}
+                                    }
+                {% endfor %}
+                                }
+                            }
+                        }
+                {% endif %}
+                {% if redis_dbs %}
+                        :6379 {
+                {% for db in redis_dbs %}
+                            @{{ db.name }} tls sni {{ db.host }}
+                            route @{{ db.name }} {
+                                tls
+                                proxy 127.0.0.1:{{ db.port }}
+                            }
+                {% endfor %}
+                            @redis_default tls
+                            route @redis_default {
+                                tls {
+                                    connection_policy {
+                                        default_sni {{ redis_dbs[0].host }}
+                                    }
+                                }
+                                proxy 127.0.0.1:{{ redis_dbs[0].port }}
+                            }
+                        }
+                {% endif %}
+                    }
+                }
+
                 :80 {
                     @codeserver host code.{{ env.RITIK_DOMAIN }}
                     handle @codeserver {
@@ -81,13 +135,20 @@
                         respond "Forbidden" 403
                     }
                 }
+
+                {{ env.JARVIS_DATABASES | map(attribute='host') | join(', ') }} {
+                    tls {
+                        dns cloudflare {env.CF_API_TOKEN}
+                    }
+                    respond 404
+                }
             mode: '0644'
             owner: ubuntu
             group: ubuntu
         register: caddy_config
 
       - name: '{{ app_name | upper }}: Validate Config'
-        command: 'caddy validate --config {{ config.root }}/Caddyfile --adapter caddyfile'
+        shell: 'set -a && . {{ config.root }}/env && set +a && {{ binary }} validate --config {{ config.root }}/Caddyfile --adapter caddyfile'
         changed_when: false
 
       - name: '{{ app_name | upper }}: Create Systemd Service'
@@ -104,10 +165,11 @@
                 Type=notify
                 User=ubuntu
                 Group=ubuntu
+                EnvironmentFile={{ config.root }}/env
                 Environment=XDG_CONFIG_HOME={{ config.root }}/config
                 Environment=XDG_DATA_HOME={{ config.root }}/data
-                ExecStart=/usr/bin/caddy run --environ --config {{ config.root }}/Caddyfile --adapter caddyfile
-                ExecReload=/usr/bin/caddy reload --config {{ config.root }}/Caddyfile --adapter caddyfile --force
+                ExecStart={{ binary }} run --environ --config {{ config.root }}/Caddyfile --adapter caddyfile
+                ExecReload={{ binary }} reload --config {{ config.root }}/Caddyfile --adapter caddyfile --force
                 TimeoutStopSec=5s
                 LimitNOFILE=1048576
                 Restart=on-failure
@@ -128,5 +190,5 @@
       - name: '{{ app_name | upper }}: Enable and Start Service'
         systemd:
             name: '{{ app_name }}'
-            state: "{{ 'restarted' if (caddy_service is changed or caddy_config is changed or caddy_package is changed) else 'started' }}"
+            state: "{{ 'restarted' if (caddy_service is changed or caddy_config is changed or caddy_binary is changed or caddy_env is changed) else 'started' }}"
             enabled: true

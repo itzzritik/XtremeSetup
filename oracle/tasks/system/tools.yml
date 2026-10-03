@@ -249,6 +249,63 @@
         become: true
         become_user: ubuntu
 
+      - name: '{{ app_name | upper }}: Show CPU and RAM in Prompt'
+        blockinfile:
+            path: /home/ubuntu/.zshrc
+            marker: '# {mark} RESOURCES'
+            block: |
+                _res_prev=(0 0)
+                _res_update() {
+                    local -a c=(${=${(f)"$(</proc/stat)"}[1]})
+                    local total=$(( c[2] + c[3] + c[4] + c[5] + c[6] + c[7] + c[8] + c[9] )) idle=$(( c[5] + c[6] ))
+                    local cpu=0 mem=$(</proc/meminfo) used
+                    (( total > _res_prev[1] )) && cpu=$(( 100 * (total - _res_prev[1] - idle + _res_prev[2]) / (total - _res_prev[1]) ))
+                    _res_prev=($total $idle)
+                    local mt=${${mem#*MemTotal:}%%kB*} ma=${${mem#*MemAvailable:}%%kB*}
+                    printf -v used '%.1f' $(( (mt - ma) / 1048576.0 ))
+                    RPROMPT="%F{magenta}CPU ${cpu}%%%f %F{238}│%f %F{yellow}RAM ${used}/$(( (mt + 1048575) / 1048576 ))G%f"
+                }
+                autoload -Uz add-zsh-hook
+                add-zsh-hook precmd _res_update
+                TRAPALRM() { _res_update; zle && zle reset-prompt }
+                TMOUT=5
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Load VS Code Shell Integration'
+        blockinfile:
+            path: /home/ubuntu/.zshrc
+            marker: '# {mark} VSCODE'
+            block: |
+                [[ "$TERM_PROGRAM" == "vscode" ]] && (( $+commands[code] )) && . "$(code --locate-shell-integration-path zsh)"
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Enable Linger'
+        command: loginctl enable-linger ubuntu
+        args:
+            creates: /var/lib/systemd/linger/ubuntu
+
+      - name: '{{ app_name | upper }}: Configure User Slice Directory'
+        file:
+            path: /etc/systemd/system/user-.slice.d
+            state: directory
+            mode: '0755'
+
+      - name: '{{ app_name | upper }}: Cap User Memory'
+        copy:
+            dest: /etc/systemd/system/user-.slice.d/memory.conf
+            content: |
+                [Slice]
+                MemoryMax=18G
+            mode: '0644'
+        register: user_slice
+
+      - name: '{{ app_name | upper }}: Reload User Slice'
+        systemd:
+            daemon_reload: true
+        when: user_slice is changed
+
       - name: '{{ app_name | upper }}: Clone tmux plugins'
         git:
             repo: 'https://github.com/tmux-plugins/{{ tmux_plugin }}'
@@ -304,12 +361,12 @@
                 setw -g window-status-activity-style "fg=yellow,bold"
 
                 # Right side — pipe-separated sections
-                set -g status-right "#{?@picker,,#{?client_prefix,#[fg=black#,bg=red#,bold] PFX #[fg=white#,bg=#161616] ,}#[fg=black#,bg=green#,bold] + #[fg=white#,bg=#161616] }"
+                set -g status-right "#{?@picker,,#{?client_prefix,#[fg=black#,bg=red#,bold] PFX #[fg=white#,bg=#161616] ,}#[fg=black#,bg=green#,bold] + #[fg=white#,bg=#161616] #[range=user|detach]#[fg=black#,bg=red#,bold] ✕ #[norange fg=white#,bg=#161616] }"
 
                 # Bindings
                 set-hook -g pane-mode-changed 'set -gF @picker "#{==:#{pane_mode},tree-mode}"'
                 bind -n MouseDown1StatusRight if -F '#{!=:#{@picker},1}' 'new-window -c "#{pane_current_path}"'
-                bind -n MouseDown1Status if -F '#{==:#{mouse_status_range},sessions}' { if -F '#{==:#{pane_mode},tree-mode}' 'send-keys q' 'choose-tree -Zs' } { if -F '#{==:#{mouse_status_range},newsession}' { send-keys q; command-prompt -p 'new session:' "new -A -s '%%'" } { if -F '#{!=:#{@picker},1}' 'select-window -t=' } }
+                bind -n MouseDown1Status if -F '#{==:#{mouse_status_range},sessions}' { if -F '#{==:#{pane_mode},tree-mode}' 'send-keys q' 'choose-tree -Zs' } { if -F '#{==:#{mouse_status_range},newsession}' { send-keys q; command-prompt -p 'new session:' "new -A -s '%%'" } { if -F '#{==:#{mouse_status_range},detach}' 'detach-client' { if -F '#{!=:#{@picker},1}' 'select-window -t=' } } }
                 bind -n MouseDown3Status if -F '#{==:#{mouse_status_range},window}' "kill-window -t '{mouse}'"
                 bind c new-window -c "#{pane_current_path}"
                 bind '"' split-window -v -c "#{pane_current_path}"

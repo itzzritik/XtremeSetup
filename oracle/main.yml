@@ -53,12 +53,13 @@
       - name: Deploy Services
         include_tasks: 'tasks/services/{{ service }}.yml'
         loop:
+            - docker
             - cloudflared
             - vscode-web
             - aionui
             - opencode
             - caddy
-            - docker
+            - databases
             - antigravity
         loop_control:
             loop_var: service

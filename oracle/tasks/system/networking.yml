@@ -1,6 +1,7 @@
 ---
 - vars:
       app_name: networking
+      allowed_ports: [22, 5432, 6379]
   block:
       - name: '{{ app_name | upper }}: Install iptables-persistent'
         apt:
@@ -11,17 +12,24 @@
         environment:
             DEBIAN_FRONTEND: noninteractive
 
-      - name: '{{ app_name | upper }}: Check SSH Safety Rule'
-        command: iptables -C INPUT -p tcp --dport 22 -j ACCEPT
-        register: ssh_check
+      - name: '{{ app_name | upper }}: Check Allow Rules'
+        command: iptables -C INPUT -p tcp --dport {{ port }} -j ACCEPT
+        register: port_checks
         failed_when: false
         changed_when: false
+        loop: '{{ allowed_ports }}'
+        loop_control:
+            loop_var: port
 
-      - name: '{{ app_name | upper }}: Ensure SSH Access'
-        command: iptables -I INPUT -p tcp --dport 22 -j ACCEPT
-        when: ssh_check.rc != 0
-        register: ssh_added
+      - name: '{{ app_name | upper }}: Allow Ports'
+        command: iptables -I INPUT -p tcp --dport {{ check.port }} -j ACCEPT
+        when: check.rc != 0
+        register: ports_added
+        loop: '{{ port_checks.results }}'
+        loop_control:
+            loop_var: check
+            label: '{{ check.port }}'
 
       - name: '{{ app_name | upper }}: Persist Rules'
         command: netfilter-persistent save
-        when: ssh_added is changed
+        when: ports_added is changed

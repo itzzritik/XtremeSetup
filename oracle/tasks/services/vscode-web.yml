@@ -43,6 +43,11 @@
         register: vscode_commit
         changed_when: false
 
+      - name: '{{ app_name | upper }}: Read User ID'
+        command: id -u ubuntu
+        register: ubuntu_uid
+        changed_when: false
+
       - name: '{{ app_name | upper }}: Read Machine ID'
         command: cat /etc/machine-id
         register: machine_id
@@ -100,6 +105,7 @@
             - '{{ config.root }}'
             - '{{ config.root }}/fonts'
             - '{{ config.root }}/data/User'
+            - '{{ config.root }}/data/Machine'
 
       - name: '{{ app_name | upper }}: Seed User Settings'
         copy:
@@ -113,6 +119,28 @@
             owner: ubuntu
             group: ubuntu
             force: false
+
+      - name: '{{ app_name | upper }}: Configure Machine Settings'
+        copy:
+            dest: '{{ config.root }}/data/Machine/settings.json'
+            content: |
+                {
+                  "python.defaultInterpreterPath": "/usr/bin/python3",
+                  "terminal.integrated.env.linux": {
+                    "XDG_RUNTIME_DIR": "/run/user/{{ ubuntu_uid.stdout }}",
+                    "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/{{ ubuntu_uid.stdout }}/bus"
+                  },
+                  "terminal.integrated.profiles.linux": {
+                    "zsh": {
+                      "path": "systemd-run",
+                      "args": ["--user", "--scope", "--quiet", "--collect", "zsh", "-l"]
+                    }
+                  },
+                  "terminal.integrated.defaultProfile.linux": "zsh"
+                }
+            mode: '0644'
+            owner: ubuntu
+            group: ubuntu
 
       - name: '{{ app_name | upper }}: Configure Systemd Unit'
         copy:
@@ -130,7 +158,8 @@
                 ExecStart={{ server.binary }} --host 127.0.0.1 --port {{ env.JARVIS_SERVICES[app_name].port }} --without-connection-token --accept-server-license-terms --server-data-dir {{ config.root }}
                 Restart=on-failure
                 RestartSec=10
-                MemoryMax=6G
+                MemoryMax=10G
+                OOMPolicy=continue
 
                 [Install]
                 WantedBy=multi-user.target
