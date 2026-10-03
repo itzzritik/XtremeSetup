@@ -43,6 +43,11 @@
         register: vscode_commit
         changed_when: false
 
+      - name: '{{ app_name | upper }}: Read Machine ID'
+        command: cat /etc/machine-id
+        register: machine_id
+        changed_when: false
+
       - name: '{{ app_name | upper }}: Patch Server Source for Settings Sync Persistence'
         replace:
             path: '{{ item.path }}'
@@ -64,6 +69,10 @@
             - path: '{{ server.workbench_js }}'
               regexp: 't&&([\w$]+)\.supported\(\)\?new \1\(t\):new ([\w$]+)'
               replace: 'false?void 0:new \2'
+            # stale browser sync state from a wiped server syncs its missing extensions as uninstalls
+            - path: '{{ server.workbench_js }}'
+              regexp: '"vscode-web-db"'
+              replace: '"vscode-web-db-{{ machine_id.stdout }}"'
         loop_control:
             label: '{{ item.path | basename }}'
         register: cs_patches

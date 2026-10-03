@@ -223,7 +223,7 @@
 
                   # Status bar palette
                   set -g status-style "bg=#161616,fg=white"
-                  set -g status-left "#{?@picker,#[range=user|sessions]#[fg=black#,bg=red#,bold] ✕ #[norange fg=white#,bg=#161616] #[range=user|newsession]#[fg=black#,bg=green#,bold] + new #[norange fg=white#,bg=#161616],#[range=user|sessions]#[fg=black#,bg=cyan#,bold] #S #[norange fg=white#,bg=#161616]} "
+                  set -g status-left "#{?@picker,#[range=user|sessions]#[fg=black#,bg=red#,bold] ✕ #[norange fg=white#,bg=#161616] #[range=user|newsession]#[fg=black#,bg=green#,bold] + new #[norange fg=white#,bg=#161616],#[range=user|sessions]#[fg=black#,bg=cyan#,bold] #{n:#{s/y.*//:#{S:x,y}}} #[norange fg=white#,bg=#161616]} "
                   set -g status-left-length 30
                   set -g status-right-length 100
                   set -g status-interval 5
@@ -235,7 +235,7 @@
                   setw -g window-status-activity-style "fg=yellow,bold"
 
                   # Right side — pipe-separated sections
-                  set -g status-right "#{?@picker,,#{?client_prefix,#[fg=black#,bg=red#,bold] PFX #[fg=white#,bg=#161616] #[fg=#444444]│ ,}#[fg=cyan] %H:%M #[fg=black#,bg=green#,bold] + #[fg=white#,bg=#161616] }"
+                  set -g status-right "#{?@picker,,#{?client_prefix,#[fg=black#,bg=red#,bold] PFX #[fg=white#,bg=#161616] ,}#[fg=black#,bg=green#,bold] + #[fg=white#,bg=#161616] }"
 
                   # Bindings
                   set-hook -g pane-mode-changed 'set -gF @picker "#{==:#{pane_mode},tree-mode}"'

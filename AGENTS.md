@@ -55,7 +55,7 @@ that the main env phase would normally provide.
 
 ```bash
 cd Oracle
-ansible-playbook oracle-local.yml -e 'task=neveridle'   # any task under tasks/system/
+ansible-playbook oracle-local.yml -e 'task=sysctl'   # any task under tasks/system/
 ```
 
 The canonical task lives in `tasks/system/<task>.yml` and is still picked up by

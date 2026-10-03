@@ -47,7 +47,6 @@
             - tools
             - hardening
             - git
-            - neveridle
         loop_control:
             loop_var: task
 

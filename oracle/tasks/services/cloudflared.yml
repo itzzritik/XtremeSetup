@@ -8,7 +8,7 @@
         shell: |
             install -m 0755 -d /usr/share/keyrings
             curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | gpg --batch --yes --dearmor -o /usr/share/keyrings/cloudflare-main.gpg
-            echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" > /etc/apt/sources.list.d/cloudflared.list
+            echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" > /etc/apt/sources.list.d/cloudflared.list
             apt-get update
         args:
             creates: /etc/apt/sources.list.d/cloudflared.list
