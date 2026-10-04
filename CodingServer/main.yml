@@ -1,0 +1,74 @@
+---
+- name: Prepare Run
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+      available_tasks: "{{ hostvars[target].setup_tasks | map('basename') | list }}"
+  tasks:
+      - name: Validate Target
+        ansible.builtin.assert:
+            that:
+                - target is defined
+                - target in groups.coding
+            fail_msg: "Target must be one of: {{ groups.coding | join(', ') }}"
+            quiet: true
+
+      - name: Validate Tasks
+        ansible.builtin.assert:
+            that: only_tasks | difference(available_tasks) | length == 0
+            fail_msg: "Unknown tasks: {{ only_tasks | difference(available_tasks) | join(', ') }}. Available: {{ available_tasks | join(', ') }}"
+            quiet: true
+
+      - name: Download Secrets
+        ansible.builtin.command: 'doppler secrets download {{ doppler_args }} --no-file --format json'
+        register: doppler_download
+        changed_when: false
+        failed_when: false
+        no_log: true
+
+      - name: Check Doppler Login
+        ansible.builtin.assert:
+            that: doppler_download.rc == 0
+            fail_msg: '`doppler login` required for {{ doppler_args }}'
+            quiet: true
+
+      - name: Load Secrets
+        ansible.builtin.set_fact:
+            env: '{{ doppler_download.stdout | from_json }}'
+        no_log: true
+
+      - name: Check Required Secrets
+        ansible.builtin.assert:
+            that: doppler_keys | difference(env.keys()) | length == 0
+            fail_msg: "Missing in Doppler: {{ doppler_keys | difference(env.keys()) | join(', ') }}"
+            quiet: true
+
+- name: Configure Coding Server
+  hosts: '{{ target }}'
+  gather_facts: false
+  become: true
+  vars:
+      env: '{{ hostvars.localhost.env }}'
+  module_defaults:
+      ansible.builtin.shell:
+          executable: /bin/bash
+  pre_tasks:
+      - name: Provision LXC
+        ansible.builtin.include_tasks: tasks/proxmox/lxc.yml
+        when: lxc is defined
+
+      - name: Bootstrap User
+        ansible.builtin.include_tasks: tasks/common/user.yml
+
+      - name: Gather Facts
+        ansible.builtin.setup:
+            gather_subset: ['!all']
+
+  tasks:
+      - name: Run Setup Tasks
+        ansible.builtin.include_tasks: 'tasks/{{ setup_task }}.yml'
+        loop: '{{ setup_tasks }}'
+        loop_control:
+            loop_var: setup_task
+        when: not only_tasks or setup_task | basename in only_tasks

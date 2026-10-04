@@ -1,0 +1,25 @@
+---
+- vars:
+      app_name: firewall
+      apt_packages:
+          - iptables-persistent
+  block:
+      - name: '{{ app_name | upper }}: Install Packages'
+        ansible.builtin.include_tasks: '{{ lib }}/apt.yml'
+
+      - name: '{{ app_name | upper }}: Allow Ports'
+        ansible.builtin.iptables:
+            chain: INPUT
+            protocol: tcp
+            destination_port: '{{ port }}'
+            jump: ACCEPT
+            action: insert
+        loop: "{{ [22] + databases | map(attribute='type') | unique | map('extract', database_types, 'port') | list }}"
+        loop_control:
+            loop_var: port
+        register: firewall_rules
+
+      - name: '{{ app_name | upper }}: Save Rules'
+        ansible.builtin.command: netfilter-persistent save
+        changed_when: true
+        when: firewall_rules is changed

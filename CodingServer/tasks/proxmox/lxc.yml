@@ -1,0 +1,84 @@
+---
+- vars:
+      app_name: lxc
+      ip: '{{ hostvars[inventory_hostname].ansible_host }}'
+      host_uid: '{{ 100000 + user_uid }}'
+  delegate_to: '{{ lxc.host }}'
+  become: false
+  block:
+      - name: '{{ app_name | upper }}: Configure Host Folders'
+        ansible.builtin.file:
+            path: '{{ mount.host }}'
+            state: directory
+            owner: '{{ host_uid }}'
+            group: '{{ host_uid }}'
+        loop: '{{ lxc.mounts }}'
+        loop_control:
+            loop_var: mount
+            label: '{{ mount.host }}'
+
+      - name: '{{ app_name | upper }}: Read Status'
+        ansible.builtin.command: 'pct status {{ lxc.id }}'
+        register: lxc_status
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Create Container'
+        when: lxc_status.rc != 0
+        block:
+            - name: '{{ app_name | upper }}: Download Template'
+              ansible.builtin.shell: |
+                  set -eo pipefail
+                  pveam update >&2
+                  template=$(pveam available --section system | grep -oP 'ubuntu-[0-9]*[02468]\.04-standard_\S+' | sort -V | tail -1)
+                  pveam download local "$template" >&2 || true
+                  echo "$template"
+              register: lxc_template
+              changed_when: true
+
+            - name: '{{ app_name | upper }}: Create'
+              ansible.builtin.command: >-
+                  pct create {{ lxc.id }} local:vztmpl/{{ lxc_template.stdout | trim }}
+                  --hostname {{ lxc.hostname }}
+                  --cores {{ lxc.cores }}
+                  --memory {{ lxc.memory }}
+                  --swap {{ lxc.swap }}
+                  --rootfs {{ lxc.storage }}:{{ lxc.disk }}
+                  --net0 name=eth0,bridge=vmbr0,firewall=0,ip={{ ip }}/24,gw={{ lxc.gateway }},hwaddr={{ lxc.mac }}
+                  --unprivileged 1
+                  --features nesting=1,keyctl=1,fuse=1
+                  --timezone host
+                  --ssh-public-keys /root/.ssh/authorized_keys
+                  --onboot 1
+              changed_when: true
+
+            - name: '{{ app_name | upper }}: Configure Mounts'
+              ansible.builtin.blockinfile:
+                  path: '/etc/pve/lxc/{{ lxc.id }}.conf'
+                  marker: '# {mark} JARVIS MOUNTS'
+                  block: |
+                      {% for mount in lxc.mounts %}
+                      mp{{ loop.index0 }}: {{ mount.host }},mp={{ mount.guest }}
+                      {% endfor %}
+
+      - name: '{{ app_name | upper }}: Start Container'
+        ansible.builtin.command: 'pct start {{ lxc.id }}'
+        changed_when: true
+        when: "'status: running' not in lxc_status.stdout"
+
+      - name: '{{ app_name | upper }}: Exempt LAN from SSH Penalties'
+        ansible.builtin.command: >-
+            pct exec {{ lxc.id }} --keep-env 0 -- sh -c
+            'echo "PerSourcePenaltyExemptList {{ ssh_exempt }}" > /etc/ssh/sshd_config.d/10-jarvis.conf && systemctl try-reload-or-restart ssh.service'
+        register: lxc_exempt
+        changed_when: true
+        until: lxc_exempt.rc == 0
+        retries: 15
+        delay: 2
+        when: lxc_status.rc != 0
+
+      - name: '{{ app_name | upper }}: Wait for SSH'
+        ansible.builtin.wait_for:
+            host: '{{ ip }}'
+            port: 22
+            timeout: 120

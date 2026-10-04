@@ -1,0 +1,187 @@
+---
+- vars:
+      app_name: vscode-web
+      root: '{{ vscode_root }}'
+      current: '{{ root }}/server'
+      terminal_shell: /usr/local/bin/vscode-shell
+      server: '{{ root }}/server-{{ vscode_latest.json.productVersion }}'
+      workbench: '{{ server }}/out/vs/code/browser/workbench'
+      arch: "{{ deb_arch | replace('amd64', 'x64') }}"
+      sync_url: 'https://{{ services[app_name].subdomain }}.{{ domain }}/_sync'
+      browser_bundles:
+          - github-authentication/dist/browser/extension.js
+          - emmet/dist/browser/emmetBrowserMain.js
+          - merge-conflict/dist/browser/mergeConflictMain.js
+          - git-base/dist/browser/extension.js
+      font:
+          family: FantasqueSansM Nerd Font Mono
+          file: FantasqueSansMNerdFontMono-Regular.ttf
+          url: https://github.com/ryanoasis/nerd-fonts/releases/latest/download/FantasqueSansMono.zip
+      patches:
+          - { path: '{{ server }}/product.json', regexp: 'https://{{ vscode_sync_host | regex_escape }}/?', replace: '{{ sync_url }}/', expect: '{{ sync_url }}' }
+          - { path: '{{ server }}/out/server-main.js', regexp: 'https://{{ vscode_sync_host | regex_escape }}', replace: '{{ sync_url }}', expect: '{{ sync_url }}' }
+          - { path: '{{ workbench }}/workbench.js', regexp: 'https://{{ vscode_sync_host | regex_escape }}', replace: '{{ sync_url }}', expect: '{{ sync_url }}' }
+          - { path: '{{ workbench }}/workbench.js', regexp: 'secretStorageProvider:e\.remoteAuthority&&!t\?void 0:new ([\w$]+)\((\w)\)', replace: 'secretStorageProvider:new \1(\2)', expect: 'secretStorageProvider:new ' }
+          - { path: '{{ workbench }}/workbench.js', regexp: 't&&([\w$]+)\.supported\(\)\?new \1\(t\):new ([\w$]+)', replace: 'false?void 0:new \2', expect: 'false?void 0:new ' }
+          - { path: '{{ workbench }}/workbench.js', regexp: '"vscode-web-db(?:-[0-9a-z]{32})?"', replace: '"vscode-web-db-{{ browser_id }}"', expect: '"vscode-web-db-{{ browser_id }}"' }
+          - { path: '{{ workbench }}/workbench.js', regexp: '"vscode-web-state-db-(?:[0-9a-z]{32}-)?"', replace: '"vscode-web-state-db-{{ browser_id }}-"', expect: '"vscode-web-state-db-{{ browser_id }}-"' }
+      browser_id: '{{ browser_id_file.content | b64decode | trim }}'
+      settings:
+          python.defaultInterpreterPath: /usr/bin/python3
+          terminal.integrated.defaultProfile.linux: zsh
+          terminal.integrated.profiles.linux:
+              zsh:
+                  path: '{{ terminal_shell }}'
+  block:
+      - name: '{{ app_name | upper }}: Install Terminal Shell'
+        ansible.builtin.copy:
+            dest: '{{ terminal_shell }}'
+            mode: '0755'
+            content: |
+                #!/bin/bash
+                export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+                export DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}
+                exec systemd-run --user --scope --quiet --collect zsh -l "$@"
+
+      - become: true
+        become_user: '{{ user }}'
+        block:
+            - name: '{{ app_name | upper }}: Configure Directories'
+              ansible.builtin.file:
+                  path: '{{ dir }}'
+                  state: directory
+              loop:
+                  - '{{ root }}/fonts'
+                  - '{{ root }}/data/User'
+                  - '{{ root }}/data/Machine'
+              loop_control:
+                  loop_var: dir
+
+            - name: '{{ app_name | upper }}: Read Latest Release'
+              ansible.builtin.uri:
+                  url: 'https://update.code.visualstudio.com/api/update/server-linux-{{ arch }}-web/stable/latest'
+              register: vscode_latest
+
+            - name: '{{ app_name | upper }}: Install Server {{ vscode_latest.json.productVersion }}'
+              ansible.builtin.unarchive:
+                  src: '{{ vscode_latest.json.url }}'
+                  dest: '{{ root }}'
+                  remote_src: true
+                  creates: '{{ server }}/product.json'
+                  extra_opts:
+                      - --transform
+                      - 's,^vscode-server-linux-[^/]*-web,{{ server | basename }},'
+
+            - name: '{{ app_name | upper }}: Create Browser Storage ID'
+              ansible.builtin.copy:
+                  dest: '{{ root }}/browser-id'
+                  content: "{{ lookup('password', '/dev/null', chars=['ascii_lowercase', 'digits'], length=32) }}\n"
+                  force: false
+
+            - name: '{{ app_name | upper }}: Read Browser Storage ID'
+              ansible.builtin.slurp:
+                  src: '{{ root }}/browser-id'
+              register: browser_id_file
+
+            - name: '{{ app_name | upper }}: Patch Server'
+              ansible.builtin.replace:
+                  path: '{{ patch.path }}'
+                  regexp: '{{ patch.regexp }}'
+                  replace: '{{ patch.replace }}'
+              loop: '{{ patches }}'
+              loop_control:
+                  loop_var: patch
+                  label: '{{ patch.path | basename }}: {{ patch.expect }}'
+              register: vscode_patches
+
+            - name: '{{ app_name | upper }}: Verify Patches'
+              ansible.builtin.command: "grep -qF -- '{{ patch.expect }}' '{{ patch.path }}'"
+              changed_when: false
+              loop: '{{ patches }}'
+              loop_control:
+                  loop_var: patch
+                  label: '{{ patch.path | basename }}: {{ patch.expect }}'
+
+            - name: '{{ app_name | upper }}: Configure Bundle Directories'
+              ansible.builtin.file:
+                  path: '{{ server }}/extensions/{{ bundle | dirname }}'
+                  state: directory
+              loop: '{{ browser_bundles }}'
+              loop_control:
+                  loop_var: bundle
+
+            - name: '{{ app_name | upper }}: Download Browser Bundles'
+              ansible.builtin.get_url:
+                  url: 'https://main.vscode-cdn.net/stable/{{ vscode_latest.json.version }}/extensions/{{ bundle }}'
+                  dest: '{{ server }}/extensions/{{ bundle }}'
+              loop: '{{ browser_bundles }}'
+              loop_control:
+                  loop_var: bundle
+
+            - name: '{{ app_name | upper }}: Install Font'
+              ansible.builtin.unarchive:
+                  src: '{{ font.url }}'
+                  dest: '{{ root }}/fonts'
+                  remote_src: true
+                  include:
+                      - '{{ font.file }}'
+                  creates: '{{ root }}/fonts/{{ font.file }}'
+
+            - name: '{{ app_name | upper }}: Inject Font'
+              ansible.builtin.blockinfile:
+                  path: '{{ workbench }}/workbench.html'
+                  insertbefore: '</head>'
+                  marker: '<!-- {mark} JARVIS FONT -->'
+                  block: |
+                      <style>
+                      @font-face {
+                        font-family: '{{ font.family }}';
+                        src: url('/_fonts/{{ font.file }}') format('truetype');
+                      }
+                      </style>
+              register: vscode_font
+
+            - name: '{{ app_name | upper }}: Activate Server {{ vscode_latest.json.productVersion }}'
+              ansible.builtin.file:
+                  src: '{{ server }}'
+                  dest: '{{ current }}'
+                  state: link
+              register: vscode_link
+
+            - name: '{{ app_name | upper }}: Seed User Settings'
+              ansible.builtin.copy:
+                  dest: '{{ root }}/data/User/settings.json'
+                  content: |
+                      {
+                        "terminal.integrated.fontFamily": "'{{ font.family }}', Menlo, Monaco, monospace",
+                        "editor.fontFamily": "'{{ font.family }}', Menlo, Monaco, monospace"
+                      }
+                  force: false
+
+            - name: '{{ app_name | upper }}: Write Machine Settings'
+              ansible.builtin.copy:
+                  dest: '{{ root }}/data/Machine/settings.json'
+                  content: "{{ settings | combine(vscode_settings_extra, recursive=true) | to_nice_json }}\n"
+
+      - name: '{{ app_name | upper }}: Configure Service'
+        ansible.builtin.include_tasks: '{{ lib }}/service.yml'
+        vars:
+            service:
+                name: vscode-web
+                restart: '{{ vscode_link is changed or vscode_patches is changed or vscode_font is changed }}'
+                content: |
+                    [Unit]
+                    Description=VS Code Web
+                    After=network.target
+
+                    [Service]
+                    Type=simple
+                    User={{ user }}
+                    ExecStart={{ current }}/bin/code-server --host 127.0.0.1 --port {{ services[app_name].port }} --without-connection-token --accept-server-license-terms --server-data-dir {{ root }} --default-folder {{ projects_dir }}
+                    Restart=on-failure
+                    RestartSec=10
+                    MemoryMax={{ memory.vscode }}
+                    OOMPolicy=continue
+
+                    [Install]
+                    WantedBy=multi-user.target

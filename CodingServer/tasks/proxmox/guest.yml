@@ -1,0 +1,101 @@
+---
+- vars:
+      app_name: guest
+      key: '{{ home }}/.ssh/proxmox'
+      mount_point: /proxmox
+      pve_ip: '{{ hostvars[lxc.host].ansible_host }}'
+      apt_packages:
+          - sshfs
+  block:
+      - name: '{{ app_name | upper }}: Configure Console Directory'
+        ansible.builtin.file:
+            path: /etc/systemd/system/container-getty@1.service.d
+            state: directory
+
+      - name: '{{ app_name | upper }}: Enable Console Autologin'
+        ansible.builtin.copy:
+            dest: /etc/systemd/system/container-getty@1.service.d/override.conf
+            content: |
+                [Service]
+                ExecStart=
+                ExecStart=-/sbin/agetty --autologin {{ user }} --noclear --keep-baud tty%I 115200,38400,9600 $TERM
+        register: console_override
+
+      - name: '{{ app_name | upper }}: Restart Console'
+        ansible.builtin.systemd_service:
+            name: container-getty@1.service
+            daemon_reload: true
+            state: restarted
+        when: console_override is changed
+
+      - name: '{{ app_name | upper }}: Install sshfs'
+        ansible.builtin.include_tasks: '{{ lib }}/apt.yml'
+
+      - become: true
+        become_user: '{{ user }}'
+        block:
+            - name: '{{ app_name | upper }}: Generate Host Key'
+              ansible.builtin.command: "ssh-keygen -q -t ed25519 -N '' -C {{ user }}@{{ lxc.hostname }} -f {{ key }}"
+              args:
+                  creates: '{{ key }}'
+
+            - name: '{{ app_name | upper }}: Read Host Key'
+              ansible.builtin.slurp:
+                  src: '{{ key }}.pub'
+              register: host_key
+
+            - name: '{{ app_name | upper }}: Configure SSH Alias'
+              ansible.builtin.blockinfile:
+                  path: '{{ home }}/.ssh/config'
+                  marker: '# {mark} PROXMOX'
+                  create: true
+                  mode: '0600'
+                  block: |
+                      Host proxmox
+                          HostName {{ pve_ip }}
+                          User root
+                          IdentityFile {{ key }}
+                          IdentitiesOnly yes
+                          StrictHostKeyChecking accept-new
+                          ServerAliveInterval 15
+
+            - name: '{{ app_name | upper }}: Configure Shell Alias'
+              ansible.builtin.blockinfile:
+                  path: '{{ home }}/.zshrc'
+                  marker: '# {mark} PROXMOX'
+                  block: alias pve="ssh proxmox"
+
+      - name: '{{ app_name | upper }}: Authorize Key on Host'
+        ansible.builtin.shell: grep -qxF "$KEY" /root/.ssh/authorized_keys || { echo "$KEY" >> /root/.ssh/authorized_keys && echo CHANGED; }
+        environment:
+            KEY: 'from="{{ hostvars[inventory_hostname].ansible_host }}" {{ host_key.content | b64decode | trim }}'
+        register: host_authorized
+        changed_when: "'CHANGED' in host_authorized.stdout"
+        delegate_to: '{{ lxc.host }}'
+        become: false
+
+      - name: '{{ app_name | upper }}: Configure Mount Point'
+        ansible.builtin.file:
+            path: '{{ mount_point }}'
+            state: directory
+
+      - name: '{{ app_name | upper }}: Configure Mount Service'
+        ansible.builtin.include_tasks: '{{ lib }}/service.yml'
+        vars:
+            service:
+                name: proxmox-fs
+                content: |
+                    [Unit]
+                    Description=Proxmox host filesystem at {{ mount_point }}
+                    After=network-online.target
+                    Wants=network-online.target
+
+                    [Service]
+                    Type=simple
+                    ExecStart=/usr/bin/sshfs -f root@{{ pve_ip }}:/ {{ mount_point }} -o allow_other,reconnect,ServerAliveInterval=15,ServerAliveCountMax=3,IdentityFile={{ key }},IdentitiesOnly=yes,StrictHostKeyChecking=accept-new
+                    ExecStopPost=-/usr/bin/fusermount3 -uz {{ mount_point }}
+                    Restart=always
+                    RestartSec=10
+
+                    [Install]
+                    WantedBy=multi-user.target

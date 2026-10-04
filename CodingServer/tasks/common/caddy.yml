@@ -1,0 +1,81 @@
+---
+- vars:
+      app_name: caddy
+      root: '{{ configs_dir }}/caddy'
+      binary: /usr/local/bin/caddy
+      download: 'https://caddyserver.com/api/download?os=linux&arch={{ deb_arch }}&p=github.com%2Fmholt%2Fcaddy-l4&p=github.com%2Fcaddy-dns%2Fcloudflare'
+  block:
+      - name: '{{ app_name | upper }}: Install Binary'
+        ansible.builtin.get_url:
+            url: '{{ download }}'
+            dest: '{{ binary }}'
+            mode: '0755'
+            force: true
+        register: caddy_binary
+
+      - name: '{{ app_name | upper }}: Configure Directories'
+        ansible.builtin.file:
+            path: '{{ dir }}'
+            state: directory
+            owner: '{{ user }}'
+            group: '{{ user }}'
+        loop:
+            - '{{ root }}'
+            - '{{ root }}/data'
+        loop_control:
+            loop_var: dir
+
+      - name: '{{ app_name | upper }}: Write Token File'
+        ansible.builtin.copy:
+            dest: '{{ root }}/env'
+            content: 'CF_API_TOKEN={{ env.RITIK_CF_DNS_API_TOKEN }}'
+            owner: root
+            group: root
+            mode: '0600'
+        no_log: true
+        when: databases_public
+        register: caddy_env
+
+      - name: '{{ app_name | upper }}: Write Caddyfile'
+        ansible.builtin.template:
+            src: Caddyfile.j2
+            dest: '{{ root }}/Caddyfile'
+            owner: '{{ user }}'
+            group: '{{ user }}'
+            validate: '{{ binary }} validate --config %s --adapter caddyfile'
+        environment:
+            CF_API_TOKEN: '{{ env.RITIK_CF_DNS_API_TOKEN }}'
+        register: caddy_config
+
+      - name: '{{ app_name | upper }}: Configure Service'
+        ansible.builtin.include_tasks: '{{ lib }}/service.yml'
+        vars:
+            service:
+                name: caddy
+                restart: '{{ caddy_binary is changed or caddy_env is changed or caddy_config is changed }}'
+                content: |
+                    [Unit]
+                    Description=Caddy
+                    Documentation=https://caddyserver.com/docs/
+                    After=network-online.target
+                    Wants=network-online.target
+
+                    [Service]
+                    Type=notify
+                    User={{ user }}
+                    Group={{ user }}
+                    EnvironmentFile=-{{ root }}/env
+                    Environment=XDG_CONFIG_HOME={{ root }}/config
+                    Environment=XDG_DATA_HOME={{ root }}/data
+                    ExecStart={{ binary }} run --config {{ root }}/Caddyfile --adapter caddyfile
+                    ExecReload={{ binary }} reload --config {{ root }}/Caddyfile --adapter caddyfile --force
+                    TimeoutStopSec=5s
+                    LimitNOFILE=1048576
+                    Restart=on-failure
+                    RestartSec=5s
+                    AmbientCapabilities=CAP_NET_BIND_SERVICE
+                    CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+                    NoNewPrivileges=true
+
+                    [Install]
+                    WantedBy=multi-user.target

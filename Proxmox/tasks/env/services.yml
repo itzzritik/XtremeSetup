@@ -70,14 +70,14 @@ JARVIS_SERVICES:
         logo: cloudpanel.svg
         hidden: true
 
-    openclaw:
-        id: 246
-        name: OpenClaw
-        subtitle: Personal AI Assistant
-        logo: openclaw.svg
-        port: 80
-        subdomains: [openclaw]
-        hidden: true
+    # openclaw:
+    #     id: 246
+    #     name: OpenClaw
+    #     subtitle: Personal AI Assistant
+    #     logo: openclaw.svg
+    #     port: 80
+    #     subdomains: [openclaw]
+    #     hidden: true
 
     jellyfin:
         id: 248
@@ -214,14 +214,14 @@ JARVIS_SERVICES:
         section: 'Media Server'
         skip_auth: true
 
-    zeroclaw:
-        id: 247
-        name: Claw
-        subtitle: Jarvis AI Assistant
-        logo: azirevpn.svg
-        port: 42617
-        subdomains: [claw]
-        hidden: true
+    # zeroclaw:
+    #     id: 247
+    #     name: Claw
+    #     subtitle: Jarvis AI Assistant
+    #     logo: azirevpn.svg
+    #     port: 42617
+    #     subdomains: [claw]
+    #     hidden: true
 
     # moltis:
     #     id: 249

@@ -1,0 +1,15 @@
+---
+bootstrap_user: ubuntu
+host_name: ritik
+domain: '{{ env.RITIK_DOMAIN }}'
+telegram_key: '{{ env.JARVIS_CODE_TELEGRAM_KEY }}'
+databases_public: true
+memory:
+    user_slice: 18G
+    vscode: 10G
+    aionui: 4G
+machine_tasks:
+    - oracle/kernel
+    - oracle/firewall
+    - oracle/cloudflared
+    - oracle/backups

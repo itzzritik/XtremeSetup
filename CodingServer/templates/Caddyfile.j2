@@ -1,0 +1,122 @@
+{% if databases_public %}
+{% set pg_dbs = databases | selectattr('type', 'equalto', 'postgres') | list %}
+{% set redis_dbs = databases | selectattr('type', 'equalto', 'redis') | list %}
+{
+    layer4 {
+{% if pg_dbs %}
+        :{{ database_types.postgres.port }} {
+            @postgres postgres {
+                tls enabled
+            }
+            route @postgres {
+                postgres_tls
+                subroute {
+{% for db in pg_dbs %}
+                    @{{ db.name }} tls sni {{ db.name }}.{{ domain }}
+                    route @{{ db.name }} {
+                        tls {
+                            connection_policy {
+                                alpn postgresql
+                            }
+                        }
+                        proxy 127.0.0.1:{{ db.port }}
+                    }
+{% endfor %}
+                }
+            }
+        }
+{% endif %}
+{% if redis_dbs %}
+        :{{ database_types.redis.port }} {
+{% for db in redis_dbs %}
+            @{{ db.name }} tls sni {{ db.name }}.{{ domain }}
+            route @{{ db.name }} {
+                tls
+                proxy 127.0.0.1:{{ db.port }}
+            }
+{% endfor %}
+            @redis_default tls
+            route @redis_default {
+                tls {
+                    connection_policy {
+                        default_sni {{ redis_dbs[0].name }}.{{ domain }}
+                    }
+                }
+                proxy 127.0.0.1:{{ redis_dbs[0].port }}
+            }
+        }
+{% endif %}
+    }
+}
+
+{% endif %}
+:80 {
+{% if trusted_proxy is defined %}
+    @direct not remote_ip {{ trusted_proxy }}
+    handle @direct {
+        respond "Forbidden" 403
+    }
+
+{% endif %}
+    @codeserver host {{ services['vscode-web'].subdomain }}.{{ domain }}
+    handle @codeserver {
+        handle_path /_fonts/* {
+            root * {{ vscode_root }}/fonts
+            file_server
+            header Cache-Control "public, max-age=31536000, immutable"
+        }
+        handle_path /_sync/* {
+            reverse_proxy https://{{ vscode_sync_host }} {
+                header_up Host {{ vscode_sync_host }}
+                header_up -X-Forwarded-Host
+                transport http {
+                    tls
+                    tls_server_name {{ vscode_sync_host }}
+                }
+            }
+        }
+        header Cache-Control "no-store, must-revalidate"
+        header CDN-Cache-Control "no-store"
+        header Cloudflare-CDN-Cache-Control "no-store"
+        reverse_proxy localhost:{{ services['vscode-web'].port }}
+    }
+
+    @aionui host {{ services.aionui.subdomain }}.{{ domain }}
+    handle @aionui {
+        reverse_proxy localhost:{{ services.aionui.port }}
+    }
+
+    @opencode host {{ services.opencode.subdomain }}.{{ domain }}
+    handle @opencode {
+        reverse_proxy localhost:{{ services.opencode.port }} {
+            header_up Host localhost
+            header_up -X-Forwarded-Host
+        }
+    }
+
+{% set preview = '([3-8][0-9]{3}|9000)\\.' ~ (domain | regex_escape) %}
+    @port_allowed header_regexp portnum Host ^{{ preview }}$
+    handle @port_allowed {
+        @next_dev {
+            path_regexp (/_next/|/__nextjs)
+            header_regexp Origin ^https?://{{ preview }}$
+        }
+        reverse_proxy @next_dev localhost:{re.portnum.1} {
+            header_up Origin http://localhost:{re.portnum.1}
+        }
+        reverse_proxy localhost:{re.portnum.1}
+    }
+
+    handle {
+        respond "Forbidden" 403
+    }
+}
+{% if databases_public %}
+
+{{ databases | map(attribute='name') | map('regex_replace', '$', '.' ~ domain) | join(', ') }} {
+    tls {
+        dns cloudflare {env.CF_API_TOKEN}
+    }
+    respond 404
+}
+{% endif %}

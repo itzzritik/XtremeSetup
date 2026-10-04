@@ -1,0 +1,36 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+
+keep_set() {
+    local -A weeks=() months=()
+    local n=0 d w m keep
+    while read -r d; do
+        [ -n "$d" ] || continue
+        keep=0
+        n=$((n + 1))
+        [ "$n" -le 7 ] && keep=1
+        w=$(date -d "$d" +%G-%V)
+        if [ -z "${weeks[$w]:-}" ] && [ "${#weeks[@]}" -lt 4 ]; then weeks[$w]=1; keep=1; fi
+        m=${d:0:7}
+        if [ -z "${months[$m]:-}" ] && [ "${#months[@]}" -lt 6 ]; then months[$m]=1; keep=1; fi
+        if [ "$keep" = 1 ]; then echo "$d"; fi
+    done
+}
+
+set -a
+. /etc/pg-backup.env
+set +a
+
+file=$(mktemp /var/tmp/pg-backup.XXXXXX)
+trap 'rm -f "$file"' EXIT
+
+docker exec "$PG_CONTAINER" pg_dumpall -U postgres | gzip > "$file"
+gzip -t "$file"
+rclone copyto "$file" "$BACKUP_ROOT/$(date +%F).sql.gz"
+
+dates=$(rclone lsf --files-only "$BACKUP_ROOT" | grep -xE '[0-9]{4}-[0-9]{2}-[0-9]{2}\.sql\.gz' | cut -c1-10 | sort -r)
+keep=$(keep_set <<< "$dates")
+for d in $dates; do
+    grep -qx "$d" <<< "$keep" || rclone deletefile "$BACKUP_ROOT/$d.sql.gz"
+done

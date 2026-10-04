@@ -1,0 +1,92 @@
+---
+- vars:
+      app_name: toolchain
+      playwright_cli: '{{ npm_root }}/@playwright/mcp/node_modules/playwright-core/cli.js'
+      apt_repos:
+          - { name: github-cli, uri: 'https://cli.github.com/packages', suite: stable, key: 'https://cli.github.com/packages/githubcli-archive-keyring.gpg' }
+          - { name: doppler-cli, uri: 'https://packages.doppler.com/public/cli/deb/debian', suite: any-version, key: 'https://packages.doppler.com/public/cli/gpg.DE2A7741A397C129.key' }
+          - { name: eza, uri: 'http://deb.gierens.de', suite: stable, key: 'https://raw.githubusercontent.com/eza-community/eza/main/deb.asc' }
+      apt_packages:
+          - gh
+          - doppler
+          - eza
+      npm_packages:
+          - npm
+          - typescript
+          - pnpm
+          - yarn
+          - '@anthropic-ai/claude-code'
+          - '@openai/codex'
+          - opencode-ai
+          - '@playwright/mcp'
+          - '@getforged/cli'
+  block:
+      - name: '{{ app_name | upper }}: Install APT Tools'
+        ansible.builtin.include_tasks: '{{ lib }}/apt.yml'
+
+      - name: '{{ app_name | upper }}: Install Go'
+        ansible.builtin.shell: |
+            set -eo pipefail
+            version=$(curl -fsSL 'https://go.dev/VERSION?m=text' | head -1)
+            curl -fsSL "https://go.dev/dl/${version}.linux-{{ deb_arch }}.tar.gz" | tar -C /usr/local -xz
+        args:
+            creates: '{{ go_bin }}/go'
+
+      - name: '{{ app_name | upper }}: Install golangci-lint'
+        ansible.builtin.shell: set -o pipefail && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b /usr/local/bin
+        args:
+            creates: /usr/local/bin/golangci-lint
+
+      - become: true
+        become_user: '{{ user }}'
+        block:
+            - name: '{{ app_name | upper }}: Install just'
+              ansible.builtin.shell: set -o pipefail && mkdir -p {{ local_bin }} && curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to {{ local_bin }}
+              args:
+                  creates: '{{ local_bin }}/just'
+
+            - name: '{{ app_name | upper }}: Install fnm'
+              ansible.builtin.shell: set -o pipefail && curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
+              args:
+                  creates: '{{ fnm_dir }}/fnm'
+
+            - name: '{{ app_name | upper }}: Install bun'
+              ansible.builtin.shell: set -o pipefail && curl -fsSL https://bun.sh/install | bash
+              args:
+                  creates: '{{ bun_bin }}/bun'
+
+            - name: '{{ app_name | upper }}: Install Node, npm Packages and Chromium'
+              ansible.builtin.shell: |
+                  set -eo pipefail
+                  export PATH={{ fnm_dir }}:$PATH && eval "$(fnm env --shell bash)"
+                  out=$(fnm install --lts 2>&1)
+                  [[ $out == *'already installed'* ]] || echo 'CHANGED node'
+                  fnm use lts-latest >/dev/null
+                  fnm default "$(fnm current)"
+                  have=$(npm ls -g --depth=0 --json 2>/dev/null | jq -r '.dependencies // {} | keys[]' || true)
+                  stale=$(npm outdated -g --json 2>/dev/null | jq -r 'keys[]' || true)
+                  for pkg in {{ npm_packages | map('quote') | join(' ') }}; do
+                      grep -qxF -- "$pkg" <<< "$have" && ! grep -qxF -- "$pkg" <<< "$stale" && continue
+                      npm install -g "$pkg" --allow-scripts="$pkg" >/dev/null 2>&1
+                      echo "CHANGED $pkg"
+                  done
+                  out=$(node {{ playwright_cli }} install chromium 2>&1)
+                  if [[ $out == *'downloaded to'* ]]; then echo 'CHANGED chromium'; fi
+              register: node_result
+              changed_when: "'CHANGED' in node_result.stdout"
+
+            - name: '{{ app_name | upper }}: Install Antigravity CLI'
+              ansible.builtin.shell: |
+                  set -eo pipefail
+                  before=$({{ local_bin }}/agy --version 2>/dev/null || echo missing)
+                  curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir {{ local_bin }} >/dev/null 2>&1
+                  {{ local_bin }}/agy update >/dev/null 2>&1 || true
+                  after=$({{ local_bin }}/agy --version 2>/dev/null || echo missing)
+                  [ "$before" = "$after" ] || echo "CHANGED $before -> $after"
+              register: agy_result
+              changed_when: "'CHANGED' in agy_result.stdout"
+
+      - name: '{{ app_name | upper }}: Install Playwright Libraries'
+        ansible.builtin.command: '{{ node_bin }}/node {{ playwright_cli }} install-deps chromium'
+        register: playwright_deps
+        changed_when: "'0 newly installed' not in playwright_deps.stdout"

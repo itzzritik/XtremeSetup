@@ -1,0 +1,15 @@
+---
+profile: production
+offline: true
+exclude_paths:
+    - tasks/archive/
+extra_vars:
+    target: oracle
+skip_list:
+    - name[template]
+    - name[missing]
+    - risky-file-permissions
+    - no-handler
+    - yaml[line-length]
+    - command-instead-of-module
+    - latest[git]

@@ -1,0 +1,108 @@
+---
+- vars:
+      app_name: system
+      apt_packages:
+          - zsh
+          - git
+          - build-essential
+          - curl
+          - gnupg
+          - unzip
+          - htop
+          - jq
+          - procps
+          - file
+          - bubblewrap
+          - tmux
+          - sqlite3
+          - fail2ban
+          - python3-systemd
+  block:
+      - name: '{{ app_name | upper }}: Upgrade Packages'
+        ansible.builtin.apt:
+            update_cache: true
+            cache_valid_time: 86400
+            upgrade: true
+            autoremove: true
+            autoclean: true
+
+      - name: '{{ app_name | upper }}: Set Timezone'
+        community.general.timezone:
+            name: '{{ timezone }}'
+
+      - name: '{{ app_name | upper }}: Set Hostname'
+        ansible.builtin.hostname:
+            name: '{{ host_name }}'
+        when: host_name is defined
+
+      - name: '{{ app_name | upper }}: Resolve Hostname'
+        ansible.builtin.lineinfile:
+            path: /etc/hosts
+            regexp: '^127\.0\.1\.1\s'
+            line: '127.0.1.1 {{ host_name }}'
+        when: host_name is defined
+
+      - name: '{{ app_name | upper }}: Install Packages'
+        ansible.builtin.include_tasks: '{{ lib }}/apt.yml'
+
+      - name: '{{ app_name | upper }}: Configure SSH'
+        ansible.builtin.copy:
+            dest: /etc/ssh/sshd_config.d/10-jarvis.conf
+            content: |
+                PasswordAuthentication no
+                PermitRootLogin no
+                {% if ssh_exempt is defined %}
+                PerSourcePenaltyExemptList {{ ssh_exempt }}
+                {% endif %}
+            validate: /usr/sbin/sshd -t -f %s
+        register: ssh_config
+
+      - name: '{{ app_name | upper }}: Reload SSH'
+        ansible.builtin.systemd_service:
+            name: ssh
+            state: reloaded
+        when: ssh_config is changed
+
+      - name: '{{ app_name | upper }}: Configure fail2ban'
+        ansible.builtin.copy:
+            dest: /etc/fail2ban/jail.local
+            content: |
+                [sshd]
+                enabled = true
+                backend = systemd
+                maxretry = 5
+                bantime = 3600
+                findtime = 600
+                {% if ssh_exempt is defined %}
+                ignoreip = 127.0.0.1/8 ::1 {{ ssh_exempt }}
+                {% endif %}
+        register: fail2ban_config
+
+      - name: '{{ app_name | upper }}: Start fail2ban'
+        ansible.builtin.systemd_service:
+            name: fail2ban
+            enabled: true
+            state: "{{ 'restarted' if fail2ban_config is changed else 'started' }}"
+
+      - name: '{{ app_name | upper }}: Enable Linger'
+        ansible.builtin.command: 'loginctl enable-linger {{ user }}'
+        args:
+            creates: '/var/lib/systemd/linger/{{ user }}'
+
+      - name: '{{ app_name | upper }}: Configure Slice Directory'
+        ansible.builtin.file:
+            path: /etc/systemd/system/user-.slice.d
+            state: directory
+
+      - name: '{{ app_name | upper }}: Cap User Memory'
+        ansible.builtin.copy:
+            dest: /etc/systemd/system/user-.slice.d/memory.conf
+            content: |
+                [Slice]
+                MemoryMax={{ memory.user_slice }}
+        register: user_slice
+
+      - name: '{{ app_name | upper }}: Reload Slices'
+        ansible.builtin.systemd_service:
+            daemon_reload: true
+        when: user_slice is changed

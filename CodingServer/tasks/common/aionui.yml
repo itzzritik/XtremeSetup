@@ -1,0 +1,216 @@
+---
+- vars:
+      app_name: aionui
+      version: v2.2.2
+      repo: https://github.com/iOfficeAI/AionUi.git
+      root: '{{ configs_dir }}/aionui'
+      src: '{{ home }}/.aionui/src'
+      build_log: '{{ home }}/.aionui/build.log'
+      stamp: '{{ home }}/.aionui/built-{{ version }}'
+      api: 'http://127.0.0.1:{{ services[app_name].port }}/api'
+      telegram_bot: "{{ telegram_key.split(':')[0] }}"
+      telegram_assistant: "{{ (assistants.json.data | selectattr('source', 'equalto', 'generated') | selectattr('agent.type', 'equalto', 'antigravity') | first).id }}"
+      client_settings:
+          tools.speechToText:
+              enabled: true
+              provider: openai
+              openai:
+                  api_key: '{{ env.JARVIS_AI_GROQ_KEY }}'
+                  base_url: https://api.groq.com/openai/v1
+                  language: ''
+                  model: whisper-large-v3-turbo
+              deepgram:
+                  api_key: ''
+                  base_url: ''
+                  detectLanguage: true
+                  language: ''
+                  model: nova-3
+                  punctuate: true
+                  smartFormat: true
+          theme.activeId: dark
+  block:
+      - become: true
+        become_user: '{{ user }}'
+        environment:
+            PATH: '{{ user_path }}'
+        block:
+            - name: '{{ app_name | upper }}: Configure Directory'
+              ansible.builtin.file:
+                  path: '{{ root }}'
+                  state: directory
+
+            - name: '{{ app_name | upper }}: Read Current Tag'
+              ansible.builtin.command: 'git -C {{ src }} describe --tags --exact-match HEAD'
+              register: aionui_tag
+              failed_when: false
+              changed_when: false
+
+            - name: '{{ app_name | upper }}: Clone {{ version }}'
+              ansible.builtin.git:
+                  repo: '{{ repo }}'
+                  dest: '{{ src }}'
+                  version: '{{ version }}'
+                  depth: 1
+                  force: true
+              when: aionui_tag.stdout != version
+              register: aionui_source
+
+            - name: '{{ app_name | upper }}: Bypass Built-in Auth'
+              ansible.builtin.blockinfile:
+                  path: '{{ src }}/packages/desktop/src/renderer/hooks/context/AuthContext.tsx'
+                  marker: '    // {mark} AION_AUTH_BYPASS'
+                  insertafter: 'const refresh = useCallback\(async \(\) => \{'
+                  block: 'setStatus("authenticated"); setUser(null); setReady(true); return;'
+              register: aionui_auth
+
+            - name: '{{ app_name | upper }}: Read Build Stamp'
+              ansible.builtin.stat:
+                  path: '{{ stamp }}'
+              register: aionui_stamp
+
+            - name: '{{ app_name | upper }}: Build'
+              ansible.builtin.shell: |
+                  set -eo pipefail
+                  exec 3>&2
+                  trap 'tail -40 {{ build_log }} >&3' ERR
+                  rm -f {{ stamp }}
+                  cd {{ src }}
+                  {
+                      bun install --ignore-scripts --frozen-lockfile
+                      NODE_OPTIONS=--max-old-space-size=8192 bun run package
+                      node scripts/prepareAioncore.js
+                  } > {{ build_log }} 2>&1
+                  touch {{ stamp }}
+              when: aionui_source is changed or aionui_auth is changed or not aionui_stamp.stat.exists
+              register: aionui_build
+              changed_when: true
+
+      - name: '{{ app_name | upper }}: Configure Service'
+        ansible.builtin.include_tasks: '{{ lib }}/service.yml'
+        vars:
+            service:
+                name: aionui
+                restart: '{{ aionui_build is changed }}'
+                content: |
+                    [Unit]
+                    Description=AionUi WebUI
+                    After=network.target
+
+                    [Service]
+                    Type=simple
+                    User={{ user }}
+                    WorkingDirectory={{ src }}
+                    Environment=PATH={{ user_path }}
+                    Environment=AIONUI_PORT={{ services[app_name].port }}
+                    Environment=AIONUI_DATA_DIR={{ root }}/aionui
+                    Environment=AIONUI_LOG_LEVEL=info
+                    Environment=NODE_ENV=production
+                    ExecStart={{ bun_bin }}/bun scripts/webui.ts --no-build --no-open
+                    Restart=always
+                    RestartSec=10
+                    MemoryMax={{ memory.aionui }}
+                    OOMPolicy=continue
+
+                    [Install]
+                    WantedBy=multi-user.target
+
+      - name: '{{ app_name | upper }}: Wait for Port'
+        ansible.builtin.wait_for:
+            host: 127.0.0.1
+            port: '{{ services[app_name].port }}'
+            timeout: 60
+
+      - name: '{{ app_name | upper }}: Read Client Settings'
+        ansible.builtin.uri:
+            url: '{{ api }}/settings/client'
+        register: client_current
+        no_log: true
+
+      - name: '{{ app_name | upper }}: Write Client Settings'
+        ansible.builtin.uri:
+            url: '{{ api }}/settings/client'
+            method: PUT
+            body_format: json
+            body: '{{ client_settings }}'
+        changed_when: true
+        no_log: true
+        when: client_current.json.data | combine(client_settings) != client_current.json.data
+
+      - name: '{{ app_name | upper }}: Read Channel Plugins'
+        ansible.builtin.uri:
+            url: '{{ api }}/channel/plugins'
+        register: channel_plugins
+
+      - name: '{{ app_name | upper }}: Read Telegram Record'
+        ansible.builtin.command: 'cat {{ root }}/telegram-bot'
+        register: telegram_record
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Enable Telegram'
+        ansible.builtin.uri:
+            url: '{{ api }}/channel/plugins/enable'
+            method: POST
+            body_format: json
+            body:
+                plugin_id: telegram
+                config:
+                    credentials: { token: '{{ telegram_key }}' }
+                    config: {}
+        register: telegram_enable
+        failed_when: not telegram_enable.json.data.success
+        changed_when: true
+        no_log: true
+        when: >-
+            telegram_record.stdout != telegram_bot
+            or channel_plugins.json.data
+            | selectattr('plugin_id', 'equalto', 'telegram')
+            | selectattr('status', 'equalto', 'running')
+            | list | length == 0
+
+      - name: '{{ app_name | upper }}: Record Telegram Bot'
+        ansible.builtin.copy:
+            dest: '{{ root }}/telegram-bot'
+            content: '{{ telegram_bot }}'
+        become: true
+        become_user: '{{ user }}'
+
+      - name: '{{ app_name | upper }}: Read Assistants'
+        ansible.builtin.uri:
+            url: '{{ api }}/assistants'
+        register: assistants
+
+      - name: '{{ app_name | upper }}: Read Telegram Settings'
+        ansible.builtin.uri:
+            url: '{{ api }}/channel/settings/telegram'
+        register: telegram_settings
+
+      - name: '{{ app_name | upper }}: Set Telegram Assistant'
+        ansible.builtin.uri:
+            url: '{{ api }}/channel/settings/telegram/assistant'
+            method: PUT
+            body_format: json
+            body: { assistant_id: '{{ telegram_assistant }}' }
+        changed_when: true
+        when: (telegram_settings.json.data.assistant or {}).assistant_id | default('') != telegram_assistant
+
+      - name: '{{ app_name | upper }}: Authorize Telegram User'
+        ansible.builtin.command:
+            argv:
+                - python3
+                - -c
+                - |
+                  import sqlite3, sys, time, uuid
+                  with sqlite3.connect(sys.argv[1], timeout=30) as db:
+                      added = db.execute(
+                          "INSERT OR IGNORE INTO assistant_users (id, platform_user_id, platform_type, display_name, authorized_at) VALUES (?, ?, 'telegram', ?, ?)",
+                          (str(uuid.uuid4()), sys.argv[2], sys.argv[3], int(time.time() * 1000)),
+                      ).rowcount
+                  print('CHANGED' if added else 'OK')
+                - '{{ root }}/aionui/aionui-backend.db'
+                - '{{ env.RITIK_TELEGRAM_ID }}'
+                - '{{ env.RITIK_NAME }}'
+        register: telegram_user
+        changed_when: "'CHANGED' in telegram_user.stdout"
+        become: true
+        become_user: '{{ user }}'

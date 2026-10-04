@@ -1,0 +1,52 @@
+---
+- vars:
+      app_name: shell
+      plugins:
+          - { repo: zsh-users/zsh-autosuggestions, dest: .oh-my-zsh/custom/plugins/zsh-autosuggestions }
+          - { repo: zsh-users/zsh-syntax-highlighting, dest: .oh-my-zsh/custom/plugins/zsh-syntax-highlighting }
+          - { repo: tmux-plugins/tpm, dest: .tmux/plugins/tpm }
+          - { repo: tmux-plugins/tmux-resurrect, dest: .tmux/plugins/tmux-resurrect }
+          - { repo: tmux-plugins/tmux-continuum, dest: .tmux/plugins/tmux-continuum }
+  block:
+      - name: '{{ app_name | upper }}: Set Default Shell'
+        ansible.builtin.user:
+            name: '{{ user }}'
+            shell: /usr/bin/zsh
+
+      - become: true
+        become_user: '{{ user }}'
+        block:
+            - name: '{{ app_name | upper }}: Install oh-my-zsh'
+              ansible.builtin.shell: set -o pipefail && curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh | sh -s -- --unattended
+              args:
+                  creates: '{{ home }}/.oh-my-zsh'
+
+            - name: '{{ app_name | upper }}: Clone Plugins'
+              ansible.builtin.git:
+                  repo: 'https://github.com/{{ plugin.repo }}'
+                  dest: '{{ home }}/{{ plugin.dest }}'
+                  depth: 1
+              loop: '{{ plugins }}'
+              loop_control:
+                  loop_var: plugin
+                  label: '{{ plugin.repo }}'
+
+            - name: '{{ app_name | upper }}: Enable zsh Plugins'
+              ansible.builtin.blockinfile:
+                  path: '{{ home }}/.zshrc'
+                  marker: '# {mark} PLUGINS'
+                  insertbefore: '^source \$ZSH/oh-my-zsh\.sh'
+                  block: plugins=(git z zsh-autosuggestions zsh-syntax-highlighting)
+
+            - name: '{{ app_name | upper }}: Configure zsh'
+              ansible.builtin.blockinfile:
+                  path: '{{ home }}/.zshrc'
+                  marker: '# {mark} JARVIS'
+                  block: "{{ lookup('template', 'zshrc.j2') }}"
+
+            - name: '{{ app_name | upper }}: Configure tmux'
+              ansible.builtin.blockinfile:
+                  path: '{{ home }}/.tmux.conf'
+                  marker: '# {mark} JARVIS'
+                  create: true
+                  block: "{{ lookup('file', 'tmux.conf') }}"

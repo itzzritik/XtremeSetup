@@ -1,0 +1,69 @@
+---
+- vars:
+      app_name: backups
+      script: /usr/local/bin/pg-backup
+      apt_packages:
+          - rclone
+  block:
+      - name: '{{ app_name | upper }}: Install rclone'
+        ansible.builtin.include_tasks: '{{ lib }}/apt.yml'
+
+      - name: '{{ app_name | upper }}: Write Settings'
+        ansible.builtin.copy:
+            dest: /etc/pg-backup.env
+            content: |
+                RCLONE_CONFIG=/dev/null
+                RCLONE_CONFIG_R2_TYPE=s3
+                RCLONE_CONFIG_R2_PROVIDER=Cloudflare
+                RCLONE_CONFIG_R2_ACCESS_KEY_ID={{ env.JARVIS_CF_R2_TOKENS.split(':')[0] }}
+                RCLONE_CONFIG_R2_SECRET_ACCESS_KEY={{ env.JARVIS_CF_R2_TOKENS.split(':')[1] }}
+                RCLONE_CONFIG_R2_ENDPOINT={{ env.JARVIS_CF_R2_ENDPOINT | dirname }}
+                RCLONE_CONFIG_R2_NO_CHECK_BUCKET=true
+                RCLONE_CONFIG_R2_NO_HEAD=true
+                BACKUP_ROOT=r2:{{ env.JARVIS_CF_R2_ENDPOINT | basename }}/oracle/configs/postgres
+                PG_CONTAINER=db-{{ (databases | selectattr('type', 'equalto', 'postgres') | first).name }}
+            owner: root
+            group: root
+            mode: '0600'
+        no_log: true
+
+      - name: '{{ app_name | upper }}: Install Script'
+        ansible.builtin.copy:
+            src: pg-backup
+            dest: '{{ script }}'
+            mode: '0755'
+
+      - name: '{{ app_name | upper }}: Configure Backup Service'
+        ansible.builtin.include_tasks: '{{ lib }}/service.yml'
+        vars:
+            service:
+                name: pg-backup
+                start: false
+                content: |
+                    [Unit]
+                    Description=Back up Postgres to R2
+                    After=docker.service
+                    Requires=docker.service
+
+                    [Service]
+                    Type=oneshot
+                    ExecStart={{ script }}
+                    TimeoutStartSec=1h
+                    Restart=on-failure
+                    RestartSec=15min
+
+      - name: '{{ app_name | upper }}: Configure Backup Timer'
+        ansible.builtin.include_tasks: '{{ lib }}/service.yml'
+        vars:
+            service:
+                name: pg-backup.timer
+                content: |
+                    [Unit]
+                    Description=Back up Postgres to R2 on odd days
+
+                    [Timer]
+                    OnCalendar=*-*-1/2 02:00:00 {{ timezone }}
+                    Persistent=true
+
+                    [Install]
+                    WantedBy=timers.target

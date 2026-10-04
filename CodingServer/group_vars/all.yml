@@ -1,0 +1,65 @@
+---
+user: ritik
+ansible_user: '{{ user }}'
+home: '/home/{{ user }}'
+configs_dir: '{{ home }}/.jarvis/configs'
+projects_dir: '{{ home }}/projects'
+local_bin: '{{ home }}/.local/bin'
+fnm_dir: '{{ home }}/.local/share/fnm'
+node_bin: '{{ fnm_dir }}/aliases/default/bin'
+npm_root: '{{ node_bin | dirname }}/lib/node_modules'
+bun_bin: '{{ home }}/.bun/bin'
+go_bin: /usr/local/go/bin
+user_path: '{{ local_bin }}:{{ node_bin }}:{{ bun_bin }}:{{ go_bin }}:/usr/local/bin:/usr/bin:/bin'
+lib: '{{ playbook_dir }}/tasks/lib'
+deb_arch: "{{ 'arm64' if ansible_facts.architecture == 'aarch64' else 'amd64' }}"
+timezone: Asia/Kolkata
+doppler_args: --project jarvis --config prd
+only_tasks: "{{ (only | default('')).split(',') | select | list }}"
+setup_tasks: '{{ common_tasks + machine_tasks }}'
+databases_public: false
+vscode_root: '{{ configs_dir }}/vscode-web'
+vscode_sync_host: vscode-sync.trafficmanager.net
+vscode_settings_extra: {}
+
+services:
+    vscode-web: { subdomain: code, port: 27193 }
+    aionui: { subdomain: vibe, port: 41789 }
+    opencode: { subdomain: opencode, port: 34521 }
+
+databases:
+    - { name: pg, type: postgres, image: 'postgres:18-alpine', port: 15432 }
+    - { name: redis, type: redis, image: 'redis:alpine', port: 16379 }
+database_types:
+    postgres: { port: 5432, data: /var/lib/postgresql, link: 'postgres://postgres:<%s>@%s:%s/postgres?sslmode=verify-full' }
+    redis: { port: 6379, data: /data, link: 'rediss://default:<%s>@%s:%s' }
+
+doppler_keys:
+    - RITIK_NAME
+    - RITIK_EMAIL
+    - RITIK_TELEGRAM_ID
+    - RITIK_DOMAIN
+    - JARVIS_DOMAIN
+    - RITIK_CF_TUNNEL_TOKEN
+    - RITIK_CF_DNS_API_TOKEN
+    - JARVIS_CF_R2_ENDPOINT
+    - JARVIS_CF_R2_TOKENS
+    - JARVIS_GIT_SSH_PRIVATE_KEY
+    - JARVIS_GIT_SSH_PUBLIC_KEY
+    - JARVIS_CODE_TELEGRAM_KEY
+    - JARVIS_BOT_TELEGRAM_KEY
+    - JARVIS_AI_GROQ_KEY
+    - JARVIS_HOMEASSISTANT_KEY
+
+common_tasks:
+    - common/system
+    - common/shell
+    - common/toolchain
+    - common/git
+    - common/docker
+    - common/agents
+    - common/vscode-web
+    - common/opencode
+    - common/aionui
+    - common/databases
+    - common/caddy

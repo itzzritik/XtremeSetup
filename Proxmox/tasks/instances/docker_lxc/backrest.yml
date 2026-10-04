@@ -53,7 +53,7 @@
                             CONFIG_DIR="{{ instance.configs }}"
                             export AWS_ACCESS_KEY_ID="{{ env.JARVIS_CF_R2_TOKENS.split(':')[0] }}"
                             export AWS_SECRET_ACCESS_KEY="{{ env.JARVIS_CF_R2_TOKENS.split(':')[1] }}"
-                            REPO="s3:{{ env.JARVIS_CF_R2_ENDPOINT }}/configs"
+                            REPO="s3:{{ env.JARVIS_CF_R2_ENDPOINT }}/proxmox/configs"
                             {% set docker_apps = ['homer'] %}
                             {% for svc_key, svc in env.JARVIS_SERVICES.items() %}
                             {% if svc_key not in ['backrest', 'proxmox', 'home', 'docker'] %}
@@ -98,7 +98,7 @@
                   "repos": [
                     {
                       "id": "r2-backup",
-                      "uri": "s3:{{ env.JARVIS_CF_R2_ENDPOINT }}/configs",
+                      "uri": "s3:{{ env.JARVIS_CF_R2_ENDPOINT }}/proxmox/configs",
                       "password": "{{ env.JARVIS_ADMIN_PASSWORD }}",
                       "env": ["AWS_ACCESS_KEY_ID={{ env.JARVIS_CF_R2_TOKENS.split(':')[0] }}", "AWS_SECRET_ACCESS_KEY={{ env.JARVIS_CF_R2_TOKENS.split(':')[1] }}"],
                       "autoInitialize": true,

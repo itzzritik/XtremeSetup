@@ -1,0 +1,77 @@
+---
+- vars:
+      app_name: user
+      bootstrapping: '{{ login_probe.unreachable | default(false) }}'
+      login_user: '{{ bootstrap_user if bootstrapping else user }}'
+  block:
+      - name: '{{ app_name | upper }}: Probe Login'
+        ansible.builtin.ping:
+        become: false
+        ignore_unreachable: true
+        register: login_probe
+
+      - vars:
+            ansible_user: '{{ login_user }}'
+        become: "{{ login_user != 'root' }}"
+        block:
+            - name: '{{ app_name | upper }}: Install Python'
+              ansible.builtin.raw: command -v python3 >/dev/null || (apt-get update -qq && apt-get install -y -qq python3)
+              register: python_install
+              changed_when: "'Setting up' in python_install.stdout"
+              when: bootstrapping
+
+            - name: '{{ app_name | upper }}: Install sudo'
+              ansible.builtin.apt:
+                  name: sudo
+                  update_cache: true
+                  cache_valid_time: 86400
+
+            - name: '{{ app_name | upper }}: Create {{ user }}'
+              ansible.builtin.user:
+                  name: '{{ user }}'
+                  uid: '{{ user_uid | default(omit) }}'
+
+            - name: '{{ app_name | upper }}: Allow sudo'
+              ansible.builtin.copy:
+                  dest: '/etc/sudoers.d/{{ user }}'
+                  content: "{{ user }} ALL=(ALL) NOPASSWD:ALL\n"
+                  mode: '0440'
+                  validate: visudo -cf %s
+
+            - name: '{{ app_name | upper }}: Configure Directories'
+              ansible.builtin.file:
+                  path: '{{ dir }}'
+                  state: directory
+                  owner: '{{ user }}'
+                  group: '{{ user }}'
+              loop:
+                  - '{{ home }}'
+                  - '{{ home }}/.jarvis'
+                  - '{{ configs_dir }}'
+                  - '{{ projects_dir }}'
+              loop_control:
+                  loop_var: dir
+
+            - name: '{{ app_name | upper }}: Configure SSH Directory'
+              ansible.builtin.file:
+                  path: '{{ home }}/.ssh'
+                  state: directory
+                  owner: '{{ user }}'
+                  group: '{{ user }}'
+                  mode: '0700'
+
+            - name: '{{ app_name | upper }}: Read Bootstrap Account'
+              ansible.builtin.getent:
+                  database: passwd
+                  key: '{{ bootstrap_user }}'
+              when: bootstrapping
+
+            - name: '{{ app_name | upper }}: Authorize Keys'
+              ansible.builtin.copy:
+                  src: '{{ ansible_facts.getent_passwd[bootstrap_user][4] }}/.ssh/authorized_keys'
+                  dest: '{{ home }}/.ssh/authorized_keys'
+                  remote_src: true
+                  owner: '{{ user }}'
+                  group: '{{ user }}'
+                  mode: '0600'
+              when: bootstrapping

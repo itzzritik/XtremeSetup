@@ -1,0 +1,31 @@
+---
+- vars:
+      app_name: opencode
+  block:
+      - name: '{{ app_name | upper }}: Read Installed Version'
+        ansible.builtin.slurp:
+            src: '{{ npm_root }}/opencode-ai/package.json'
+        register: opencode_package
+
+      - name: '{{ app_name | upper }}: Configure Service'
+        ansible.builtin.include_tasks: '{{ lib }}/service.yml'
+        vars:
+            service:
+                name: opencode
+                content: |
+                    [Unit]
+                    Description=OpenCode Web Server
+                    After=network.target
+
+                    [Service]
+                    Type=simple
+                    User={{ user }}
+                    WorkingDirectory={{ projects_dir }}
+                    Environment=PATH={{ user_path }}
+                    Environment=OPENCODE_VERSION={{ (opencode_package.content | b64decode | from_json).version }}
+                    ExecStart={{ node_bin }}/opencode web --port {{ services[app_name].port }} --hostname 127.0.0.1
+                    Restart=always
+                    RestartSec=5
+
+                    [Install]
+                    WantedBy=multi-user.target

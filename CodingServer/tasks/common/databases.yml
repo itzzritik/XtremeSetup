@@ -1,0 +1,94 @@
+---
+- vars:
+      app_name: databases
+      root: '{{ home }}/.jarvis/databases'
+      password_key: "JARVIS_DB_{{ db.name | upper | replace('-', '_') }}_PASSWORD"
+  block:
+      - name: '{{ app_name | upper }}: Ensure Passwords'
+        ansible.builtin.shell: |
+            set -o pipefail
+            doppler secrets get {{ password_key }} {{ doppler_args }} --plain 2>/dev/null && exit 0
+            openssl rand -hex 16 | tr -d '\n' | doppler secrets set {{ password_key }} {{ doppler_args }} --silent >/dev/null
+            doppler secrets get {{ password_key }} {{ doppler_args }} --plain
+            echo generated >&2
+        delegate_to: localhost
+        become: false
+        register: db_passwords
+        changed_when: "'generated' in db_passwords.stderr"
+        no_log: true
+        loop: '{{ databases }}'
+        loop_control:
+            loop_var: db
+            label: '{{ db.name }}'
+
+      - name: '{{ app_name | upper }}: Configure Directory'
+        ansible.builtin.file:
+            path: '{{ root }}'
+            state: directory
+            owner: '{{ user }}'
+            group: '{{ user }}'
+
+      - name: '{{ app_name | upper }}: Write Compose File'
+        ansible.builtin.copy:
+            dest: '{{ root }}/docker-compose.yml'
+            owner: '{{ user }}'
+            group: '{{ user }}'
+            mode: '0600'
+            content: |
+                services:
+                {% for result in db_passwords.results %}
+                {% set db = result.db %}
+                  db-{{ db.name }}:
+                    container_name: db-{{ db.name }}
+                    image: {{ db.image }}
+                    restart: unless-stopped
+                {% if db.type == 'postgres' %}
+                    environment:
+                      POSTGRES_PASSWORD: "{{ result.stdout }}"
+                {% else %}
+                    command: ["redis-server", "--requirepass", "{{ result.stdout }}"]
+                {% endif %}
+                    ports:
+                      - "127.0.0.1:{{ db.port }}:{{ database_types[db.type].port }}"
+                    volumes:
+                      - db-{{ db.name }}-data:{{ database_types[db.type].data }}
+                {% endfor %}
+                volumes:
+                {% for db in databases %}
+                  db-{{ db.name }}-data:
+                    name: db-{{ db.name }}-data
+                {% endfor %}
+        no_log: true
+
+      - name: '{{ app_name | upper }}: Start Containers'
+        ansible.builtin.command: docker compose up -d --pull always
+        args:
+            chdir: '{{ root }}'
+        register: compose_up
+        changed_when: compose_up.stderr is search('Created|Recreated|Started')
+
+      - name: '{{ app_name | upper }}: Publish DNS Records'
+        community.general.cloudflare_dns:
+            api_token: '{{ env.RITIK_CF_DNS_API_TOKEN }}'
+            zone: '{{ domain }}'
+            record: '{{ db.name }}'
+            type: A
+            value: '{{ hostvars[inventory_hostname].ansible_host }}'
+            proxied: false
+            solo: true
+        delegate_to: localhost
+        become: false
+        when: databases_public
+        loop: '{{ databases }}'
+        loop_control:
+            loop_var: db
+            label: '{{ db.name }}.{{ domain }}'
+
+      - name: '{{ app_name | upper }}: Connection Links'
+        ansible.builtin.debug:
+            msg: "{{ database_types[db.type].link | format(password_key, db.name ~ '.' ~ domain, database_types[db.type].port) }}"
+        when: databases_public
+        loop: '{{ databases }}'
+        loop_control:
+            loop_var: db
+            label: '{{ db.name }}'

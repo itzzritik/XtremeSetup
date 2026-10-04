@@ -1,0 +1,26 @@
+---
+- vars:
+      app_name: docker
+      apt_repos:
+          - { name: docker, uri: 'https://download.docker.com/linux/ubuntu', suite: '{{ ansible_facts.distribution_release }}', component: stable, key: 'https://download.docker.com/linux/ubuntu/gpg' }
+      apt_packages:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+  block:
+      - name: '{{ app_name | upper }}: Install Engine'
+        ansible.builtin.include_tasks: '{{ lib }}/apt.yml'
+
+      - name: '{{ app_name | upper }}: Start Service'
+        ansible.builtin.systemd_service:
+            name: docker
+            enabled: true
+            state: started
+
+      - name: '{{ app_name | upper }}: Add {{ user }} to docker Group'
+        ansible.builtin.user:
+            name: '{{ user }}'
+            groups: docker
+            append: true

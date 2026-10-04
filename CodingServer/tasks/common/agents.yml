@@ -1,0 +1,190 @@
+---
+- vars:
+      app_name: agents
+      agents_dir: '{{ configs_dir }}/agents'
+      global_rules: '{{ agents_dir }}/AGENTS.md'
+      system_rules: '{{ agents_dir }}/SYSTEM.md'
+      user_context: /usr/local/bin/user-context
+      agent_paths:
+          claude_json: '{{ home }}/.claude.json'
+          codex: '{{ home }}/.codex'
+          opencode: '{{ home }}/.config/opencode'
+          gemini_config: '{{ home }}/.gemini/config'
+      agent_links:
+          - { path: '{{ home }}/.claude', target: .claude, type: dir }
+          - { path: '{{ agent_paths.claude_json }}', target: .claude/.claude.json, type: file }
+          - { path: '{{ agent_paths.codex }}', target: .codex, type: dir }
+          - { path: '{{ agent_paths.gemini_config }}', target: .gemini, type: dir }
+          - { path: '{{ home }}/.gemini/antigravity-cli/antigravity-oauth-token', target: .gemini/antigravity-cli/antigravity-oauth-token, type: file }
+          - { path: '{{ agent_paths.opencode }}', target: .opencode/config, type: dir }
+          - { path: '{{ home }}/.local/share/opencode', target: .opencode/data, type: dir }
+      mcp_templates: "{{ query('fileglob', playbook_dir ~ '/templates/agents/mcp/*.json.j2') | map('basename') | map('replace', '.json.j2', '') | list }}"
+      mcp_sync:
+          bin: /usr/local/bin/mcp-sync
+          source: '{{ agents_dir }}/mcp'
+      session_hooks:
+          - dest: /etc/claude-code/managed-settings.json
+            content: |
+                {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "{{ user_context }} claude"}]}]}}
+          - dest: /etc/codex/hooks.json
+            content: |
+                {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "{{ user_context }} codex"}]}]}}
+  block:
+      - become: true
+        become_user: '{{ user }}'
+        block:
+            - name: '{{ app_name | upper }}: Configure MCP Folders'
+              ansible.builtin.file:
+                  path: '{{ mcp_sync.source }}/{{ server }}'
+                  state: directory
+              loop: '{{ mcp_templates }}'
+              loop_control:
+                  loop_var: server
+
+            - name: '{{ app_name | upper }}: Link Agent Configs'
+              ansible.builtin.shell: |
+                  link() {
+                      path=$1 target={{ agents_dir }}/$2 type=$3
+                      [ -L "$path" ] && [ "$(readlink "$path")" = "$target" ] && return 0
+                      mkdir -p "$(dirname "$path")" "$(dirname "$target")"
+                      if [ -L "$path" ]; then
+                          rm "$path"
+                      elif [ -e "$path" ]; then
+                          if [ "$type" = dir ]; then rmdir "$target" 2>/dev/null || true; fi
+                          if [ ! -e "$target" ]; then
+                              mv "$path" "$target"
+                          elif [ "$type" = dir ] && rmdir "$path" 2>/dev/null; then
+                              :
+                          else
+                              mv "$path" "$path.bak-$(date +%Y%m%d%H%M%S)"
+                          fi
+                      fi
+                      [ "$type" = dir ] && mkdir -p "$target"
+                      ln -s "$target" "$path"
+                      echo "CHANGED $path"
+                  }
+                  {% for item in agent_links %}
+                  link {{ item.path }} {{ item.target }} {{ item.type }}
+                  {% endfor %}
+              register: link_result
+              changed_when: "'CHANGED' in link_result.stdout"
+
+            - name: '{{ app_name | upper }}: Write System Rules'
+              ansible.builtin.copy:
+                  src: agents/SYSTEM.md
+                  dest: '{{ system_rules }}'
+
+            - name: '{{ app_name | upper }}: Import System Rules'
+              ansible.builtin.lineinfile:
+                  path: '{{ global_rules }}'
+                  line: '@{{ system_rules }}'
+                  insertbefore: BOF
+                  create: true
+
+            - name: '{{ app_name | upper }}: Write MCP Servers'
+              ansible.builtin.template:
+                  src: 'agents/mcp/{{ server }}.json.j2'
+                  dest: '{{ mcp_sync.source }}/{{ server }}/mcp.json'
+              loop: '{{ mcp_templates }}'
+              loop_control:
+                  loop_var: server
+              no_log: true
+
+            - name: '{{ app_name | upper }}: Write Rule Pointers'
+              ansible.builtin.copy:
+                  dest: '{{ agents_dir }}/{{ pointer }}'
+                  content: "@{{ global_rules }}\n"
+              loop:
+                  - .claude/CLAUDE.md
+                  - .gemini/GEMINI.md
+                  - .codex/AGENTS.md
+              loop_control:
+                  loop_var: pointer
+
+            - name: '{{ app_name | upper }}: Write Antigravity Hook'
+              ansible.builtin.copy:
+                  dest: '{{ agent_paths.gemini_config }}/hooks.json'
+                  content: |
+                      {"user-context": {"PreInvocation": [{"type": "command", "command": "{{ user_context }} antigravity", "timeout": 10}]}}
+
+      - name: '{{ app_name | upper }}: Configure Hook Directories'
+        ansible.builtin.file:
+            path: '{{ hook.dest | dirname }}'
+            state: directory
+        loop: '{{ session_hooks }}'
+        loop_control:
+            loop_var: hook
+            label: '{{ hook.dest | dirname }}'
+
+      - name: '{{ app_name | upper }}: Install user-context'
+        ansible.builtin.copy:
+            src: user-context
+            dest: '{{ user_context }}'
+            mode: '0755'
+
+      - name: '{{ app_name | upper }}: Write Session Hooks'
+        ansible.builtin.copy:
+            dest: '{{ hook.dest }}'
+            content: '{{ hook.content }}'
+        loop: '{{ session_hooks }}'
+        loop_control:
+            loop_var: hook
+            label: '{{ hook.dest }}'
+
+      - name: '{{ app_name | upper }}: Install mcp-sync'
+        ansible.builtin.template:
+            src: mcp-sync.py.j2
+            dest: '{{ mcp_sync.bin }}'
+            mode: '0755'
+
+      - name: '{{ app_name | upper }}: Find MCP Folders'
+        ansible.builtin.find:
+            paths: '{{ mcp_sync.source }}'
+            file_type: directory
+        register: mcp_folders
+
+      - name: '{{ app_name | upper }}: Configure Sync Service'
+        ansible.builtin.include_tasks: '{{ lib }}/service.yml'
+        vars:
+            service:
+                name: mcp-sync
+                start: false
+                content: |
+                    [Unit]
+                    Description=Sync MCP servers from agents/mcp into every agent
+
+                    [Service]
+                    Type=oneshot
+                    User={{ user }}
+                    Environment=PATH={{ user_path }}
+                    ExecStart={{ mcp_sync.bin }}
+
+                    [Install]
+                    WantedBy=multi-user.target
+
+      - name: '{{ app_name | upper }}: Configure Sync Watcher'
+        ansible.builtin.include_tasks: '{{ lib }}/service.yml'
+        vars:
+            service:
+                name: mcp-sync.path
+                content: |
+                    [Unit]
+                    Description=Run mcp-sync when agents/mcp changes
+
+                    [Path]
+                    PathModified={{ mcp_sync.source }}
+                    {% for folder in mcp_folders.files | map(attribute='path') | map('basename') | sort %}
+                    PathModified={{ mcp_sync.source }}/{{ folder }}
+                    {% endfor %}
+
+                    [Install]
+                    WantedBy=multi-user.target
+
+      - name: '{{ app_name | upper }}: Sync MCP Servers'
+        ansible.builtin.command: '{{ mcp_sync.bin }}'
+        become: true
+        become_user: '{{ user }}'
+        environment:
+            PATH: '{{ user_path }}'
+        register: mcp_sync_result
+        changed_when: "'CHANGED' in mcp_sync_result.stdout"

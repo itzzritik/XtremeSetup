@@ -1,0 +1,40 @@
+---
+- vars:
+      app_name: git
+      ssh_key: '{{ home }}/.ssh/id_ed25519'
+  become: true
+  become_user: '{{ user }}'
+  block:
+      - name: '{{ app_name | upper }}: Write Private Key'
+        ansible.builtin.copy:
+            dest: '{{ ssh_key }}'
+            content: "{{ env.JARVIS_GIT_SSH_PRIVATE_KEY }}\n"
+            mode: '0600'
+        no_log: true
+
+      - name: '{{ app_name | upper }}: Write Public Key'
+        ansible.builtin.copy:
+            dest: '{{ ssh_key }}.pub'
+            content: "{{ env.JARVIS_GIT_SSH_PUBLIC_KEY }}\n"
+            mode: '0644'
+
+      - name: '{{ app_name | upper }}: Read Signing Key'
+        community.general.git_config_info:
+            name: user.signingkey
+            scope: global
+        register: signing_key
+
+      - name: '{{ app_name | upper }}: Configure Git'
+        community.general.git_config:
+            name: '{{ setting.key }}'
+            value: '{{ setting.value }}'
+            scope: global
+        loop:
+            - { key: user.name, value: '{{ env.RITIK_NAME }}' }
+            - { key: user.email, value: '{{ env.RITIK_EMAIL }}' }
+            - { key: gpg.format, value: ssh }
+            - { key: user.signingkey, value: '{{ signing_key.config_value | default(ssh_key ~ ".pub", true) }}' }
+            - { key: commit.gpgsign, value: 'true' }
+        loop_control:
+            loop_var: setting
+            label: '{{ setting.key }}'

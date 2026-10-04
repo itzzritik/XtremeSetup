@@ -1,0 +1,32 @@
+---
+bootstrap_user: root
+domain: '{{ env.JARVIS_DOMAIN }}'
+telegram_key: '{{ env.JARVIS_BOT_TELEGRAM_KEY }}'
+trusted_proxy: 192.168.68.205
+ssh_exempt: 192.168.68.0/24
+user_uid: 1000
+memory:
+    user_slice: 5G
+    vscode: 6G
+    aionui: 4G
+vscode_settings_extra:
+    terminal.integrated.profiles.linux:
+        Proxmox: { path: ssh, args: [proxmox], icon: server }
+    files.watcherExclude:
+        '/proxmox/**': true
+lxc:
+    host: pve
+    id: 240
+    hostname: code
+    cores: 6
+    memory: 6144
+    swap: 2048
+    disk: 64
+    storage: local-lvm
+    gateway: 192.168.68.1
+    mac: '02:4A:61:72:76:f0'
+    mounts:
+        - { host: /mnt/ssd/Projects, guest: '{{ projects_dir }}' }
+        - { host: /root/.jarvis/configs/code, guest: '{{ configs_dir }}' }
+machine_tasks:
+    - proxmox/guest

@@ -1,0 +1,33 @@
+---
+- vars:
+      app_name: kernel
+  block:
+      - name: '{{ app_name | upper }}: Configure Parameters'
+        ansible.posix.sysctl:
+            name: '{{ param.key }}'
+            value: '{{ param.value }}'
+            sysctl_set: true
+            reload: true
+        loop:
+            - { key: fs.inotify.max_user_watches, value: '524288' }
+            - { key: fs.inotify.max_user_instances, value: '256' }
+            - { key: vm.swappiness, value: '10' }
+            - { key: kernel.apparmor_restrict_unprivileged_userns, value: '0' }
+        loop_control:
+            loop_var: param
+            label: '{{ param.key }}={{ param.value }}'
+
+      - name: '{{ app_name | upper }}: Create Swapfile'
+        ansible.builtin.shell: fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile
+        args:
+            creates: /swapfile
+
+      - name: '{{ app_name | upper }}: Enable Swapfile'
+        ansible.builtin.shell: grep -q '^/swapfile[[:space:]]' /proc/swaps || { swapon /swapfile && echo CHANGED; }
+        register: swap_result
+        changed_when: "'CHANGED' in swap_result.stdout"
+
+      - name: '{{ app_name | upper }}: Persist Swapfile'
+        ansible.builtin.lineinfile:
+            path: /etc/fstab
+            line: /swapfile swap swap defaults 0 0
