@@ -112,20 +112,28 @@
             group: '{{ instance.subuid }}'
             force: false
 
-      - name: '{{ app_name | upper }}: Seed Machine Settings'
+      - name: '{{ app_name | upper }}: Configure Machine Settings'
         copy:
             dest: '{{ config.root }}/data/Machine/settings.json'
             content: |
                 {
+                  "python.defaultInterpreterPath": "/usr/bin/python3",
+                  "terminal.integrated.env.linux": {
+                    "XDG_RUNTIME_DIR": "/run/user/0",
+                    "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/0/bus"
+                  },
                   "terminal.integrated.defaultProfile.linux": "zsh",
                   "terminal.integrated.profiles.linux": {
+                    "zsh": {
+                      "path": "systemd-run",
+                      "args": ["--user", "--scope", "--quiet", "--collect", "zsh", "-l"]
+                    },
                     "Proxmox": { "path": "ssh", "args": ["proxmox"], "icon": "server" }
                   },
                   "files.watcherExclude": { "/proxmox/**": true }
                 }
             owner: '{{ instance.subuid }}'
             group: '{{ instance.subuid }}'
-            force: false
 
       - name: '{{ app_name | upper }}: Install Nerd Font'
         unarchive:
@@ -168,6 +176,7 @@
                     Restart=on-failure
                     RestartSec=10
                     MemoryMax=6G
+                    OOMPolicy=continue
 
                     [Install]
                     WantedBy=multi-user.target

@@ -191,10 +191,30 @@
             - '@anthropic-ai/claude-code'
             - '@openai/codex'
             - opencode-ai
+            - '@playwright/mcp'
         loop_control:
             loop_var: npm_item
         become: true
         become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Install Playwright Chromium'
+        shell: |
+            {{ fnm_init }}
+            node "$(npm root -g)/@playwright/mcp/node_modules/playwright-core/cli.js" install chromium 2>&1
+        args:
+            executable: /bin/bash
+        register: chromium_install
+        changed_when: "'downloaded' in chromium_install.stdout"
+        become: true
+        become_user: ubuntu
+
+      - name: '{{ app_name | upper }}: Install Playwright System Libraries'
+        command: >-
+            /home/ubuntu/.local/share/fnm/aliases/default/bin/node
+            /home/ubuntu/.local/share/fnm/aliases/default/lib/node_modules/@playwright/mcp/node_modules/playwright-core/cli.js
+            install-deps chromium
+        register: chromium_deps
+        changed_when: "'0 newly installed' not in chromium_deps.stdout"
 
       - name: '{{ app_name | upper }}: Check bun'
         stat:
@@ -226,6 +246,7 @@
             block: |
                 export EDITOR="code --wait"
                 alias cc="claude"
+                alias agyy="agy --dangerously-skip-permissions"
                 alias t="tmux new-session -A -s main"
                 alias ls="eza --icons"
                 alias ll="eza -la --icons --git"

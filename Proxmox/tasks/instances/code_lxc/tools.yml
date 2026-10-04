@@ -198,6 +198,10 @@
                     [ -z "$pids" ] && { echo "No processes on: $*"; return 0; }
                     echo "$pids" | xargs kill -9 && echo "Killed: $(echo $pids | tr '\n' ' ')"
                   }
+            - dest: /root/.zshrc
+              marker: '# {mark} VSCODE'
+              block: |
+                  [[ "$TERM_PROGRAM" == "vscode" ]] && (( $+commands[code] )) && . "$(code --locate-shell-integration-path zsh)"
             - dest: /root/.tmux.conf
               marker: '# {mark} JARVIS'
               block: |

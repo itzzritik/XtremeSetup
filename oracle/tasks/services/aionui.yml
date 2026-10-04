@@ -8,6 +8,26 @@
       version: 'v2.2.2'
       bun: '/home/ubuntu/.bun/bin/bun'
       api: 'http://127.0.0.1:{{ env.JARVIS_SERVICES[app_name].port }}/api'
+      telegram_key: '{{ env.JARVIS_CODE_TELEGRAM_KEY }}'
+      client_settings:
+          tools.speechToText:
+              enabled: true
+              provider: openai
+              openai:
+                  api_key: '{{ env.JARVIS_AI_GROQ_KEY }}'
+                  base_url: https://api.groq.com/openai/v1
+                  language: ''
+                  model: whisper-large-v3-turbo
+              deepgram:
+                  api_key: ''
+                  base_url: ''
+                  detectLanguage: true
+                  language: ''
+                  model: nova-3
+                  punctuate: true
+                  smartFormat: true
+          theme.activeId: dark
+          assistants.enabledOrder: ['bare:a9f3c21e', 'bare:53861a53', 'bare:2d23ff1c', 'bare:632f31d2', 'bare:8e1acf31', aionui-assistant]
   block:
       - name: '{{ app_name | upper }}: Configure Directory'
         file:
@@ -113,10 +133,32 @@
             host: 127.0.0.1
             timeout: 60
 
+      - name: '{{ app_name | upper }}: Read Client Settings'
+        uri:
+            url: '{{ api }}/settings/client'
+        register: current_settings
+        no_log: true
+
+      - name: '{{ app_name | upper }}: Configure Client Settings'
+        uri:
+            url: '{{ api }}/settings/client'
+            method: PUT
+            body_format: json
+            body: '{{ client_settings }}'
+        no_log: true
+        changed_when: true
+        when: current_settings.json.data | combine(client_settings) != current_settings.json.data
+
       - name: '{{ app_name | upper }}: Fetch Channel Plugins'
         uri:
             url: '{{ api }}/channel/plugins'
         register: channel_plugins
+
+      - name: '{{ app_name | upper }}: Read Telegram Bot'
+        command: cat '{{ config.root }}/telegram-bot'
+        register: telegram_bot
+        failed_when: false
+        changed_when: false
 
       - name: '{{ app_name | upper }}: Enable Telegram Plugin'
         uri:
@@ -126,14 +168,22 @@
             body:
                 plugin_id: telegram
                 config:
-                    credentials: { token: '{{ env.JARVIS_CODE_TELEGRAM_KEY }}' }
+                    credentials: { token: '{{ telegram_key }}' }
                     config: {}
         no_log: true
         register: tg_enable
         failed_when: not tg_enable.json.data.success
         changed_when: true
         when: >-
-            channel_plugins.json.data
+            telegram_bot.stdout != telegram_key.split(':')[0]
+            or channel_plugins.json.data
             | selectattr('plugin_id', 'equalto', 'telegram')
             | selectattr('status', 'equalto', 'running')
             | list | length == 0
+
+      - name: '{{ app_name | upper }}: Record Telegram Bot'
+        copy:
+            dest: '{{ config.root }}/telegram-bot'
+            content: "{{ telegram_key.split(':')[0] }}"
+            owner: ubuntu
+            group: ubuntu

@@ -8,12 +8,12 @@ import re
 import subprocess
 import sys
 
-# paths are filled in by Ansible (code_lxc.yml lxc_paths, agents.yml mcp_sync)
+# paths are filled in by Ansible (agents.yml agent_paths, mcp_sync)
 SOURCE = '{{ mcp_sync.source }}'
-CLAUDE = '{{ lxc_paths.claude_json }}'
-CODEX = '{{ lxc_paths.codex }}/config.toml'
-OPENCODE = '{{ lxc_paths.opencode }}/opencode.jsonc'
-GEMINI = '{{ lxc_paths.gemini_config }}/mcp_config.json'
+CLAUDE = '{{ agent_paths.claude_json }}'
+CODEX = '{{ agent_paths.codex }}/config.toml'
+OPENCODE = '{{ agent_paths.opencode }}/opencode.jsonc'
+GEMINI = '{{ agent_paths.gemini_config }}/mcp_config.json'
 BEGIN = '# BEGIN MCP-SYNC (generated from agents/mcp, edit there)'
 END = '# END MCP-SYNC'
 

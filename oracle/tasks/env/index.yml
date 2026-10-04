@@ -14,6 +14,7 @@
           - JARVIS_AI_MISTRAL_KEY
           - JARVIS_BOT_TELEGRAM_KEY
           - JARVIS_AI_OPENROUTER_KEY
+          - JARVIS_AI_GROQ_KEY
           - RITIK_TELEGRAM_ID
       local_config:
           JARVIS_DIR: '/home/ubuntu/.jarvis'

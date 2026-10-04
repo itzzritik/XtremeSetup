@@ -54,6 +54,7 @@
         include_tasks: 'tasks/services/{{ service }}.yml'
         loop:
             - docker
+            - agents
             - cloudflared
             - vscode-web
             - aionui

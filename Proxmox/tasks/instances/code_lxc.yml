@@ -106,6 +106,10 @@
             - dest: /etc/ssh/sshd_config.d/10-lan.conf
               content: |
                   PerSourcePenaltyExemptList {{ env.JARVIS_NETWORK_PREFIX }}.0/24
+            - dest: /etc/systemd/system/user-.slice.d/memory.conf
+              content: |
+                  [Slice]
+                  MemoryMax=5G
         loop_control:
             loop_var: lxc_file
             label: '{{ lxc_file.dest }}'
@@ -117,6 +121,15 @@
       - name: '{{ instance.hostname | upper }}: Reload SSH'
         command: pct exec {{ id }} -- systemctl reload ssh
         when: "'/etc/ssh/sshd_config.d/10-lan.conf' in lxc_changed | default([])"
+
+      - name: '{{ instance.hostname | upper }}: Reload User Slices'
+        command: pct exec {{ id }} -- systemctl daemon-reload
+        when: "'/etc/systemd/system/user-.slice.d/memory.conf' in lxc_changed | default([])"
+
+      - name: '{{ instance.hostname | upper }}: Enable Linger'
+        command: pct exec {{ id }} -- bash -c 'test -f /var/lib/systemd/linger/root || { loginctl enable-linger root && echo CHANGED; }'
+        register: linger_result
+        changed_when: "'CHANGED' in linger_result.stdout"
 
       - name: '{{ instance.hostname | upper }}: Deploy Apps'
         include_tasks: 'code_lxc/{{ code_app_item }}.yml'

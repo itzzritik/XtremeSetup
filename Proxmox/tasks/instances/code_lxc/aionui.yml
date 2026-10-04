@@ -11,6 +11,7 @@
       version: 'v2.2.2'
       bun: '{{ lxc_paths.bun_bin }}/bun'
       api: 'http://127.0.0.1:{{ env.JARVIS_SERVICES[app_name].app_port }}/api'
+      telegram_key: '{{ env.JARVIS_BOT_TELEGRAM_KEY }}'
   block:
       - name: '{{ app_name | upper }}: Clone Source'
         shell: |
@@ -75,6 +76,7 @@
                     Restart=always
                     RestartSec=10
                     MemoryMax=4G
+                    OOMPolicy=continue
 
                     [Install]
                     WantedBy=multi-user.target
@@ -91,10 +93,11 @@
             {{ lxc_exec }} <<'EOF'
             for i in $(seq 60); do curl -sf -o /dev/null {{ api }}/channel/plugins && break; sleep 1; done
             status=$(curl -sf {{ api }}/channel/plugins | jq -r '.data[] | select(.plugin_id == "telegram") | .status')
-            [ "$status" = running ] && exit 0
+            [ "$status" = running ] && [ "$(cat {{ config.local }}/telegram-bot 2>/dev/null)" = {{ telegram_key.split(':')[0] }} ] && exit 0
             curl -sf -X POST -H 'Content-Type: application/json' \
-                -d {{ {'plugin_id': 'telegram', 'config': {'credentials': {'token': env.JARVIS_CODE_TELEGRAM_KEY}, 'config': {}}} | to_json | quote }} \
+                -d {{ {'plugin_id': 'telegram', 'config': {'credentials': {'token': telegram_key}, 'config': {}}} | to_json | quote }} \
                 {{ api }}/channel/plugins/enable | jq -e '.data.success' >/dev/null
+            printf %s {{ telegram_key.split(':')[0] }} > {{ config.local }}/telegram-bot
             echo CHANGED
             EOF
         register: tg_enable
