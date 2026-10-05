@@ -1,0 +1,128 @@
+# yaml-language-server: $schema=https://aka.ms/configuration-dsc-schema/0.2
+properties:
+  configurationVersion: 0.2.0
+  resources:
+    - resource: Microsoft.Windows.Developer/DeveloperMode
+      id: developerMode
+      directives:
+        description: Enable Developer Mode
+        allowPrerelease: true
+        securityContext: elevated
+      settings:
+        Ensure: Present
+
+    - resource: Microsoft.Windows.Developer/EnableLongPathSupport
+      id: longPaths
+      directives:
+        description: Enable Win32 Long Paths
+        allowPrerelease: true
+        securityContext: elevated
+      settings:
+        Ensure: Present
+
+    - resource: Microsoft.Windows.Developer/WindowsExplorer
+      id: explorer
+      directives:
+        description: Show File Extensions and Hidden Files
+        allowPrerelease: true
+      settings:
+        FileExtensions: Show
+        HiddenFiles: Show
+        RestartExplorer: true
+
+    - resource: PSDscResources/Registry
+      id: sudo
+      directives:
+        description: Enable Inline sudo
+        securityContext: elevated
+      settings:
+        Key: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Sudo
+        ValueName: Enabled
+        ValueType: DWord
+        ValueData: '3'
+        Force: true
+
+    - resource: PSDscResources/Registry
+      id: defaultTerminalConsole
+      directives:
+        description: Set Windows Terminal as Default Console
+      settings:
+        Key: HKCU:\Console\%%Startup
+        ValueName: DelegationConsole
+        ValueType: String
+        ValueData: '{2EACA947-7F5F-4CFA-BA87-8F7FBEEFBE69}'
+        Force: true
+
+    - resource: PSDscResources/Registry
+      id: defaultTerminal
+      directives:
+        description: Set Windows Terminal as Default Terminal
+      settings:
+        Key: HKCU:\Console\%%Startup
+        ValueName: DelegationTerminal
+        ValueType: String
+        ValueData: '{E12CFF52-A866-4C77-9A90-F570A7AA2C6B}'
+        Force: true
+
+    - resource: PSDscResources/Registry
+      id: executionPolicy
+      directives:
+        description: Allow Local Scripts in Windows PowerShell
+      settings:
+        Key: HKCU:\Software\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell
+        ValueName: ExecutionPolicy
+        ValueType: String
+        ValueData: RemoteSigned
+        Force: true
+
+    - resource: PSDscResources/Registry
+      id: verboseStatus
+      directives:
+        description: Enable Verbose Status Messages
+        securityContext: elevated
+      settings:
+        Key: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+        ValueName: VerboseStatus
+        ValueType: DWord
+        ValueData: '1'
+        Force: true
+
+    - resource: PSDscResources/Registry
+      id: hiberFileSize
+      directives:
+        description: Size Hibernation File to 100% of RAM
+        securityContext: elevated
+      settings:
+        Key: HKLM:\SYSTEM\CurrentControlSet\Control\Power
+        ValueName: HiberFileSizePercent
+        ValueType: DWord
+        ValueData: '100'
+        Force: true
+
+    - resource: PSDscResources/Script
+      id: hibernation
+      dependsOn:
+        - hiberFileSize
+      directives:
+        description: Disable Hibernation
+        securityContext: elevated
+      settings:
+        GetScript: |
+          @{ Result = "$(Get-ItemPropertyValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Power' -Name HibernateEnabled -ErrorAction SilentlyContinue)" }
+        TestScript: |
+          (Get-ItemPropertyValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Power' -Name HibernateEnabled -ErrorAction SilentlyContinue) -eq 0
+        SetScript: |
+          powercfg /hibernate off | Out-Null
+          if ($LASTEXITCODE) { throw "powercfg exited with $LASTEXITCODE" }
+
+    - resource: PSDscResources/Script
+      id: projects
+      directives:
+        description: Create D:\Projects
+      settings:
+        GetScript: |
+          @{ Result = "$(Test-Path 'D:\Projects')" }
+        TestScript: |
+          -not (Test-Path 'D:\') -or (Test-Path 'D:\Projects')
+        SetScript: |
+          New-Item -ItemType Directory -Path 'D:\Projects' | Out-Null

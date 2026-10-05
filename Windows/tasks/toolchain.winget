@@ -1,0 +1,160 @@
+# yaml-language-server: $schema=https://aka.ms/configuration-dsc-schema/0.2
+properties:
+  configurationVersion: 0.2.0
+  resources:
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: git
+      directives:
+        description: Install Git
+      settings:
+        id: Git.Git
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: gh
+      directives:
+        description: Install GitHub CLI
+      settings:
+        id: GitHub.cli
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: doppler
+      directives:
+        description: Install Doppler
+      settings:
+        id: Doppler.doppler
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: fnm
+      directives:
+        description: Install fnm
+      settings:
+        id: Schniz.fnm
+        source: winget
+
+    - resource: PSDscResources/Script
+      id: node
+      dependsOn:
+        - fnm
+      directives:
+        description: Install Node LTS
+      settings:
+        GetScript: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          @{ Result = "$(fnm list | Select-String default)" }
+        TestScript: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          if (-not (Get-Command fnm -ErrorAction SilentlyContinue)) { return $false }
+          $latest = (fnm ls-remote --lts --latest) -replace '\s.*'
+          [bool](fnm list | Select-String -SimpleMatch "* $latest default")
+        SetScript: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          $latest = (fnm ls-remote --lts --latest) -replace '\s.*'
+          fnm install $latest 2>&1 | Out-Null
+          fnm default $latest 2>&1 | Out-Null
+          if ($LASTEXITCODE) { throw "fnm default exited with $LASTEXITCODE" }
+
+    - resource: PSDscResources/Script
+      id: npmPackages
+      dependsOn:
+        - node
+      directives:
+        description: Install npm Packages
+      settings:
+        GetScript: |
+          $env:Path = "$env:APPDATA\fnm\aliases\default;$env:Path"
+          $npm = "$env:APPDATA\fnm\aliases\default\npm.cmd"
+          @{ Result = "$((& $npm ls -g --depth=0 --json | ConvertFrom-Json -AsHashtable)['dependencies'].Keys)" }
+        TestScript: |
+          $packages = 'npm', 'pnpm', 'yarn', 'typescript', '@getforged/cli'
+          $env:Path = "$env:APPDATA\fnm\aliases\default;$env:Path"
+          $npm = "$env:APPDATA\fnm\aliases\default\npm.cmd"
+          if (-not (Test-Path $npm)) { return $false }
+          $have = @((& $npm ls -g --depth=0 --json | ConvertFrom-Json -AsHashtable)['dependencies'].Keys)
+          $stale = @((& $npm outdated -g --json | Out-String | ConvertFrom-Json -AsHashtable).Keys)
+          -not ($packages | Where-Object { $_ -notin $have -or $_ -in $stale })
+        SetScript: |
+          $packages = 'npm', 'pnpm', 'yarn', 'typescript', '@getforged/cli'
+          $env:Path = "$env:APPDATA\fnm\aliases\default;$env:Path"
+          $npm = "$env:APPDATA\fnm\aliases\default\npm.cmd"
+          $have = @((& $npm ls -g --depth=0 --json | ConvertFrom-Json -AsHashtable)['dependencies'].Keys)
+          $stale = @((& $npm outdated -g --json | Out-String | ConvertFrom-Json -AsHashtable).Keys)
+          $todo = $packages | Where-Object { $_ -notin $have -or $_ -in $stale }
+          & $npm install -g @todo "--allow-scripts=$($todo -join ',')" 2>&1 | Out-Null
+          if ($LASTEXITCODE) { throw "npm install exited with $LASTEXITCODE" }
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: bun
+      directives:
+        description: Install Bun
+      settings:
+        id: Oven-sh.Bun
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: go
+      directives:
+        description: Install Go
+        securityContext: elevated
+      settings:
+        id: GoLang.Go
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: just
+      directives:
+        description: Install just
+      settings:
+        id: Casey.Just
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: pythonManager
+      directives:
+        description: Install Python Install Manager
+      settings:
+        id: '9NQ7512CXL7T'
+        source: msstore
+
+    - resource: PSDscResources/Script
+      id: python
+      dependsOn:
+        - pythonManager
+      directives:
+        description: Install Python
+      settings:
+        GetScript: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          @{ Result = "$(pymanager list --only-managed -1 -f exe 2>$null)" }
+        TestScript: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          if (-not (Get-Command pymanager -ErrorAction SilentlyContinue)) { return $false }
+          $bin = "$env:LOCALAPPDATA\Python\bin"
+          [bool](pymanager list --only-managed -1 -f exe 2>$null) -and ($env:Path -split ';' -contains $bin)
+        SetScript: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          pymanager install --configure -y 2>&1 | Out-Null
+          pymanager install --yes default 2>&1 | Out-Null
+          if ($LASTEXITCODE) { throw "pymanager install exited with $LASTEXITCODE" }
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: uv
+      directives:
+        description: Install uv
+      settings:
+        id: astral-sh.uv
+        source: winget
+
+    - resource: PSDscResources/Script
+      id: claude
+      directives:
+        description: Install Claude Code
+      settings:
+        GetScript: |
+          @{ Result = "$(Test-Path "$HOME\.local\bin\claude.exe")" }
+        TestScript: |
+          Test-Path "$HOME\.local\bin\claude.exe"
+        SetScript: |
+          Invoke-RestMethod https://claude.ai/install.ps1 | Invoke-Expression | Out-Null

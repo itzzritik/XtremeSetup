@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://aka.ms/configuration-dsc-schema/0.2
+properties:
+  configurationVersion: 0.2.0
+  resources:
+    - resource: PSDscResources/Script
+      id: gitConfig
+      directives:
+        description: Configure Git
+      settings:
+        GetScript: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          @{ Result = "$(git config --global --list)" }
+        TestScript: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          $settings = [ordered]@{
+              'user.name' = 'Ritik Srivastava'
+              'user.email' = 'ritik.space@gmail.com'
+              'core.sshCommand' = 'C:/Windows/System32/OpenSSH/ssh.exe'
+              'core.longpaths' = 'true'
+          }
+          -not ($settings.Keys | Where-Object { (git config --global $_) -cne $settings[$_] })
+        SetScript: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          $settings = [ordered]@{
+              'user.name' = 'Ritik Srivastava'
+              'user.email' = 'ritik.space@gmail.com'
+              'core.sshCommand' = 'C:/Windows/System32/OpenSSH/ssh.exe'
+              'core.longpaths' = 'true'
+          }
+          foreach ($key in $settings.Keys) { git config --global $key $settings[$key] }

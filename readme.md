@@ -44,17 +44,29 @@ bash -c "$(curl -fsSL setup.myjarvis.in)"
 
 ### 3. Windows Development Machine
 
-A PowerShell-based toolkit for setting up a fresh Windows environment for development work.
+WinGet Configuration files that restore the Windows dev setup after a fresh install: VS Code, PowerShell 7, Windows Terminal, Oh My Posh, Git, fnm + Node LTS, bun, Go, just, Python, Doppler, Claude Code, and Windows dev settings.
 
 **How to Run:**
-
-1. Open PowerShell as **Administrator**.
-2. Navigate to the `Windows` directory in this repository.
-3. Execute the setup script:
+From a normal (non-admin) PowerShell:
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; .\Windows\setup.ps1
+irm setup-windows.ritik.me | iex
 ```
+
+_It asks for one UAC approval, then runs unattended in an admin window and writes a log to `%TEMP%\jarvis-setup.log`. Re-running is safe; anything already in place is skipped._
+
+To run only some tasks (`system`, `apps`, `toolchain`, `shell`, `git`) from a local clone:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Windows\index.ps1 shell git
+```
+
+**After the first run:**
+
+1. 1Password: sign in, turn on Settings > Developer > **Use the SSH Agent**, then use **Configure Commit Signing** on your key.
+2. VS Code: sign in to Settings Sync.
+3. Doppler: `doppler login`.
+4. Reboot once.
 
 ---
 
@@ -62,6 +74,6 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; .\Windows\setup.ps1
 
 -   **`Proxmox/`**: Ansible playbooks (`*.yml`), inventory, and roles for Home Lab automation.
 -   **`Jarvis/`**: Shell scripts for the Raspberry Pi/Ubuntu setup.
--   **`Windows/`**: PowerShell scripts and configuration files for Windows.
+-   **`Windows/`**: WinGet Configuration tasks (`tasks/*.winget`), the `index.ps1` bootstrap, and the PowerShell profile and Terminal settings they deploy (`files/`).
 
 ---

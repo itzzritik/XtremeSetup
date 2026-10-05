@@ -1,0 +1,122 @@
+# yaml-language-server: $schema=https://aka.ms/configuration-dsc-schema/0.2
+properties:
+  configurationVersion: 0.2.0
+  resources:
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: pwsh
+      directives:
+        description: Install PowerShell 7
+      settings:
+        id: '9MZ1SNWT0N5D'
+        source: msstore
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: terminal
+      directives:
+        description: Install Windows Terminal
+      settings:
+        id: '9N0DX20HK701'
+        source: msstore
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: ohMyPosh
+      directives:
+        description: Install Oh My Posh
+      settings:
+        id: JanDeDobbeleer.OhMyPosh
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: zoxide
+      directives:
+        description: Install zoxide
+      settings:
+        id: ajeetdsouza.zoxide
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: eza
+      directives:
+        description: Install eza
+      settings:
+        id: eza-community.eza
+        source: winget
+
+    - resource: PSDscResources/Script
+      id: font
+      dependsOn:
+        - ohMyPosh
+      directives:
+        description: Install FantasqueSansM Nerd Font
+      settings:
+        GetScript: |
+          @{ Result = "$(Test-Path "$env:LOCALAPPDATA\Microsoft\Windows\Fonts\FantasqueSansMNerdFontMono-Regular.ttf")" }
+        TestScript: |
+          Test-Path "$env:LOCALAPPDATA\Microsoft\Windows\Fonts\FantasqueSansMNerdFontMono-Regular.ttf"
+        SetScript: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          oh-my-posh font install FantasqueSansMono 2>&1 | Out-Null
+          if ($LASTEXITCODE) { throw "oh-my-posh font install exited with $LASTEXITCODE" }
+
+    - resource: PSDscResources/Script
+      id: modules
+      dependsOn:
+        - pwsh
+      directives:
+        description: Install PowerShell Modules
+      settings:
+        GetScript: |
+          $modules = Join-Path ([Environment]::GetFolderPath('MyDocuments', 'DoNotVerify')) 'PowerShell\Modules'
+          @{ Result = "$(Get-ChildItem $modules -Name -ErrorAction SilentlyContinue)" }
+        TestScript: |
+          $modules = Join-Path ([Environment]::GetFolderPath('MyDocuments', 'DoNotVerify')) 'PowerShell\Modules'
+          -not ('posh-git', 'git-aliases' | Where-Object { -not (Test-Path "$modules\$_") })
+        SetScript: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          pwsh -NoProfile -Command 'Install-PSResource -Name posh-git, git-aliases -Scope CurrentUser -TrustRepository -Quiet' 2>&1 | Out-Null
+          if ($LASTEXITCODE) { throw "Install-PSResource exited with $LASTEXITCODE" }
+
+    - resource: PSDscResources/Script
+      id: profile
+      directives:
+        description: Configure PowerShell Profile
+      settings:
+        GetScript: |
+          $target = Join-Path ([Environment]::GetFolderPath('MyDocuments', 'DoNotVerify')) 'PowerShell\Microsoft.PowerShell_profile.ps1'
+          @{ Result = "$((Get-FileHash $target -ErrorAction SilentlyContinue).Hash)" }
+        TestScript: |
+          $source = '${WinGetConfigRoot}\..\files\profile.ps1'
+          $target = Join-Path ([Environment]::GetFolderPath('MyDocuments', 'DoNotVerify')) 'PowerShell\Microsoft.PowerShell_profile.ps1'
+          (Test-Path $target) -and (Get-FileHash $target).Hash -eq (Get-FileHash $source).Hash
+        SetScript: |
+          $source = '${WinGetConfigRoot}\..\files\profile.ps1'
+          $target = Join-Path ([Environment]::GetFolderPath('MyDocuments', 'DoNotVerify')) 'PowerShell\Microsoft.PowerShell_profile.ps1'
+          if ((Test-Path $target) -and -not (Select-String -Path $target -SimpleMatch 'Managed by XtremeSetup' -Quiet)) {
+              Copy-Item $target "$target.bak-$(Get-Date -Format yyyyMMddHHmmss)"
+          }
+          New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
+          Copy-Item $source $target -Force
+
+    - resource: PSDscResources/Script
+      id: terminalSettings
+      dependsOn:
+        - terminal
+      directives:
+        description: Configure Windows Terminal
+      settings:
+        GetScript: |
+          $stamp = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json.sha256"
+          @{ Result = "$(Get-Content $stamp -ErrorAction SilentlyContinue)" }
+        TestScript: |
+          $source = '${WinGetConfigRoot}\..\files\terminal.json'
+          $stamp = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json.sha256"
+          (Test-Path $stamp) -and (Get-Content $stamp) -eq (Get-FileHash $source).Hash
+        SetScript: |
+          $source = '${WinGetConfigRoot}\..\files\terminal.json'
+          $target = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
+          if ((Test-Path $target) -and -not (Test-Path "$target.sha256")) {
+              Copy-Item $target "$target.bak-$(Get-Date -Format yyyyMMddHHmmss)"
+          }
+          New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
+          Copy-Item $source $target -Force
+          Set-Content "$target.sha256" (Get-FileHash $source).Hash

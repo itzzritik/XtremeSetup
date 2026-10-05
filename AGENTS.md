@@ -4,7 +4,7 @@ These rules apply to the Ansible projects in this repo: `CodingServer/` (both co
 servers: the Oracle VM and the Proxmox code LXC) and `Proxmox/` (the Proxmox host and
 its other LXCs). Other directories like `Jarvis/` and `Windows/` are not Ansible.
 
-Every run starts from the Mac.
+Every Ansible run starts from the Mac.
 
 ## Iterating on an Ansible change
 
@@ -36,3 +36,17 @@ Don't re-run the full playbook to iterate.
 - `CodingServer/`: full module names (`ansible.builtin.copy`, not `copy`), facts only via
   `ansible_facts.*`, and `ansible-lint` (run inside `CodingServer/`) must pass.
 - Never commit, amend, or push without explicit ask.
+
+## Windows
+
+`Windows/` is WinGet Configuration (`tasks/*.winget`, schema 0.2), run on the Windows
+machine itself by `Windows/index.ps1`.
+
+- Iterate the same way: apply manually, port into the task file, then run only that task
+  with `powershell -ExecutionPolicy Bypass -File Windows\index.ps1 <task>`.
+- Confirm with `winget configure test -f Windows\tasks\<task>.winget`: every unit must
+  report it is in the desired state.
+- Same additive-only rule: units describe the end state, never cleanup.
+- `PSDscResources/Script` blocks run under strict mode in winget's own PowerShell: reload
+  PATH first, keep TestScript output to a single boolean, and pipe SetScript output to
+  `Out-Null`.
