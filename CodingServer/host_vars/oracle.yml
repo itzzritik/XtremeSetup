@@ -13,3 +13,4 @@ machine_tasks:
     - oracle/firewall
     - oracle/cloudflared
     - oracle/backups
+    - oracle/cost

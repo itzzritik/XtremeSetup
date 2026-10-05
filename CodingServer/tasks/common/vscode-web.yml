@@ -141,6 +141,22 @@
                       </style>
               register: vscode_font
 
+            - name: '{{ app_name | upper }}: Seed Vira Activation'
+              ansible.builtin.blockinfile:
+                  path: '{{ workbench }}/workbench.html'
+                  insertbefore: '</head>'
+                  marker: '<!-- {mark} JARVIS VIRA -->'
+                  block: |
+                      <script nonce="{% raw %}{{WORKBENCH_SCRIPT_NONCE}}{% endraw %}">
+                      (() => {
+                        const vira = {{ env.JARVIS_VIRA_ACTIVATION | from_json | to_json }};
+                        const secrets = JSON.parse(localStorage.getItem('secrets.provider') || '{}');
+                        if (Object.keys(vira).some(key => !secrets[key])) localStorage.setItem('secrets.provider', JSON.stringify({ ...vira, ...secrets }));
+                      })();
+                      </script>
+              register: vscode_vira
+              no_log: true
+
             - name: '{{ app_name | upper }}: Activate Server {{ vscode_latest.json.productVersion }}'
               ansible.builtin.file:
                   src: '{{ server }}'
@@ -168,7 +184,7 @@
         vars:
             service:
                 name: vscode-web
-                restart: '{{ vscode_link is changed or vscode_patches is changed or vscode_font is changed }}'
+                restart: '{{ vscode_link is changed or vscode_patches is changed or vscode_font is changed or vscode_vira is changed }}'
                 content: |
                     [Unit]
                     Description=VS Code Web

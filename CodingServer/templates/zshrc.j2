@@ -41,4 +41,6 @@ add-zsh-hook precmd _res_update
 TRAPALRM() { _res_update; zle && zle reset-prompt }
 TMOUT=5
 
+[[ -t 1 && -r ~/.cache/oci-cost ]] && print -P "Oracle dues %F{238}│%f %F{yellow}$(<~/.cache/oci-cost)%f"
+
 [[ "$TERM_PROGRAM" == "vscode" ]] && (( $+commands[code] )) && . "$(code --locate-shell-integration-path zsh)"

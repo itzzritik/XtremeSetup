@@ -50,6 +50,7 @@ doppler_keys:
     - JARVIS_BOT_TELEGRAM_KEY
     - JARVIS_AI_GROQ_KEY
     - JARVIS_HOMEASSISTANT_KEY
+    - JARVIS_VIRA_ACTIVATION
 
 common_tasks:
     - common/system

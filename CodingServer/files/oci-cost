@@ -1,0 +1,37 @@
+import datetime
+import os
+import sys
+
+import oci
+
+signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+config = {'region': signer.region}
+utc = datetime.timezone.utc
+today = datetime.datetime.now(utc).replace(hour=0, minute=0, second=0, microsecond=0)
+month = today.year * 12 + today.month - 12
+
+invoices = oci.pagination.list_call_get_all_results(
+    oci.osp_gateway.InvoiceServiceClient(config, signer=signer).list_invoices,
+    signer.region,
+    signer.tenancy_id,
+).data
+start = max([datetime.datetime(month // 12, month % 12 + 1, 1, tzinfo=utc)] + [
+    invoice.time_invoice.replace(day=1, hour=0, minute=0, second=0, microsecond=0) for invoice in invoices
+])
+items = oci.usage_api.UsageapiClient(config, signer=signer).request_summarized_usages(
+    oci.usage_api.models.RequestSummarizedUsagesDetails(
+        tenant_id=signer.tenancy_id,
+        time_usage_started=start,
+        time_usage_ended=today + datetime.timedelta(days=1),
+        granularity='MONTHLY',
+        query_type='COST',
+    )
+).data.items
+total = sum(item.computed_amount or 0 for item in items) + sum(invoice.invoice_amount_due or 0 for invoice in invoices)
+currency = next((item.currency.strip() for item in items if (item.currency or '').strip()), '')
+
+path = sys.argv[1]
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(f'{path}.tmp', 'w') as f:
+    f.write(f'{currency} {total:.2f}'.strip() + '\n')
+os.replace(f'{path}.tmp', path)

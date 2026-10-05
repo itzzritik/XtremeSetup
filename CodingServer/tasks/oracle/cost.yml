@@ -1,0 +1,54 @@
+---
+- vars:
+      app_name: cost
+      venv: /opt/oci-cost
+      cache: '{{ home }}/.cache/oci-cost'
+      apt_packages:
+          - python3-venv
+  block:
+      - name: '{{ app_name | upper }}: Install python3-venv'
+        ansible.builtin.include_tasks: '{{ lib }}/apt.yml'
+
+      - name: '{{ app_name | upper }}: Install OCI SDK'
+        ansible.builtin.pip:
+            name: oci
+            virtualenv: '{{ venv }}'
+            virtualenv_command: python3 -m venv
+
+      - name: '{{ app_name | upper }}: Install Script'
+        ansible.builtin.copy:
+            src: oci-cost
+            dest: '{{ venv }}/oci-cost'
+
+      - name: '{{ app_name | upper }}: Configure Fetch Service'
+        ansible.builtin.include_tasks: '{{ lib }}/service.yml'
+        vars:
+            service:
+                name: oci-cost
+                start: false
+                content: |
+                    [Unit]
+                    Description=Fetch unpaid Oracle Cloud cost
+                    After=network-online.target
+                    Wants=network-online.target
+
+                    [Service]
+                    Type=oneshot
+                    User={{ user }}
+                    ExecStart={{ venv }}/bin/python {{ venv }}/oci-cost {{ cache }}
+
+      - name: '{{ app_name | upper }}: Configure Fetch Timer'
+        ansible.builtin.include_tasks: '{{ lib }}/service.yml'
+        vars:
+            service:
+                name: oci-cost.timer
+                content: |
+                    [Unit]
+                    Description=Fetch Oracle Cloud cost every 15 minutes
+
+                    [Timer]
+                    OnBootSec=1min
+                    OnUnitActiveSec=15min
+
+                    [Install]
+                    WantedBy=timers.target
