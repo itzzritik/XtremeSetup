@@ -168,30 +168,18 @@
                         owner: '{{ mapped_uid }}'
                         group: '{{ mapped_uid }}'
                         mode: '0666'
+                  - name: '{{ app_name | upper }}: Read Image index.html'
+                    command: pct exec {{ id }} -- docker run --rm --entrypoint cat {{ image }} /www/index.html
+                    register: homer_image_index
+                    changed_when: false
+                    failed_when: homer_image_index.rc != 0 or '</body>' not in homer_image_index.stdout
                   - name: '{{ app_name | upper }}: Create custom index.html with script import'
                     register: homer_index
+                    vars:
+                        script_tag: '<script src="./assets/custom-{{ cache_buster }}.js"></script>'
                     copy:
                         dest: '{{ config.root }}/index.html'
-                        content: |
-                            <!DOCTYPE html>
-                            <html>
-                              <head>
-                                <meta charset="UTF-8" />
-                                <link rel="icon" href="assets/icons/favicon.svg" />
-                                <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" sizes="180x180">
-                                <link rel="mask-icon" href="assets/icons/logo.svg">
-                                <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
-                                <title>Jarvis Dashboard</title>
-                                <script type="module" crossorigin src="./resources/index-BF4DSS10.js"></script>
-                                <link rel="stylesheet" crossorigin href="./resources/index-BUSrgv1m.css">
-                                <link rel="manifest" href="./assets/manifest.json" crossorigin="use-credentials">
-                                <script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script>
-                              </head>
-                              <body>
-                                <div id="app-mount"></div>
-                                <script src="./assets/custom-{{ cache_buster }}.js"></script>
-                              </body>
-                            </html>
+                        content: "{{ homer_image_index.stdout | replace('favicon.ico', 'favicon.svg') | regex_replace('<title>[^<]*</title>', '<title>' ~ env.JARVIS_BOT_NAME ~ ' Dashboard</title>') | replace('</body>', script_tag ~ '</body>') }}\n"
                         owner: '{{ mapped_uid }}'
                         group: '{{ mapped_uid }}'
                         mode: '0666'
