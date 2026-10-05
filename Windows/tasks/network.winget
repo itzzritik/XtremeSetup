@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://aka.ms/configuration-dsc-schema/0.2
+properties:
+  configurationVersion: 0.2.0
+  resources:
+    - resource: PSDscResources/Script
+      id: ssdDrive
+      directives:
+        description: Map SSD Share as Drive S
+      settings:
+        GetScript: |
+          @{ Result = "$(Get-ItemPropertyValue 'HKCU:\Network\S' -Name RemotePath -ErrorAction SilentlyContinue)" }
+        TestScript: |
+          ((Get-ItemPropertyValue 'HKCU:\Network\S' -Name RemotePath -ErrorAction SilentlyContinue) -eq '\\192.168.68.245\ssd') -and ((cmdkey /list:192.168.68.245 | Out-String) -match 'User:')
+        SetScript: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          $pass = doppler secrets get JARVIS_ADMIN_PASSWORD --project jarvis --config prd --plain 2>$null
+          if ($LASTEXITCODE) { throw 'Doppler is not logged in: run "doppler login", then index.ps1 network' }
+          cmdkey /add:192.168.68.245 /user:root /pass:$pass | Out-Null
+          if ($LASTEXITCODE) { throw "cmdkey exited with $LASTEXITCODE" }
+          if ((Test-Path 'HKCU:\Network\S') -or (Get-PSDrive S -ErrorAction SilentlyContinue)) { net use S: /delete /y 2>&1 | Out-Null }
+          net use S: '\\192.168.68.245\ssd' /persistent:yes 2>&1 | Out-Null
+          if ($LASTEXITCODE) { throw "net use exited with $LASTEXITCODE" }

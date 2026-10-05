@@ -295,6 +295,9 @@ def sync_profiles(cfg):
     moves = {}
     for movie in request(f'{base}/movie', headers=headers):
         profile = wanted.get((movie.get('originalLanguage') or {}).get('name'), cfg['default'])
+        audio = ((movie.get('movieFile') or {}).get('mediaInfo') or {}).get('audioLanguages', '')
+        if profile == cfg['keep_hindi']['from'] and 'hin' in audio.split('/'):
+            profile = cfg['keep_hindi']['to']
         if movie['qualityProfileId'] != profiles[profile]:
             moves.setdefault(profile, []).append(movie['id'])
     for profile, movie_ids in moves.items():

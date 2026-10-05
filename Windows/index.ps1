@@ -8,7 +8,7 @@ $Script = 'https://raw.githubusercontent.com/itzzritik/XtremeSetup/main/Windows/
 $Repo = 'https://github.com/itzzritik/XtremeSetup/archive/HEAD.tar.gz'
 $WorkDir = Join-Path $env:TEMP 'jarvis-setup'
 $Log = Join-Path $env:TEMP 'jarvis-setup.log'
-$Order = 'system', 'apps', 'toolchain', 'shell', 'git'
+$Order = 'system', 'apps', 'toolchain', 'shell', 'git', 'network'
 
 if (-not $Tasks) { $Tasks = $Order }
 $unknown = $Tasks | Where-Object { $_ -notin $Order }

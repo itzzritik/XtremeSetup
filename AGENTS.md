@@ -2,7 +2,7 @@
 
 These rules apply to the Ansible projects in this repo: `CodingServer/` (both coding
 servers: the Oracle VM and the Proxmox code LXC) and `Proxmox/` (the Proxmox host and
-its other LXCs). Other directories like `Jarvis/` and `Windows/` are not Ansible.
+its other LXCs). Other directories like `Jarvis/`, `Windows/` and `Mac/` are not Ansible.
 
 Every Ansible run starts from the Mac.
 
@@ -50,3 +50,13 @@ machine itself by `Windows/index.ps1`.
 - `PSDscResources/Script` blocks run under strict mode in winget's own PowerShell: reload
   PATH first, keep TestScript output to a single boolean, and pipe SetScript output to
   `Out-Null`.
+
+## Mac
+
+`Mac/` holds standalone scripts run on the Mac itself. Keep them out of the Proxmox and
+CodingServer Ansible: they set up this client, not a server.
+
+- `bash Mac/smb.sh` mounts the storage LXC's `ssd` and `media` SMB shares in Finder,
+  reading the password from jarvis Doppler. Safe to re-run; mounted shares are skipped.
+- Drive mounts drop on reboot, sleep or a network change, so they don't fit an Ansible
+  steady state. Re-run the script instead of adding a playbook task.
