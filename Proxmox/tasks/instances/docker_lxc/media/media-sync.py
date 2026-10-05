@@ -12,9 +12,9 @@ import urllib.request
 
 import yaml
 
-SPEC = json.loads(os.environ['MEDIA_SYNC'])
-USER = os.environ['MEDIA_USER']
-PASSWORD = os.environ['MEDIA_PASSWORD']
+SPEC = json.loads(os.environ.get('MEDIA_SYNC') or open(sys.argv[1]).read())
+USER = os.environ.get('MEDIA_USER', '')
+PASSWORD = os.environ.get('MEDIA_PASSWORD', '')
 HOST = SPEC['host']
 CONFIGS = SPEC['configs']
 
@@ -74,6 +74,20 @@ def upsert(base, items, match, payload, headers, label):
     return True
 
 
+def sync_provider(base, headers, resource, implementation, name, values, flags, secrets=None):
+    item = next((i for i in request(f'{base}/{resource}', headers=headers) if i['name'] == name), None)
+    if item is not None and fields_match(item['fields'], values) and not differs(item, flags):
+        return False
+    if item is None:
+        item = next(s for s in request(f'{base}/{resource}/schema', headers=headers) if s['implementation'] == implementation)
+        item['name'] = name
+    set_fields(item['fields'], dict(values, **(secrets or {})))
+    item.update(flags)
+    path = f"{base}/{resource}/{item['id']}" if 'id' in item else f'{base}/{resource}'
+    request(f'{path}?forceSave=true', 'PUT' if 'id' in item else 'POST', item, headers)
+    return True
+
+
 def qbit_password_set():
     conf = open(f'{CONFIGS}/qbittorrent/qBittorrent.conf').read()
     match = re.search(r'Password_PBKDF2="?@ByteArray\(([^:]+):([^)]+)\)', conf)
@@ -117,17 +131,13 @@ def sync_arrs(cfg):
 
         category = 'movieCategory' if app['kind'] == 'radarr' else 'tvCategory'
         values = {'host': HOST, 'port': int(qbit['port']), 'username': USER, category: app['category']}
-        flags = {'enable': True, 'removeCompletedDownloads': True, 'removeFailedDownloads': True}
-        client = next((c for c in request(f'{base}/downloadclient', headers=headers) if c['name'] == 'qBittorrent'), None)
-        if client is None or not fields_match(client['fields'], values) or differs(client, flags):
-            if client is None:
-                client = next(s for s in request(f'{base}/downloadclient/schema', headers=headers) if s['implementation'] == 'QBittorrent')
-                client.update({'name': 'qBittorrent', 'priority': 1})
-            set_fields(client['fields'], dict(values, password=PASSWORD))
-            client.update(flags)
-            path = f"{base}/downloadclient/{client['id']}" if 'id' in client else f'{base}/downloadclient'
-            request(f'{path}?forceSave=true', 'PUT' if 'id' in client else 'POST', client, headers)
+        flags = {'enable': True, 'removeCompletedDownloads': True, 'removeFailedDownloads': True, 'priority': 1}
+        if sync_provider(base, headers, 'downloadclient', 'QBittorrent', 'qBittorrent', values, flags, {'password': PASSWORD}):
             log(f'CHANGED {name} download client')
+
+        script = {'path': f"/usr/local/sma/post{name.title()}.sh"}
+        if sync_provider(base, headers, 'notification', 'CustomScript', 'SMA', script, {'onDownload': True, 'onUpgrade': True}):
+            log(f'CHANGED {name} SMA script')
 
         mm = request(f'{base}/config/mediamanagement', headers=headers)
         diff = differs(mm, app['media_management'])
@@ -240,19 +250,56 @@ def sync_bazarr(cfg):
         log('CHANGED bazarr: ' + ', '.join(sorted(d for d in drift if 'apikey' not in d) or ['apikeys']))
 
 
+def write_owned(path, text, mode):
+    if os.path.exists(path) and open(path).read() == text:
+        return False
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as f:
+        f.write(text)
+    os.chown(path, int(SPEC['uid']), int(SPEC['uid']))
+    os.chmod(path, mode)
+    return True
+
+
+def language_format(fmt, languages):
+    if 'except' in fmt:
+        matches = [(name, lid, False) for name, lid in languages.items() if lid > 0 and name not in fmt['except']]
+    else:
+        matches = [(fmt['language'], languages[fmt['language']], fmt.get('negate', False))]
+    return {'trash_id': hashlib.md5(fmt['name'].encode()).hexdigest(), 'name': fmt['name'], 'includeCustomFormatWhenRenaming': False,
+            'specifications': [{'name': name, 'implementation': 'LanguageSpecification', 'negate': negate, 'required': False,
+                                'fields': {'value': lid, 'exceptLanguage': False}} for name, lid, negate in matches]}
+
+
 def sync_recyclarr(cfg):
-    path = f'{CONFIGS}/recyclarr/secrets.yml'
     text = ''.join(f"{a['name']}_apikey: {arr_key(a['name'])}\n" for a in SPEC['arrs'])
-    if not os.path.exists(path) or open(path).read() != text:
-        with open(path, 'w') as f:
-            f.write(text)
-        os.chown(path, int(SPEC['uid']), int(SPEC['uid']))
-        os.chmod(path, 0o600)
+    if write_owned(f'{CONFIGS}/recyclarr/secrets.yml', text, 0o600):
         log('CHANGED recyclarr secrets')
+    radarr = arr('radarr')
+    languages = {l['name']: l['id'] for l in request(f"http://{HOST}:{radarr['port']}/api/v3/language", headers={'X-Api-Key': arr_key('radarr')})}
+    for fmt in cfg['language_formats']:
+        data = language_format(fmt, languages)
+        if write_owned(f"{CONFIGS}/recyclarr/language-formats/{data['trash_id']}.json", json.dumps(data, indent=2) + '\n', 0o644):
+            log(f"CHANGED recyclarr language format {fmt['name']}")
     out = subprocess.run(['pct', 'exec', str(cfg['lxc']), '--keep-env', '0', '--', 'docker', 'exec', 'recyclarr', 'recyclarr', 'sync'],
                          capture_output=True, text=True, check=True).stdout
     if re.search('Created|Updated|Deleted|has been updated', out):
         log('CHANGED recyclarr: ' + '; '.join(l.split('] ', 1)[-1] for l in out.splitlines() if re.search('Created|Updated|Deleted|has been updated', l)))
+
+
+def sync_profiles(cfg):
+    base = f"http://{HOST}:{cfg['port']}/api/v3"
+    headers = {'X-Api-Key': arr_key('radarr')}
+    profiles = {p['name']: p['id'] for p in request(f'{base}/qualityprofile', headers=headers)}
+    wanted = {language: rule['profile'] for rule in cfg['rules'] for language in rule['languages']}
+    moves = {}
+    for movie in request(f'{base}/movie', headers=headers):
+        profile = wanted.get((movie.get('originalLanguage') or {}).get('name'), cfg['default'])
+        if movie['qualityProfileId'] != profiles[profile]:
+            moves.setdefault(profile, []).append(movie['id'])
+    for profile, movie_ids in moves.items():
+        request(f'{base}/movie/editor', 'PUT', {'movieIds': movie_ids, 'qualityProfileId': profiles[profile]}, headers)
+        log(f'CHANGED radarr profile {profile}: {len(movie_ids)} movies')
 
 
 def sync_jellyfin(cfg):

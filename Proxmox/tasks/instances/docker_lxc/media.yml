@@ -3,6 +3,72 @@
       mapped_uid: '{{ instance.subuid | int + 1000 }}'
       library: /media/ssd/Media:/media
       svc: '{{ env.JARVIS_SERVICES }}'
+      ai_format:
+          trash_id: 1b1f4610de0b28bc563117b6c7e1f0a9
+          trash_scores: { default: -10000 }
+          name: AI or Interpolated
+          includeCustomFormatWhenRenaming: false
+          specifications:
+              - name: AI
+                implementation: ReleaseTitleSpecification
+                negate: false
+                required: false
+                fields: { value: '(?<=\b([12]\d{3}|S\d{1,2}(E\d{1,3})?)\b).*\bAI\b' }
+              - name: Frame Interpolation
+                implementation: ReleaseTitleSpecification
+                negate: false
+                required: false
+                fields: { value: '(?<=\b([12]\d{3}|S\d{1,2}(E\d{1,3})?)\b).*\b((60|120)[ ._-]?FPS|Interpolat(ed|ion))\b' }
+      hindi_format:
+          trash_id: 6f093141a75d7cac8b81e84cc77db787
+          trash_scores: { default: 1000 }
+          name: Hindi Audio
+          includeCustomFormatWhenRenaming: false
+          specifications:
+              - name: Hindi
+                implementation: ReleaseTitleSpecification
+                negate: false
+                required: false
+                fields: { value: '(?<=\b([12]\d{3}|S\d{1,2}(E\d{1,3})?)\b).*\b(Hindi|HIN)\b' }
+      movie_profiles:
+          hollywood: UHD Bluray + WEB
+          bollywood: UHD Bluray + WEB (Bollywood)
+          regional: UHD Bluray + WEB (Indian Regional)
+          foreign: UHD Bluray + WEB (Foreign)
+      regional_languages: [Tamil, Telugu, Malayalam, Kannada, Marathi, Bengali]
+      language_formats:
+          - { name: Has Hindi, language: Hindi, scores: { hollywood: 500 } }
+          - { name: Missing Hindi, language: Hindi, negate: true, scores: { regional: -10000 } }
+          - { name: Has English, language: English, scores: { foreign: 500 } }
+          - { name: Extra Language (Hollywood), except: [English, Hindi], scores: { hollywood: -250 } }
+          - { name: Extra Language (Bollywood), except: [Hindi], scores: { bollywood: -250 } }
+          - { name: Extra Language (Indian Regional), except: "{{ ['Hindi'] + regional_languages }}", scores: { regional: -250 } }
+      audio_scores:
+          - { name: DD+ ATMOS, radarr: 1af239278386be2919e1bcee0bde047e, sonarr: 4232a509ce60c4e208d13825b7c06264, score: 5000 }
+          - { name: ATMOS (undefined), radarr: 417804f7f2c4308c1f4c5d380d4c4475, sonarr: b6fbafa7942952a13e17e2b1152b539a, score: 3500 }
+          - { name: DD+, radarr: 185f1dd7264c4562b9022d963ac37424, sonarr: 63487786a8b01b7f20dd2bc90dd4a477, score: 3000 }
+          - { name: AAC, radarr: 240770601cc226190c367ef59aba7463, sonarr: a50b8a0c62274a7c38b09a9619ba9d86, score: 2000 }
+          - { name: DD, radarr: c2998bd0d90ed5621d8df281e839436e, sonarr: dbe00161b08a25ac6154c55f95e6318d, score: 1750 }
+          - { name: TrueHD ATMOS, radarr: 496f355514737f7d83bf7aa4d24f8169, sonarr: 0d7824bb924701997f874e7ff7d4844a, score: 1500 }
+          - { name: DTS X, radarr: 2f22d89048b01681dde8afe203bf2e95, sonarr: 9d00418ba386a083fbf4d58235fc37ef, score: 1250 }
+          - { name: TrueHD, radarr: 3cafb66171b47f226146a0770576870f, sonarr: 1808e4b9cee74e064dfae3f1db99dbfe, score: 1000 }
+          - { name: DTS-HD MA, radarr: dcf3ec6938fa32445f590a4da84256cd, sonarr: c429417a57ea8c41d57e6990a8b0033f, score: 1000 }
+          - { name: FLAC, radarr: a570d4a0e56a2874b64e5bfa55202a1b, sonarr: 851bd64e04c9374c51102be3dd9ae4cc, score: 750 }
+          - { name: PCM, radarr: e7c2fcae07cbada050a0af3357491d7b, sonarr: 30f70576671ca933adbdcfc736a69718, score: 750 }
+          - { name: DTS-HD HRA, radarr: 8e109e50e0a0b83a5098b056e13bf6db, sonarr: cfa5fbd8f02a86fc55d8d223d06a5e1f, score: 750 }
+          - { name: DTS-ES, radarr: f9f847ac70a0af62ea4a08280b859636, sonarr: c1a25cd67b5d2e08287c957b1eb903ec, score: 500 }
+          - { name: DTS, radarr: 1c1a4c5e823891c75bc50380a6866f73, sonarr: 5964f2a8b3be407d083498e4459d05d0, score: 500 }
+      sma_settings:
+          - { section: Metadata, option: tag, value: 'False' }
+          - { section: Metadata, option: download-artwork, value: '' }
+          - { section: Video, option: codec, value: 'h264, x264, hevc, h265, x265, av1' }
+          - { section: Audio, option: codec, value: 'eac3, ac3, aac' }
+          - { section: Audio, option: max-channels, value: '6' }
+          - { section: Audio, option: stream-codec-combinations, value: 'truehd:eac3, eac3:truehd, truehd:ac3, ac3:truehd, dts:eac3, eac3:dts, dts:ac3, ac3:dts' }
+          - { section: Universal Audio, option: codec, value: '' }
+          - { section: Subtitle, option: languages, value: 'eng, hin' }
+          - { section: Radarr, option: force-rename, value: 'True' }
+          - { section: Sonarr, option: force-rename, value: 'True' }
       media_apps:
           - name: flaresolverr
             image: ghcr.io/flaresolverr/flaresolverr:v3.5.2
@@ -18,16 +84,18 @@
             volumes: ['{{ library }}']
             health: ['CMD', 'curl', '-fs', 'http://localhost:8080']
           - name: radarr
-            image: lscr.io/linuxserver/radarr:6.4.4.10685-ls318
+            image: mdhiggins/radarr-sma:latest@sha256:6f156d617313da465a0c5b9274ee2f3afd579efe7b75d5cd4a93c0be3c0ed0e2
             lsio: true
             ports: ['{{ svc.radarr.port }}:7878']
-            volumes: ['{{ library }}']
+            environment: ['SMA_USE_REPO=true']
+            volumes: ['{{ library }}', '{{ instance.configs }}/{{ stack_name }}/radarr/sma:/usr/local/sma/config']
             health: ['CMD', 'curl', '-fs', 'http://localhost:7878/ping']
           - name: sonarr
-            image: lscr.io/linuxserver/sonarr:4.0.20.3014-ls326
+            image: mdhiggins/sonarr-sma:latest@sha256:a99f35f9616965035c84f53870f801dafa575e5918367aac44cef9b0d3f0943d
             lsio: true
             ports: ['{{ svc.sonarr.port }}:8989']
-            volumes: ['{{ library }}']
+            environment: ['SMA_USE_REPO=true']
+            volumes: ['{{ library }}', '{{ instance.configs }}/{{ stack_name }}/sonarr/sma:/usr/local/sma/config']
             health: ['CMD', 'curl', '-fs', 'http://localhost:8989/ping']
           - name: prowlarr
             image: lscr.io/linuxserver/prowlarr:2.6.5.5623-ls162
@@ -54,9 +122,17 @@
           host: '{{ instance.ip }}'
           configs: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}'
           uid: '{{ mapped_uid | int }}'
-          steps: [qbittorrent, arrs, recyclarr, prowlarr, bazarr, jellyfin, jellyseerr]
+          steps: [qbittorrent, arrs, recyclarr, profiles, prowlarr, bazarr, jellyfin, jellyseerr]
           recyclarr:
               lxc: '{{ id }}'
+              language_formats: '{{ language_formats }}'
+          profiles:
+              port: '{{ svc.radarr.port }}'
+              default: '{{ movie_profiles.foreign }}'
+              rules:
+                  - { profile: '{{ movie_profiles.hollywood }}', languages: [English] }
+                  - { profile: '{{ movie_profiles.bollywood }}', languages: [Hindi] }
+                  - { profile: '{{ movie_profiles.regional }}', languages: '{{ regional_languages }}' }
           qbittorrent:
               port: '{{ svc.qbittorrent.port }}'
               categories:
@@ -77,9 +153,9 @@
                   web_ui_host_header_validation_enabled: false
                   web_ui_username: '{{ env.JARVIS_ADMIN_USERNAME }}'
                   max_ratio_enabled: true
-                  max_ratio: 2
+                  max_ratio: 0
                   max_seeding_time_enabled: true
-                  max_seeding_time: 10080
+                  max_seeding_time: 0
                   max_ratio_act: 0
           arrs:
               - name: radarr
@@ -181,12 +257,76 @@
         loop_control:
             loop_var: media_dir
 
+      - name: '{{ stack_name | upper }}: Create SMA Config Directories'
+        file:
+            path: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}/{{ sma_dir }}'
+            state: directory
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+        loop: [radarr, radarr/sma, sonarr, sonarr/sma]
+        loop_control:
+            loop_var: sma_dir
+
+      - name: '{{ stack_name | upper }}: Write SMA Settings'
+        ini_file:
+            path: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}/{{ sma_setting.0 }}/sma/autoProcess.ini'
+            section: '{{ sma_setting.1.section }}'
+            option: '{{ sma_setting.1.option }}'
+            value: '{{ sma_setting.1.value }}'
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+        loop: "{{ ['radarr', 'sonarr'] | product(sma_settings) | list }}"
+        loop_control:
+            loop_var: sma_setting
+            label: '{{ sma_setting.0 }} {{ sma_setting.1.section }}.{{ sma_setting.1.option }}'
+
       - name: '{{ stack_name | upper }}: Deploy Apps'
         include_tasks: media/compose.yml
         loop: '{{ media_apps }}'
         loop_control:
             loop_var: media_app
             label: '{{ media_app.name }}'
+
+      - name: '{{ stack_name | upper }}: Configure Recyclarr Custom Formats Directory'
+        file:
+            path: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}/recyclarr/custom-formats'
+            state: directory
+            mode: '0777'
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+
+      - name: '{{ stack_name | upper }}: Write Recyclarr Custom Formats'
+        copy:
+            dest: "{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}/recyclarr/custom-formats/{{ custom_format.name | lower | regex_replace('[^a-z0-9]+', '-') }}.json"
+            content: "{{ custom_format | to_nice_json }}\n"
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            mode: '0666'
+        loop: ['{{ ai_format }}', '{{ hindi_format }}']
+        loop_control:
+            loop_var: custom_format
+            label: '{{ custom_format.name }}'
+
+      - name: '{{ stack_name | upper }}: Write Recyclarr Settings'
+        copy:
+            dest: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}/recyclarr/settings.yml'
+            content: |
+                resource_providers:
+                  - name: jarvis-radarr
+                    type: custom-formats
+                    path: custom-formats
+                    service: radarr
+                  - name: jarvis-sonarr
+                    type: custom-formats
+                    path: custom-formats
+                    service: sonarr
+                  - name: jarvis-radarr-languages
+                    type: custom-formats
+                    path: language-formats
+                    service: radarr
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+            mode: '0666'
 
       - name: '{{ stack_name | upper }}: Write Recyclarr Config'
         copy:
@@ -199,17 +339,51 @@
                     delete_old_custom_formats: true
                     quality_definition:
                       type: movie
+                      qualities:
+                        - { name: Bluray-2160p, preferred: 120, max: 190 }
+                        - { name: WEBDL-2160p, preferred: 120, max: 190 }
+                        - { name: WEBRip-2160p, preferred: 120, max: 190 }
+                        - { name: Bluray-1080p, preferred: 60, max: 100 }
+                        - { name: WEBDL-1080p, preferred: 60, max: 100 }
+                        - { name: WEBRip-1080p, preferred: 60, max: 100 }
                     quality_profiles:
+                {% for profile in movie_profiles.values() %}
                       - trash_id: 64fb5f9858489bdac2af690e27c8f42f
+                        name: {{ profile }}
                         reset_unmatched_scores:
                           enabled: true
+                        upgrade:
+                          allowed: true
+                          until_quality: 2160p
+                          until_score: 10000
                         qualities:
-                          - name: Bluray-2160p
-                          - name: WEB 2160p
-                            qualities: [WEBDL-2160p, WEBRip-2160p]
-                          - name: Bluray-1080p
-                          - name: WEB 1080p
-                            qualities: [WEBDL-1080p, WEBRip-1080p]
+                          - name: 2160p
+                            qualities: [Bluray-2160p, WEBDL-2160p, WEBRip-2160p]
+                          - name: 1080p
+                            qualities: [Bluray-1080p, WEBDL-1080p, WEBRip-1080p]
+                {% endfor %}
+                    custom_formats:
+                      - trash_ids: [{{ ai_format.trash_id }}]
+                        assign_scores_to:
+                {% for profile in movie_profiles.values() %}
+                          - name: {{ profile }}
+                {% endfor %}
+                {% for format in language_formats %}
+                      - trash_ids: [{{ format.name | hash('md5') }}]
+                        assign_scores_to:
+                {% for key, score in format.scores.items() %}
+                          - name: {{ movie_profiles[key] }}
+                            score: {{ score }}
+                {% endfor %}
+                {% endfor %}
+                {% for audio in audio_scores %}
+                      - trash_ids: [{{ audio.radarr }}]
+                        assign_scores_to:
+                {% for profile in movie_profiles.values() %}
+                          - name: {{ profile }}
+                            score: {{ audio.score }}
+                {% endfor %}
+                {% endfor %}
                     media_naming:
                       folder: jellyfin-tmdb
                       movie:
@@ -229,6 +403,17 @@
                       - trash_id: 20e0fc959f1f1704bed501f23bdae76f
                         reset_unmatched_scores:
                           enabled: true
+                    custom_formats:
+                      - trash_ids: [{{ ai_format.trash_id }}, {{ hindi_format.trash_id }}]
+                        assign_scores_to:
+                          - trash_id: c4cadd6b35b95f62c3d47a408e53e2f7
+                          - trash_id: 20e0fc959f1f1704bed501f23bdae76f
+                {% for audio in audio_scores %}
+                      - trash_ids: [{{ audio.sonarr }}]
+                        assign_scores_to:
+                          - trash_id: c4cadd6b35b95f62c3d47a408e53e2f7
+                            score: {{ audio.score }}
+                {% endfor %}
                     media_naming:
                       series: jellyfin-tvdb
                       season: default
@@ -255,3 +440,15 @@
             MEDIA_PASSWORD: '{{ env.JARVIS_ADMIN_PASSWORD }}'
         register: media_sync_result
         changed_when: "'CHANGED' in media_sync_result.stdout"
+
+      - name: '{{ stack_name | upper }}: Write Profile Sync Spec'
+        copy:
+            content: "{{ media_sync | combine({'steps': ['profiles']}) | to_json }}\n"
+            dest: '{{ env.JARVIS_DIR }}/media-profiles.json'
+            mode: '0600'
+
+      - name: '{{ stack_name | upper }}: Schedule Profile Sync'
+        cron:
+            name: Move Radarr movies to the profile for their original language
+            minute: '*/15'
+            job: 'python3 {{ env.JARVIS_DIR }}/media-sync.py {{ env.JARVIS_DIR }}/media-profiles.json 2>&1 | logger -t media-profiles'
