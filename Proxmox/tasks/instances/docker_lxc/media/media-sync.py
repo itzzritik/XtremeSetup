@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -15,6 +16,14 @@ import yaml
 SPEC = json.loads(os.environ.get('MEDIA_SYNC') or open(sys.argv[1]).read())
 USER = os.environ.get('MEDIA_USER', '')
 PASSWORD = os.environ.get('MEDIA_PASSWORD', '')
+ARR_KEY = os.environ.get('MEDIA_ARR_KEY', '')
+JELLYFIN_KEY_INSERT = '''
+import datetime, sqlite3, sys
+now = datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%d %H:%M:%S.%f')
+db = sqlite3.connect('/var/lib/jellyfin/data/jellyfin.db')
+db.execute('insert into ApiKeys (DateCreated, DateLastActivity, Name, AccessToken) values (?, ?, ?, ?)', (now, '0001-01-01 00:00:00', 'Jarvis', sys.stdin.read().strip()))
+db.commit()
+'''
 HOST = SPEC['host']
 CONFIGS = SPEC['configs']
 
@@ -69,7 +78,7 @@ def upsert(base, items, match, payload, headers, label):
     if item is None:
         request(base, 'POST', payload, headers)
     else:
-        request(f"{base}/{item['id']}", 'PUT', dict(item, **payload), headers)
+        request(f"{base}/{item['id']}", 'PUT', {k: v for k, v in dict(item, **payload).items() if k != 'id'}, headers)
     log(f'CHANGED {label}')
     return True
 
@@ -208,7 +217,7 @@ def sync_prowlarr(cfg):
         changed = True
 
     if changed:
-        request(f'{base}/command', 'POST', {'name': 'ApplicationIndexerSync'}, headers)
+        request(f'{base}/command', 'POST', {'name': 'ApplicationIndexerSync', 'forceSync': True}, headers)
 
 
 def sync_bazarr(cfg):
@@ -269,6 +278,60 @@ def language_format(fmt, languages):
     return {'trash_id': hashlib.md5(fmt['name'].encode()).hexdigest(), 'name': fmt['name'], 'includeCustomFormatWhenRenaming': False,
             'specifications': [{'name': name, 'implementation': 'LanguageSpecification', 'negate': negate, 'required': False,
                                 'fields': {'value': lid, 'exceptLanguage': False}} for name, lid, negate in matches]}
+
+
+def pct(lxc, *args, stdin=None):
+    subprocess.run(['pct', 'exec', str(lxc), '--keep-env', '0', '--', *args], input=stdin, text=True, capture_output=True, check=True)
+
+
+def wait_up(url):
+    for _ in range(90):
+        try:
+            return request(url)
+        except Exception:
+            time.sleep(2)
+    raise RuntimeError(f'{url} did not come back')
+
+
+def sync_keys(cfg):
+    ports = {'radarr': arr('radarr')['port'], 'sonarr': arr('sonarr')['port'], 'prowlarr': SPEC['prowlarr']['port']}
+    for name, port in ports.items():
+        path = f'{CONFIGS}/{name}/config.xml'
+        if arr_key(name) != ARR_KEY:
+            text = re.sub(r'<ApiKey>[^<]*</ApiKey>', f'<ApiKey>{ARR_KEY}</ApiKey>', open(path).read())
+            with open(path, 'w') as f:
+                f.write(text)
+            pct(cfg['lxc'], 'docker', 'restart', name)
+            wait_up(f'http://{HOST}:{port}/ping')
+            log(f'CHANGED {name} api key')
+
+    path = f'{CONFIGS}/jellyseerr/settings.json'
+    if json.load(open(path))['main']['apiKey'] != ARR_KEY:
+        pct(cfg['lxc'], 'docker', 'stop', 'jellyseerr')
+        settings = json.load(open(path))
+        settings['main']['apiKey'] = ARR_KEY
+        with open(path, 'w') as f:
+            json.dump(settings, f, indent=1)
+        pct(cfg['lxc'], 'docker', 'start', 'jellyseerr')
+        wait_up(f"http://{HOST}:{SPEC['jellyseerr']['port']}/api/v1/status")
+        log('CHANGED seerr api key')
+
+    current = yaml.safe_load(open(f'{CONFIGS}/bazarr/config/config.yaml'))['auth']['apikey']
+    if current != ARR_KEY:
+        request(f"http://{HOST}:{SPEC['bazarr']['port']}/api/system/settings", 'POST', [('settings-auth-apikey', ARR_KEY)], {'X-API-KEY': current}, form=True)
+        log('CHANGED bazarr api key')
+
+    jellyfin = SPEC['jellyfin']['url']
+    try:
+        request(f'{jellyfin}/System/Info', headers={'Authorization': f'MediaBrowser Token="{ARR_KEY}"'})
+    except urllib.error.HTTPError as err:
+        if err.code != 401:
+            raise
+        pct(cfg['jellyfin_lxc'], 'systemctl', 'stop', 'jellyfin')
+        pct(cfg['jellyfin_lxc'], 'python3', '-c', JELLYFIN_KEY_INSERT, stdin=ARR_KEY)
+        pct(cfg['jellyfin_lxc'], 'systemctl', 'start', 'jellyfin')
+        wait_up(f'{jellyfin}/System/Info/Public')
+        log('CHANGED jellyfin api key')
 
 
 def sync_recyclarr(cfg):

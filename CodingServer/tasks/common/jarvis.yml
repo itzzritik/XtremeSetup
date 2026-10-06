@@ -1,0 +1,65 @@
+---
+- vars:
+      app_name: jarvis
+      root: '{{ configs_dir }}/jarvis'
+  block:
+      - name: '{{ app_name | upper }}: Configure Directory'
+        ansible.builtin.file:
+            path: '{{ root }}'
+            state: directory
+            owner: '{{ user }}'
+            group: '{{ user }}'
+
+      - name: '{{ app_name | upper }}: Install Script'
+        ansible.builtin.copy:
+            src: jarvis.ts
+            dest: '{{ root }}/jarvis.ts'
+            owner: '{{ user }}'
+            group: '{{ user }}'
+        register: jarvis_script
+
+      - name: '{{ app_name | upper }}: Write Token File'
+        ansible.builtin.copy:
+            dest: '{{ root }}/env'
+            content: 'JARVIS_TOKEN={{ env.JARVIS_VOICE_TOKEN }}'
+            owner: root
+            group: root
+            mode: '0600'
+        no_log: true
+        register: jarvis_env
+
+      - name: '{{ app_name | upper }}: Configure Service'
+        ansible.builtin.include_tasks: '{{ lib }}/service.yml'
+        vars:
+            service:
+                name: jarvis
+                restart: '{{ jarvis_script is changed or jarvis_env is changed }}'
+                content: |
+                    [Unit]
+                    Description=Jarvis voice bridge to AionUi
+                    After=aionui.service
+                    Wants=aionui.service
+
+                    [Service]
+                    User={{ user }}
+                    EnvironmentFile={{ root }}/env
+                    Environment=AIONUI_URL=http://127.0.0.1:{{ services.aionui.port }}
+                    Environment=JARVIS_MEDIA_URL=https://media.{{ env.JARVIS_DOMAIN }}
+                    Environment=JARVIS_NAME={{ env.RITIK_NAME.split() | first }}
+                    Environment=JARVIS_PORT={{ services[app_name].port }}
+                    Environment=JARVIS_REQUEST_URL=https://request.{{ env.JARVIS_DOMAIN }}
+                    Environment=JARVIS_STATE={{ root }}/state.json
+                    ExecStart={{ bun_bin }}/bun {{ root }}/jarvis.ts
+                    Restart=on-failure
+                    RestartSec=3s
+
+                    [Install]
+                    WantedBy=multi-user.target
+
+      - name: '{{ app_name | upper }}: Check Health'
+        ansible.builtin.uri:
+            url: 'http://127.0.0.1:{{ services[app_name].port }}/health'
+        register: jarvis_health
+        until: jarvis_health.status == 200
+        retries: 15
+        delay: 2

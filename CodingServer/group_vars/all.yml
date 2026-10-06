@@ -25,6 +25,7 @@ vscode_settings_extra: {}
 services:
     vscode-web: { subdomain: code, port: 27193 }
     aionui: { subdomain: vibe, port: 41789 }
+    jarvis: { subdomain: jarvis, port: 41790 }
     opencode: { subdomain: opencode, port: 34521 }
 
 databases:
@@ -50,6 +51,8 @@ doppler_keys:
     - JARVIS_BOT_TELEGRAM_KEY
     - JARVIS_AI_GROQ_KEY
     - JARVIS_HOMEASSISTANT_KEY
+    - JARVIS_ARR_API_KEY
+    - JARVIS_VOICE_TOKEN
     - JARVIS_VIRA_ACTIVATION
 
 common_tasks:
@@ -62,5 +65,6 @@ common_tasks:
     - common/vscode-web
     - common/opencode
     - common/aionui
+    - common/jarvis
     - common/databases
     - common/caddy

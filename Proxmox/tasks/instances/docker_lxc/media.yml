@@ -113,7 +113,7 @@
             image: ghcr.io/seerr-team/seerr:v3.5.0
             init: true
             ports: ['{{ svc.jellyseerr.port }}:5055']
-            environment: ['LOG_LEVEL=info']
+            environment: ['LOG_LEVEL=info', 'NODE_OPTIONS=--require=/app/config/tmdb-alias.js', "TMDB_ALIAS={{ lookup('file', 'media/tmdb-alias.js') | hash('md5') }}"]
             config_mount: /app/config
             health: ['CMD-SHELL', 'wget -q --spider http://localhost:5055/api/v1/status || exit 1']
           - name: recyclarr
@@ -123,7 +123,10 @@
           host: '{{ instance.ip }}'
           configs: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}'
           uid: '{{ mapped_uid | int }}'
-          steps: [qbittorrent, arrs, recyclarr, profiles, prowlarr, bazarr, jellyfin, jellyseerr]
+          steps: [keys, qbittorrent, arrs, recyclarr, profiles, prowlarr, bazarr, jellyfin, jellyseerr]
+          keys:
+              lxc: '{{ id }}'
+              jellyfin_lxc: '{{ svc.jellyfin.id }}'
           recyclarr:
               lxc: '{{ id }}'
               language_formats: '{{ language_formats }}'
@@ -158,6 +161,7 @@
                   max_ratio: 0
                   max_seeding_time_enabled: true
                   max_seeding_time: 0
+                  queueing_enabled: false
                   max_ratio_act: 0
           arrs:
               - name: radarr
@@ -260,15 +264,22 @@
         loop_control:
             loop_var: media_dir
 
-      - name: '{{ stack_name | upper }}: Create SMA Config Directories'
+      - name: '{{ stack_name | upper }}: Create App Config Directories'
         file:
-            path: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}/{{ sma_dir }}'
+            path: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}/{{ config_dir }}'
             state: directory
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
-        loop: [radarr, radarr/sma, sonarr, sonarr/sma]
+        loop: [radarr, radarr/sma, sonarr, sonarr/sma, jellyseerr]
         loop_control:
-            loop_var: sma_dir
+            loop_var: config_dir
+
+      - name: '{{ stack_name | upper }}: Write Seerr TMDB Alias'
+        copy:
+            content: "{{ lookup('file', 'media/tmdb-alias.js') }}\n"
+            dest: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}/jellyseerr/tmdb-alias.js'
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
 
       - name: '{{ stack_name | upper }}: Write SMA Settings'
         ini_file:
@@ -457,6 +468,7 @@
             MEDIA_SYNC: '{{ media_sync | to_json }}'
             MEDIA_USER: '{{ env.JARVIS_ADMIN_USERNAME }}'
             MEDIA_PASSWORD: '{{ env.JARVIS_ADMIN_PASSWORD }}'
+            MEDIA_ARR_KEY: '{{ env.JARVIS_ARR_API_KEY }}'
         register: media_sync_result
         changed_when: "'CHANGED' in media_sync_result.stdout"
 

@@ -86,6 +86,11 @@
         reverse_proxy localhost:{{ services.aionui.port }}
     }
 
+    @jarvis host {{ services.jarvis.subdomain }}.{{ domain }}
+    handle @jarvis {
+        reverse_proxy localhost:{{ services.jarvis.port }}
+    }
+
     @opencode host {{ services.opencode.subdomain }}.{{ domain }}
     handle @opencode {
         reverse_proxy localhost:{{ services.opencode.port }} {

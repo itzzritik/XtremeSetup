@@ -8,8 +8,11 @@
         ansible.builtin.shell: |
             set -o pipefail
             doppler secrets get {{ password_key }} {{ doppler_args }} --plain 2>/dev/null && exit 0
-            openssl rand -hex 16 | tr -d '\n' | doppler secrets set {{ password_key }} {{ doppler_args }} --silent >/dev/null
-            doppler secrets get {{ password_key }} {{ doppler_args }} --plain
+            password=$(openssl rand -hex 16)
+            for config in prd dev; do
+                printf %s "$password" | doppler secrets set {{ password_key }} --project jarvis --config "$config" --silent >/dev/null
+            done
+            printf '%s\n' "$password"
             echo generated >&2
         delegate_to: localhost
         become: false

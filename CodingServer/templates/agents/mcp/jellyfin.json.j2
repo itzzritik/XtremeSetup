@@ -1,0 +1,11 @@
+{
+  "type": "stdio",
+  "command": "jellyfin-mcp",
+  "args": ["--read-only", "--toolsets", "discovery,media,analytics"],
+  "env": {
+    "JELLYFIN_URL": "https://media.{{ env.JARVIS_DOMAIN }}",
+    "JELLYFIN_API_KEY": "{{ env.JARVIS_ARR_API_KEY }}",
+    "JELLYFIN_USER_ID": "root",
+    "TZ": "{{ timezone }}"
+  }
+}
