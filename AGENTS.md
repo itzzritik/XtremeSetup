@@ -35,6 +35,9 @@ Don't re-run the full playbook to iterate.
   tasks in `tasks/archive/`.
 - `CodingServer/`: full module names (`ansible.builtin.copy`, not `copy`), facts only via
   `ansible_facts.*`, and `ansible-lint` (run inside `CodingServer/`) must pass.
+- Languages: Ansible YAML for setup and config, stdlib-only Python for any logic, Bash only
+  for thin entry points and wrappers. Use another language only where the runtime forces it
+  (browser JS/CSS, code loaded inside a Node app, PowerShell on Windows).
 - Never commit, amend, or push without explicit ask.
 
 ## Windows

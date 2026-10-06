@@ -12,8 +12,8 @@
 
       - name: '{{ app_name | upper }}: Install Script'
         ansible.builtin.copy:
-            src: jarvis.ts
-            dest: '{{ root }}/jarvis.ts'
+            src: jarvis.py
+            dest: '{{ root }}/jarvis.py'
             owner: '{{ user }}'
             group: '{{ user }}'
         register: jarvis_script
@@ -49,7 +49,7 @@
                     Environment=JARVIS_PORT={{ services[app_name].port }}
                     Environment=JARVIS_REQUEST_URL=https://request.{{ env.JARVIS_DOMAIN }}
                     Environment=JARVIS_STATE={{ root }}/state.json
-                    ExecStart={{ bun_bin }}/bun {{ root }}/jarvis.ts
+                    ExecStart=/usr/bin/python3 {{ root }}/jarvis.py
                     Restart=on-failure
                     RestartSec=3s
 
