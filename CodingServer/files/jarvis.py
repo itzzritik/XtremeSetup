@@ -19,22 +19,25 @@ MEDIA = os.environ['JARVIS_MEDIA_URL']
 REQUEST = os.environ['JARVIS_REQUEST_URL']
 VOICE = ('You are Jarvis, speaking through Siri. Answer in one to three short spoken sentences of plain text, with no formatting, lists or links. '
          'Skip greetings, never mention connectors, logins or setup issues, and ask before doing anything that changes something. '
-         'When asked to open, play or show one title, end with [open:jellyfin:ITEM_ID] if it is in the Jellyfin library, else [open:movie:TMDB_ID] or [open:tv:TMDB_ID].')
+         'When asked to open, play or show one title, end with [open:jellyfin:ITEM_ID] if it is in the Jellyfin library, else [open:movie:TMDB_ID] or [open:tv:TMDB_ID]. '
+         'If the user wants a new topic or a fresh conversation, reply only [jarvis:new]. '
+         'If the user wants to change the agent, model or thinking level, reply only [jarvis:use agent=AGENT model=MODEL thinking=LEVEL] in their words, '
+         'leaving out parts they did not mention; AGENT is claude, antigravity, codex or opencode, and agy means antigravity.')
 AGENTS = {'claude': 'Claude Code', 'antigravity': 'Antigravity', 'codex': 'Codex', 'opencode': 'OpenCode'}
-ALIASES = {
-    'claude': r'\b(claude|claud|cloud)\b',
-    'antigravity': r'\b(agy|aggie|a g y|antigravity|anti gravity|gemini)\b',
-    'codex': r'\bcodex\b',
-    'opencode': r'\bopen ?code\b',
-}
+AGENT_WORDS = {'claude': {'claude', 'anthropic'}, 'antigravity': {'agy', 'antigravity'}, 'codex': {'codex', 'openai'}, 'opencode': {'opencode', 'open'}}
+FILLER = {'code', 'model', 'version', 'latest', 'newest', 'thinking', 'reasoning', 'effort', 'level', 'with', 'the', 'and', 'use', 'to', 'on'}
+LEVELS = ['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']
+LEVEL_WORDS = {'minimal': 'low', 'low': 'low', 'med': 'medium', 'medium': 'medium', 'normal': 'medium', 'high': 'high',
+               'xhigh': 'xhigh', 'extra': 'xhigh', 'very': 'xhigh', 'max': 'max', 'maximum': 'max', 'highest': 'max', 'ultra': 'ultracode', 'ultracode': 'ultracode'}
 LINKS = {'jellyfin': f'{MEDIA}/web/#/details?id={{}}', 'movie': f'{REQUEST}/movie/{{}}', 'tv': f'{REQUEST}/tv/{{}}'}
 ASKS = ["what's up?", 'what do you need?', "what's on your mind?", 'how can I help?', 'what can I do for you?']
 GOODBYE = re.compile(r"^\W*(done|stop|thanks|thank you|that'?s all|bye|goodbye)\W*$", re.I)
-NEW_TOPIC = re.compile(r'^\W*(new (topic|conversation|chat)|start over|reset)\b', re.I)
-SWITCH = re.compile(r'^\W*(switch|change)\b', re.I)
 OPEN = re.compile(r'\[open:(jellyfin|movie|tv):([\w-]+)\]', re.I)
+USE = re.compile(r'\[jarvis:use([^\]]*)\]', re.I)
+FIELD = re.compile(r'(agent|model|thinking)=(.*?)(?=\s+(?:agent|model|thinking)=|$)', re.I)
 TURN_TIMEOUT = 55
 POLL = 0.1
+FULL = 0.9
 
 lock = threading.Lock()
 
@@ -55,9 +58,9 @@ def save():
         json.dump(state, f)
 
 
-def api(path, body=None):
+def api(path, body=None, method=None):
     data = None if body is None else json.dumps(body).encode()
-    req = urllib.request.Request(f'{API}{path}', data=data, headers={'content-type': 'application/json'})
+    req = urllib.request.Request(f'{API}{path}', data=data, headers={'content-type': 'application/json'}, method=method)
     try:
         with urllib.request.urlopen(req, timeout=30) as res:
             return res.status, json.loads(res.read() or b'{}').get('data')
@@ -65,16 +68,90 @@ def api(path, body=None):
         return err.code, None
 
 
+def tokens(text):
+    return re.findall(r'[a-z]+|\d+(?:\.\d+)?', (text or '').lower())
+
+
+def level(text):
+    words = {LEVEL_WORDS[w] for w in tokens(text) if w in LEVEL_WORDS}
+    return next((name for name in reversed(LEVELS) if name in words), None)
+
+
+def nearest(wanted, available):
+    rank = lambda name: abs(LEVELS.index(name) - LEVELS.index(wanted))
+    return min((a for a in available if a in LEVELS), key=rank, default=None) if wanted else None
+
+
+def assistant(agent):
+    kind = lambda a: (a.get('agent') or {}).get('acp_backend') or (a.get('agent') or {}).get('type')
+    match = next((a for a in api('/assistants')[1] or [] if a.get('source') == 'generated' and kind(a) == agent), None)
+    if not match:
+        raise RuntimeError(f'{AGENTS[agent]} is not available')
+    return match['id']
+
+
+def catalog(agent):
+    row_id = assistant(agent).split(':')[-1]
+    row = next((r for r in api('/agents/management')[1] or [] if r.get('id') == row_id), {})
+    return [m for m in (row.get('available_models') or {}).get('available_models') or [] if m['id'] != 'default']
+
+
+def version(model):
+    found = re.search(r'\d+(?:\.\d+)*', model.get('label') or model['id'])
+    return tuple(int(part) for part in found[0].split('.')) if found else ()
+
+
+def resolve(agent, wanted, effort):
+    words = [w for w in tokens(wanted) if w not in AGENT_WORDS[agent] | FILLER and w not in LEVEL_WORDS]
+    models = catalog(agent)
+    has = lambda m, needed: all(w in tokens(m.get('label') if w[0].isdigit() else f"{m['id']} {m.get('label', '')}") for w in needed)
+    found = [m for m in models if has(m, words)] or [m for m in models if has(m, [w for w in words if not w[0].isdigit()])]
+    if not words or not found:
+        raise RuntimeError(f"I couldn't find {wanted} for {AGENTS[agent]}")
+    newest = max(map(version, found))
+    found = [m for m in found if version(m) == newest]
+    variants = {m['id'].rsplit('-', 1)[-1]: m for m in found if m['id'].rsplit('-', 1)[-1] in LEVELS}
+    pick = nearest(effort or 'high', variants)
+    return variants[pick] if pick else found[0]
+
+
 def conversation():
     if state.get('conversation') and api(f"/conversations/{state['conversation']}")[0] == 200:
         return state['conversation']
-    agent = lambda a: (a.get('agent') or {}).get('acp_backend') or (a.get('agent') or {}).get('type')
-    match = next((a for a in api('/assistants')[1] or [] if a.get('source') == 'generated' and agent(a) == state['agent']), None)
-    if not match:
-        raise RuntimeError(f"{AGENTS[state['agent']]} is not available")
-    state['conversation'] = api('/conversations', {'assistant': {'id': match['id']}, 'name': 'Jarvis', 'extra': {'session_mode': 'yolo'}})[1]['id']
+    overrides = {k: v for k, v in {'model': state.get('model'), 'thought_level': state.get('effort')}.items() if v}
+    body = {'assistant': {'id': assistant(state['agent']), 'conversation_overrides': overrides}, 'name': 'Jarvis', 'extra': {'session_mode': 'yolo', 'preset_context': VOICE}}
+    state['conversation'] = api('/conversations', body)[1]['id']
     save()
     return state['conversation']
+
+
+def configure(cid, option, value):
+    status, data = api(f'/conversations/{cid}/config-options/{option}', {'value': value}, 'PUT')
+    if status != 200 or (data or {}).get('confirmation') == 'command_ack':
+        raise RuntimeError(f'AionUi rejected the {option} change ({status})')
+
+
+def use(fields):
+    agent = next((name for name, words in AGENT_WORDS.items() if set(tokens(fields.get('agent'))) & words), state['agent'])
+    effort = level(fields.get('thinking'))
+    wanted = fields.get('model') or (state.get('model') if agent == state['agent'] and agent == 'antigravity' and effort else None)
+    model = resolve(agent, wanted, effort) if wanted else None
+    current = model or next((m for m in catalog(agent) if m['id'] == state.get('model')), None)
+    effort = nearest(effort, (current.get('reasoning_efforts') or []) if current else LEVELS)
+    if agent != state['agent'] or agent == 'antigravity':
+        state.update(agent=agent, model=model and model['id'], effort=effort, conversation=None)
+    else:
+        cid = conversation()
+        api(f'/conversations/{cid}/runtime/ensure', {})
+        if model:
+            configure(cid, 'model', model['id'])
+            state['model'] = model['id']
+        if effort:
+            configure(cid, 'effort', effort)
+            state['effort'] = effort
+    save()
+    detail = ', '.join(filter(None, [model and model.get('label'), effort and f'{effort} thinking']))
+    return f"Using {AGENTS[agent]}{f' with {detail}' if detail else ''}."
 
 
 def busy(cid):
@@ -88,7 +165,7 @@ def latest(cid):
 def send(cid, text):
     for _ in range(300):
         if not busy(cid):
-            status, data = api(f'/conversations/{cid}/messages', {'content': f'{VOICE}\n\n{text}'})
+            status, data = api(f'/conversations/{cid}/messages', {'content': text})
             if data and data.get('turn_id'):
                 return
             if status != 409:
@@ -113,6 +190,21 @@ def reply(cid, previous):
     return 'Still working on that. Ask me again in a moment.'
 
 
+def full(cid):
+    usage = api(f'/conversations/{cid}/usage')[1] or {}
+    return bool(usage.get('size')) and usage.get('used', 0) / usage['size'] >= FULL
+
+
+def title(cid, first):
+    for _ in range(15):
+        data = api(f'/conversations/{cid}')[1] or {}
+        if data.get('name_source') == 'agent':
+            break
+        time.sleep(2)
+    topic = data.get('name') if data.get('name_source') == 'agent' else ' '.join(first.split()[:6])
+    api(f'/conversations/{cid}', {'name': f'Jarvis | {topic}', 'name_source': 'user'}, 'PATCH')
+
+
 def speakable(text):
     text = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', text)
     text = re.sub(r'^\s*[-•*]\s+', '', text, flags=re.M)
@@ -129,22 +221,27 @@ def greeting():
 def ask(text):
     if GOODBYE.match(text):
         return {'say': 'Goodbye.'}
-    agent = SWITCH.match(text) and next((name for name, pattern in ALIASES.items() if re.search(pattern, text, re.I)), None)
-    if agent:
-        state.update(agent=agent, conversation=None)
-        save()
-        return {'say': f'Switched to {AGENTS[agent]}.'}
-    if NEW_TOPIC.match(text):
-        state['conversation'] = None
-        save()
-        return {'say': 'Okay, starting fresh.'}
     cid = conversation()
     previous = latest(cid).get('id')
     send(cid, text)
     answer = reply(cid, previous)
+    if state.get('titled') != cid:
+        state['titled'] = cid
+        save()
+        threading.Thread(target=title, args=(cid, text), daemon=True).start()
+    if '[jarvis:new]' in answer.lower():
+        state['conversation'] = None
+        save()
+        return {'say': 'Okay, starting fresh.'}
+    if command := USE.search(answer):
+        return {'say': use({k.lower(): v.strip() for k, v in FIELD.findall(command[1].strip())})}
     result = {'say': speakable(re.sub(r'\[open:[^\]]*\]', '', answer, flags=re.I))}
     if found := OPEN.search(answer):
         result['open'] = LINKS[found[1].lower()].format(found[2])
+    if full(cid):
+        state['conversation'] = None
+        save()
+        result['say'] += " This chat is full, so I'll start a fresh one next."
     return result
 
 

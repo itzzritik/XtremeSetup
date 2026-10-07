@@ -257,6 +257,8 @@ def sync_bazarr(cfg):
     if drift:
         request(f'{base}/system/settings', 'POST', form, headers, form=True)
         log('CHANGED bazarr: ' + ', '.join(sorted(d for d in drift if 'apikey' not in d) or ['apikeys']))
+        if any('apikey' in d for d in drift):
+            pct(SPEC['keys']['lxc'], 'docker', 'restart', 'bazarr')
 
 
 def write_owned(path, text, mode):
