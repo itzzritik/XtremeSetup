@@ -36,11 +36,12 @@ GOODBYE = re.compile(r"^\W*(done|stop|thanks|thank you|that'?s all|bye|goodbye)\
 OPEN = re.compile(r'\[open:\s*(https?://[^\]\s]+)\s*\]', re.I)
 USE = re.compile(r'\[jarvis:use([^\]]*)\]', re.I)
 FIELD = re.compile(r'(agent|model|thinking)=(.*?)(?=\s+(?:agent|model|thinking)=|$)', re.I)
-TURN_TIMEOUT = 55
+TURN_TIMEOUT = 20
 POLL = 0.1
 FULL = 0.9
 
 lock = threading.Lock()
+pending = None
 
 
 def load():
@@ -188,7 +189,7 @@ def reply(cid, previous):
             if started and idle > 20:
                 raise RuntimeError('the agent stopped without answering')
         time.sleep(POLL)
-    return 'Still working on that. Ask me again in a moment.'
+    return None
 
 
 def full(cid):
@@ -219,17 +220,27 @@ def greeting(name):
     return f"{part}{f' {name}' if name else ''}, {random.choice(ASKS)}"
 
 
-def ask(text):
-    if GOODBYE.match(text):
+def ask(text, wait=False):
+    global pending
+    if not wait and GOODBYE.match(text):
         return {'say': 'Goodbye.'}
-    cid = conversation()
-    previous = latest(cid).get('id')
-    send(cid, text)
+    if wait or (pending and busy(pending[0])):
+        if not pending:
+            return {'say': 'I lost track of that one. Ask me again.'}
+        cid, previous = pending
+    else:
+        cid = conversation()
+        previous = latest(cid).get('id')
+        send(cid, text)
+        if state.get('titled') != cid:
+            state['titled'] = cid
+            save()
+            threading.Thread(target=title, args=(cid, text), daemon=True).start()
     answer = reply(cid, previous)
-    if state.get('titled') != cid:
-        state['titled'] = cid
-        save()
-        threading.Thread(target=title, args=(cid, text), daemon=True).start()
+    if answer is None:
+        pending = (cid, previous)
+        return {'say': 'Still working on it.', 'pending': True}
+    pending = None
     if '[jarvis:new]' in answer.lower():
         state['conversation'] = None
         save()
@@ -285,12 +296,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(200, greeting(str(body.get('name', '')).strip()).encode())
         if self.path != '/ask':
             return self.respond(404)
-        text = str(body.get('text', '')).strip()
+        text, wait = str(body.get('text', '')).strip(), bool(body.get('wait'))
         result = {'say': "I didn't catch that."}
-        if text:
+        if text or wait:
             with lock:
                 try:
-                    result = ask(text)
+                    result = ask(text, wait)
                 except Exception as err:
                     result = {'say': f'Sorry, {err}.'}
         self.respond(200, json.dumps(result).encode(), 'application/json')
