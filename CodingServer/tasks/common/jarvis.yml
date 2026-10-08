@@ -45,7 +45,6 @@
                     EnvironmentFile={{ root }}/env
                     Environment=AIONUI_URL=http://127.0.0.1:{{ services.aionui.port }}
                     Environment=JARVIS_MEDIA_URL=https://media.{{ env.JARVIS_DOMAIN }}
-                    Environment=JARVIS_NAME={{ env.RITIK_NAME.split() | first }}
                     Environment=JARVIS_PORT={{ services[app_name].port }}
                     Environment=JARVIS_REQUEST_URL=https://request.{{ env.JARVIS_DOMAIN }}
                     Environment=JARVIS_STATE={{ root }}/state.json

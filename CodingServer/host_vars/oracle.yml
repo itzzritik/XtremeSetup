@@ -2,6 +2,7 @@
 bootstrap_user: ubuntu
 host_name: ritik
 domain: '{{ env.RITIK_DOMAIN }}'
+machine: Oracle Cloud VM
 telegram_key: '{{ env.JARVIS_CODE_TELEGRAM_KEY }}'
 databases_public: true
 memory:

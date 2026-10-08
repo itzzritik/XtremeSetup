@@ -12,27 +12,28 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 API = f"{os.environ['AIONUI_URL']}/api"
-NAME = os.environ.get('JARVIS_NAME', '')
 STATE = os.environ['JARVIS_STATE']
 TOKEN = os.environ.get('JARVIS_TOKEN', '')
 MEDIA = os.environ['JARVIS_MEDIA_URL']
 REQUEST = os.environ['JARVIS_REQUEST_URL']
-VOICE = ('You are Jarvis, speaking through Siri. Answer in one to three short spoken sentences of plain text, with no formatting, lists or links. '
-         'Skip greetings, never mention connectors, logins or setup issues, and ask before doing anything that changes something. '
-         'When asked to open, play or show one title, end with [open:jellyfin:ITEM_ID] if it is in the Jellyfin library, else [open:movie:TMDB_ID] or [open:tv:TMDB_ID]. '
-         'If the user wants a new topic or a fresh conversation, reply only [jarvis:new]. '
-         'If the user wants to change the agent, model or thinking level, reply only [jarvis:use agent=AGENT model=MODEL thinking=LEVEL] in their words, '
-         'leaving out parts they did not mention; AGENT is claude, antigravity, codex or opencode, and agy means antigravity.')
+VOICE = f"""You are Jarvis, a voice assistant reached through Siri.
+
+- The user's words come from speech-to-text, so expect misheard words and no punctuation. Go with the most likely meaning, and ask a short question only when it is truly unclear.
+- Reply in one to three short spoken sentences of plain text. Lead with the answer, say numbers, dates and times the way people speak, and never read out links, IDs, paths or code.
+- Skip greetings, and never mention connectors, logins or setup issues.
+- Act right away on things that are easy to undo, like lights, plugs, requesting a title or starting an app. Ask first before anything hard to undo, like deleting, pushing code or messaging someone.
+- When asked to open, play or show something, end the reply with [open:URL] to open it in the user's browser. Use any web page, {MEDIA}/web/#/details?id=ITEM_ID for a Jellyfin title, or {REQUEST}/movie/TMDB_ID or {REQUEST}/tv/TMDB_ID for a title not in the library.
+- When the user wants a new topic or a fresh conversation, reply only [jarvis:new].
+- When the user wants to change the agent, model or thinking level, reply only [jarvis:use agent=AGENT model=MODEL thinking=LEVEL] in their words, leaving out parts they did not mention. AGENT is claude, antigravity, codex or opencode, and "agy" means antigravity."""
 AGENTS = {'claude': 'Claude Code', 'antigravity': 'Antigravity', 'codex': 'Codex', 'opencode': 'OpenCode'}
 AGENT_WORDS = {'claude': {'claude', 'anthropic'}, 'antigravity': {'agy', 'antigravity'}, 'codex': {'codex', 'openai'}, 'opencode': {'opencode', 'open'}}
 FILLER = {'code', 'model', 'version', 'latest', 'newest', 'thinking', 'reasoning', 'effort', 'level', 'with', 'the', 'and', 'use', 'to', 'on'}
 LEVELS = ['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']
 LEVEL_WORDS = {'minimal': 'low', 'low': 'low', 'med': 'medium', 'medium': 'medium', 'normal': 'medium', 'high': 'high',
                'xhigh': 'xhigh', 'extra': 'xhigh', 'very': 'xhigh', 'max': 'max', 'maximum': 'max', 'highest': 'max', 'ultra': 'ultracode', 'ultracode': 'ultracode'}
-LINKS = {'jellyfin': f'{MEDIA}/web/#/details?id={{}}', 'movie': f'{REQUEST}/movie/{{}}', 'tv': f'{REQUEST}/tv/{{}}'}
 ASKS = ["what's up?", 'what do you need?', "what's on your mind?", 'how can I help?', 'what can I do for you?']
 GOODBYE = re.compile(r"^\W*(done|stop|thanks|thank you|that'?s all|bye|goodbye)\W*$", re.I)
-OPEN = re.compile(r'\[open:(jellyfin|movie|tv):([\w-]+)\]', re.I)
+OPEN = re.compile(r'\[open:\s*(https?://[^\]\s]+)\s*\]', re.I)
 USE = re.compile(r'\[jarvis:use([^\]]*)\]', re.I)
 FIELD = re.compile(r'(agent|model|thinking)=(.*?)(?=\s+(?:agent|model|thinking)=|$)', re.I)
 TURN_TIMEOUT = 55
@@ -212,10 +213,10 @@ def speakable(text):
     return re.sub(r'\s+', ' ', text).strip() or 'Done.'
 
 
-def greeting():
+def greeting(name):
     hour = datetime.now().hour
     part = 'Hey' if hour < 5 else 'Morning' if hour < 12 else 'Afternoon' if hour < 17 else 'Evening'
-    return f'{part} {NAME}, {random.choice(ASKS)}'
+    return f"{part}{f' {name}' if name else ''}, {random.choice(ASKS)}"
 
 
 def ask(text):
@@ -237,7 +238,7 @@ def ask(text):
         return {'say': use({k.lower(): v.strip() for k, v in FIELD.findall(command[1].strip())})}
     result = {'say': speakable(re.sub(r'\[open:[^\]]*\]', '', answer, flags=re.I))}
     if found := OPEN.search(answer):
-        result['open'] = LINKS[found[1].lower()].format(found[2])
+        result['open'] = found[1]
     if full(cid):
         state['conversation'] = None
         save()
@@ -273,15 +274,18 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not TOKEN or not hmac.compare_digest(self.headers.get('authorization', '').encode(), f'Bearer {TOKEN}'.encode()):
             return self.respond(401, b'Unauthorized')
+        try:
+            body = json.loads(self.rfile.read(int(self.headers.get('content-length') or 0)) or b'{}')
+        except ValueError:
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
         if self.path == '/wake':
             threading.Thread(target=warm, daemon=True).start()
-            return self.respond(200, greeting().encode())
+            return self.respond(200, greeting(str(body.get('name', '')).strip()).encode())
         if self.path != '/ask':
             return self.respond(404)
-        try:
-            text = str(json.loads(self.rfile.read(int(self.headers.get('content-length') or 0)) or b'{}').get('text', '')).strip()
-        except (ValueError, AttributeError):
-            text = ''
+        text = str(body.get('text', '')).strip()
         result = {'say': "I didn't catch that."}
         if text:
             with lock:

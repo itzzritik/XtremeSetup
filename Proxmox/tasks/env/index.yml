@@ -8,7 +8,7 @@
       project: jarvis
       doppler_required_secrets:
           - RITIK_EMAIL
-          - JARVIS_ARR_API_KEY
+          - JARVIS_MCP_API_KEY
           - RITIK_NAME
           - JARVIS_AI_CEREBRAS_KEY
           - JARVIS_AI_GEMINI_KEY
@@ -39,6 +39,7 @@
           - JARVIS_GIT_SSH_PRIVATE_KEY
           - JARVIS_GIT_SSH_PUBLIC_KEY
           - JARVIS_HA_DECRYPT_KEY
+          - JARVIS_HOMEASSISTANT_KEY
           - JARVIS_OPENCLAW_GATEWAY_TOKEN
           - JARVIS_POSTGRES_PASSWORD
           - JARVIS_QDRANT_KEY

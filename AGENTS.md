@@ -63,3 +63,19 @@ CodingServer Ansible: they set up this client, not a server.
   reading the password from jarvis Doppler. Safe to re-run; mounted shares are skipped.
 - Drive mounts drop on reboot, sleep or a network change, so they don't fit an Ansible
   steady state. Re-run the script instead of adding a playbook task.
+
+## MCP gateway
+
+`https://mcp.myjarvis.in/mcp` (MCPHub, container `mcp` in the Proxmox media stack) is the one
+MCP server for every home service: Seerr, Jellyfin, qBittorrent and Home Assistant. Tool names
+are prefixed by service (`seerr-`, `jellyfin-`, `qbittorrent-`, `homeassistant-`).
+
+- Auth: `Authorization: Bearer <JARVIS_MCP_API_KEY>` (jarvis Doppler; Mac Keychain
+  `jarvis-mcp-api-key`). Claude and ChatGPT apps use OAuth instead: sign in as `admin` with
+  the same key.
+- Add a service to `mcp_settings.mcpServers` in `Proxmox/tasks/instances/docker_lxc/media.yml`
+  and deploy the media stack. Never add a per-service MCP to the agents.
+- An upstream on a LAN IP needs `owner: admin`, or MCPHub blocks it as a private address.
+- Agents carry one `jarvis` entry: Oracle via `CodingServer/templates/agents/mcp/jarvis.json.j2`.
+  On the Mac, Claude uses an HTTP entry with a Keychain `headersHelper`; Codex and agy run
+  `~/.mcp/jarvis-mcp.py`, a stdio bridge that re-handshakes after a gateway restart.

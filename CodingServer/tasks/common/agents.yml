@@ -70,8 +70,8 @@
               changed_when: "'CHANGED' in link_result.stdout"
 
             - name: '{{ app_name | upper }}: Write System Rules'
-              ansible.builtin.copy:
-                  src: agents/SYSTEM.md
+              ansible.builtin.template:
+                  src: agents/SYSTEM.md.j2
                   dest: '{{ system_rules }}'
 
             - name: '{{ app_name | upper }}: Import System Rules'

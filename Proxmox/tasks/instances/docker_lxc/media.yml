@@ -119,6 +119,42 @@
           - name: recyclarr
             image: ghcr.io/recyclarr/recyclarr:8.7.2
             environment: ['CRON_SCHEDULE=@daily']
+          - name: mcp
+            image: samanhappy/mcphub:1.1.1@sha256:73a47c739c7808af923f46ce6b56eaa1f73ddd9c3ce6f41f884dc575aaa27aa0
+            ports: ['{{ svc.mcp.port }}:3000']
+            environment:
+                - 'ADMIN_PASSWORD={{ env.JARVIS_MCP_API_KEY }}'
+                - "JWT_SECRET={{ env.JARVIS_MCP_API_KEY | hash('sha256') }}"
+                - 'INSTALL_BASE_URL=https://{{ svc.mcp.subdomains[0] }}.{{ env.JARVIS_DOMAIN }}'
+            config_mount: /app/data
+            health: ['CMD', 'curl', '-fs', 'http://localhost:3000/health']
+      mcp_settings:
+          mcpServers:
+              seerr:
+                  command: npx
+                  args: [-y, '@jhomen368/overseerr-mcp@2.3.1']
+                  env: { SEERR_URL: 'http://{{ instance.ip }}:{{ svc.jellyseerr.port }}', SEERR_API_KEY: '{{ env.JARVIS_MCP_API_KEY }}' }
+              jellyfin:
+                  command: npx
+                  args: [-y, '@jaredtrent/jellyfin-mcp@2026.924.1', --read-only, --toolsets, 'discovery,media,analytics']
+                  env:
+                      JELLYFIN_URL: '{{ media_sync.jellyfin.url }}'
+                      JELLYFIN_API_KEY: '{{ env.JARVIS_MCP_API_KEY }}'
+                      JELLYFIN_USER_ID: '{{ env.JARVIS_ADMIN_USERNAME }}'
+                      TZ: '{{ env.JARVIS_TZ }}'
+              qbittorrent:
+                  command: uvx
+                  args: [--with, httpx, --from, 'https://github.com/arr-mcps/qbittorrent-mcp/releases/download/v0.2.0/qbittorrent_mcp-0.2.0-py3-none-any.whl', qbittorrent-mcp]
+                  env: { QBITTORRENT_URL: 'http://{{ instance.ip }}:{{ svc.qbittorrent.port }}' }
+              homeassistant:
+                  type: streamable-http
+                  url: 'http://{{ env.JARVIS_NETWORK_PREFIX }}.{{ svc.home.id }}:{{ svc.home.port }}/api/mcp'
+                  headers: { Authorization: 'Bearer {{ env.JARVIS_HOMEASSISTANT_KEY }}' }
+                  owner: admin
+          bearerKeys:
+              - { id: jarvis, name: Jarvis, token: '{{ env.JARVIS_MCP_API_KEY }}', enabled: true, kind: system, accessType: all }
+          systemConfig:
+              routing: { enableBearerAuth: true, skipAuth: false }
       media_sync:
           host: '{{ instance.ip }}'
           configs: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}'
@@ -270,7 +306,7 @@
             state: directory
             owner: '{{ mapped_uid }}'
             group: '{{ mapped_uid }}'
-        loop: [radarr, radarr/sma, sonarr, sonarr/sma, jellyseerr]
+        loop: [radarr, radarr/sma, sonarr, sonarr/sma, jellyseerr, mcp]
         loop_control:
             loop_var: config_dir
 
@@ -294,12 +330,35 @@
             loop_var: sma_setting
             label: '{{ sma_setting.0 }} {{ sma_setting.1.section }}.{{ sma_setting.1.option }}'
 
+      - name: '{{ stack_name | upper }}: Read MCP Gateway Settings'
+        slurp:
+            src: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}/mcp/mcp_settings.json'
+        register: mcp_settings_file
+        failed_when: false
+
+      - name: '{{ stack_name | upper }}: Write MCP Gateway Settings'
+        copy:
+            content: '{{ mcp_merged | to_nice_json }}'
+            dest: '{{ env.JARVIS_CONFIGS_DIR }}/{{ stack_name }}/mcp/mcp_settings.json'
+            owner: '{{ mapped_uid }}'
+            group: '{{ mapped_uid }}'
+        vars:
+            mcp_current: "{{ mcp_settings_file.content | default('e30=') | b64decode | from_json }}"
+            mcp_merged: "{{ mcp_current | combine(mcp_settings, {'systemConfig': mcp_current.systemConfig | default({}) | combine(mcp_settings.systemConfig, recursive=true)}) }}"
+        when: mcp_merged != mcp_current
+        register: mcp_settings_write
+        no_log: true
+
       - name: '{{ stack_name | upper }}: Deploy Apps'
         include_tasks: media/compose.yml
         loop: '{{ media_apps }}'
         loop_control:
             loop_var: media_app
             label: '{{ media_app.name }}'
+
+      - name: '{{ stack_name | upper }}: Restart MCP Gateway'
+        command: pct exec {{ id }} --keep-env 0 -- docker restart mcp
+        when: mcp_settings_write is changed
 
       - name: '{{ stack_name | upper }}: Configure Recyclarr Custom Formats Directory'
         file:
@@ -468,7 +527,7 @@
             MEDIA_SYNC: '{{ media_sync | to_json }}'
             MEDIA_USER: '{{ env.JARVIS_ADMIN_USERNAME }}'
             MEDIA_PASSWORD: '{{ env.JARVIS_ADMIN_PASSWORD }}'
-            MEDIA_ARR_KEY: '{{ env.JARVIS_ARR_API_KEY }}'
+            MEDIA_ARR_KEY: '{{ env.JARVIS_MCP_API_KEY }}'
         register: media_sync_result
         changed_when: "'CHANGED' in media_sync_result.stdout"
 

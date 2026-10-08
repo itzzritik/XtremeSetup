@@ -1,6 +1,7 @@
 ---
 bootstrap_user: root
 domain: '{{ env.JARVIS_DOMAIN }}'
+machine: Proxmox LXC
 telegram_key: '{{ env.JARVIS_BOT_TELEGRAM_KEY }}'
 trusted_proxy: 192.168.68.205
 ssh_exempt: 192.168.68.0/24
