@@ -2,6 +2,7 @@
 - vars:
       app_name: caddy
       root: '{{ configs_dir }}/caddy'
+      app_dir: '{{ apps_dir }}/caddy'
       binary: /usr/local/bin/caddy
       download: 'https://caddyserver.com/api/download?os=linux&arch={{ deb_arch }}&p=github.com%2Fmholt%2Fcaddy-l4&p=github.com%2Fcaddy-dns%2Fcloudflare'
   block:
@@ -22,12 +23,13 @@
         loop:
             - '{{ root }}'
             - '{{ root }}/data'
+            - '{{ app_dir }}'
         loop_control:
             loop_var: dir
 
       - name: '{{ app_name | upper }}: Write Token File'
         ansible.builtin.copy:
-            dest: '{{ root }}/env'
+            dest: '{{ app_dir }}/env'
             content: 'CF_API_TOKEN={{ env.RITIK_CF_DNS_API_TOKEN }}'
             owner: root
             group: root
@@ -39,7 +41,7 @@
       - name: '{{ app_name | upper }}: Write Caddyfile'
         ansible.builtin.template:
             src: Caddyfile.j2
-            dest: '{{ root }}/Caddyfile'
+            dest: '{{ app_dir }}/Caddyfile'
             owner: '{{ user }}'
             group: '{{ user }}'
             validate: '{{ binary }} validate --config %s --adapter caddyfile'
@@ -64,11 +66,11 @@
                     Type=notify
                     User={{ user }}
                     Group={{ user }}
-                    EnvironmentFile=-{{ root }}/env
-                    Environment=XDG_CONFIG_HOME={{ root }}/config
+                    EnvironmentFile=-{{ app_dir }}/env
+                    Environment=XDG_CONFIG_HOME={{ app_dir }}/config
                     Environment=XDG_DATA_HOME={{ root }}/data
-                    ExecStart={{ binary }} run --config {{ root }}/Caddyfile --adapter caddyfile
-                    ExecReload={{ binary }} reload --config {{ root }}/Caddyfile --adapter caddyfile --force
+                    ExecStart={{ binary }} run --config {{ app_dir }}/Caddyfile --adapter caddyfile
+                    ExecReload={{ binary }} reload --config {{ app_dir }}/Caddyfile --adapter caddyfile --force
                     TimeoutStopSec=5s
                     LimitNOFILE=1048576
                     Restart=on-failure

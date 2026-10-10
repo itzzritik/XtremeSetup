@@ -33,6 +33,9 @@ Don't re-run the full playbook to iterate.
 - `CodingServer/`: shared work goes in `tasks/common/`, machine-only work in
   `tasks/oracle/` or `tasks/proxmox/`, per-machine values in `host_vars/`, and retired
   tasks in `tasks/archive/`.
+- `CodingServer/`: `~/.jarvis/configs/<app>` holds only state Ansible can't recreate, since it
+  gets backed up. Anything Ansible can recreate (servers, source, builds, generated config,
+  Doppler env files) goes in `~/.jarvis/apps/<app>`.
 - `CodingServer/`: full module names (`ansible.builtin.copy`, not `copy`), facts only via
   `ansible_facts.*`, and `ansible-lint` (run inside `CodingServer/`) must pass.
 - Languages: Ansible YAML for setup and config, stdlib-only Python for any logic, Bash only

@@ -1,7 +1,7 @@
 ---
 - vars:
       app_name: cloudflared
-      root: '{{ configs_dir }}/cloudflared'
+      app_dir: '{{ apps_dir }}/cloudflared'
       apt_repos:
           - { name: cloudflared, uri: 'https://pkg.cloudflare.com/cloudflared', suite: any, key: 'https://pkg.cloudflare.com/cloudflare-main.gpg' }
       apt_packages:
@@ -17,14 +17,14 @@
 
       - name: '{{ app_name | upper }}: Configure Directory'
         ansible.builtin.file:
-            path: '{{ root }}'
+            path: '{{ app_dir }}'
             state: directory
             owner: '{{ user }}'
             group: '{{ user }}'
 
       - name: '{{ app_name | upper }}: Write Token File'
         ansible.builtin.copy:
-            dest: '{{ root }}/env'
+            dest: '{{ app_dir }}/env'
             content: 'TUNNEL_TOKEN={{ env.RITIK_CF_TUNNEL_TOKEN }}'
             owner: root
             group: root
@@ -46,7 +46,7 @@
 
                     [Service]
                     Type=notify
-                    EnvironmentFile={{ root }}/env
+                    EnvironmentFile={{ app_dir }}/env
                     Environment=CLOUDFLARED_VERSION={{ cloudflared_version.stdout }}
                     ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run
                     Restart=on-failure

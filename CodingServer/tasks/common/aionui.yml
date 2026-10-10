@@ -4,9 +4,10 @@
       version: v2.2.2
       repo: https://github.com/iOfficeAI/AionUi.git
       root: '{{ configs_dir }}/aionui'
-      src: '{{ home }}/.aionui/src'
-      build_log: '{{ home }}/.aionui/build.log'
-      stamp: '{{ home }}/.aionui/built-{{ version }}'
+      app_dir: '{{ apps_dir }}/aionui'
+      src: '{{ app_dir }}/src'
+      build_log: '{{ app_dir }}/build.log'
+      stamp: '{{ app_dir }}/built-{{ version }}'
       api: 'http://127.0.0.1:{{ services[app_name].port }}/api'
       telegram_bot: "{{ telegram_key.split(':')[0] }}"
       telegram_assistant: "{{ (assistants.json.data | selectattr('source', 'equalto', 'generated') | selectattr('agent.type', 'equalto', 'antigravity') | first).id }}"

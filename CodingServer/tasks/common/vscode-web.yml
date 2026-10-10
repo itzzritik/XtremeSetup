@@ -1,10 +1,13 @@
 ---
 - vars:
       app_name: vscode-web
-      root: '{{ vscode_root }}'
-      current: '{{ root }}/server'
+      root: '{{ configs_dir }}/vscode-web'
+      app_dir: '{{ vscode_root }}'
+      current: '{{ app_dir }}/server'
+      remote: '{{ app_dir }}/remote'
+      remote_link: '{{ home }}/.vscode-server'
       terminal_shell: /usr/local/bin/vscode-shell
-      server: '{{ root }}/server-{{ vscode_latest.json.productVersion }}'
+      server: '{{ app_dir }}/server-{{ vscode_latest.json.productVersion }}'
       workbench: '{{ server }}/out/vs/code/browser/workbench'
       arch: "{{ deb_arch | replace('amd64', 'x64') }}"
       sync_url: 'https://{{ services[app_name].subdomain }}.{{ domain }}/_sync'
@@ -51,11 +54,18 @@
                   path: '{{ dir }}'
                   state: directory
               loop:
-                  - '{{ root }}/fonts'
                   - '{{ root }}/data/User'
                   - '{{ root }}/data/Machine'
+                  - '{{ app_dir }}/fonts'
+                  - '{{ remote }}/extensions'
               loop_control:
                   loop_var: dir
+
+            - name: '{{ app_name | upper }}: Link Remote Server'
+              ansible.builtin.file:
+                  src: '{{ remote }}'
+                  dest: '{{ remote_link }}'
+                  state: link
 
             - name: '{{ app_name | upper }}: Read Latest Release'
               ansible.builtin.uri:
@@ -65,7 +75,7 @@
             - name: '{{ app_name | upper }}: Install Server {{ vscode_latest.json.productVersion }}'
               ansible.builtin.unarchive:
                   src: '{{ vscode_latest.json.url }}'
-                  dest: '{{ root }}'
+                  dest: '{{ app_dir }}'
                   remote_src: true
                   creates: '{{ server }}/product.json'
                   extra_opts:
@@ -121,11 +131,11 @@
             - name: '{{ app_name | upper }}: Install Font'
               ansible.builtin.unarchive:
                   src: '{{ font.url }}'
-                  dest: '{{ root }}/fonts'
+                  dest: '{{ app_dir }}/fonts'
                   remote_src: true
                   include:
                       - '{{ font.file }}'
-                  creates: '{{ root }}/fonts/{{ font.file }}'
+                  creates: '{{ app_dir }}/fonts/{{ font.file }}'
 
             - name: '{{ app_name | upper }}: Inject Font'
               ansible.builtin.blockinfile:
@@ -193,7 +203,7 @@
                     [Service]
                     Type=simple
                     User={{ user }}
-                    ExecStart={{ current }}/bin/code-server --host 127.0.0.1 --port {{ services[app_name].port }} --without-connection-token --accept-server-license-terms --server-data-dir {{ root }} --default-folder {{ projects_dir }}
+                    ExecStart={{ current }}/bin/code-server --host 127.0.0.1 --port {{ services[app_name].port }} --without-connection-token --accept-server-license-terms --server-data-dir {{ root }} --extensions-dir {{ remote_link }}/extensions --default-folder {{ projects_dir }}
                     Restart=on-failure
                     RestartSec=10
                     MemoryMax={{ memory.vscode }}

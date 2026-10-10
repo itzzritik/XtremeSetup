@@ -3,6 +3,7 @@ user: ritik
 ansible_user: '{{ user }}'
 home: '/home/{{ user }}'
 configs_dir: '{{ home }}/.jarvis/configs'
+apps_dir: '{{ home }}/.jarvis/apps'
 projects_dir: '{{ home }}/projects'
 local_bin: '{{ home }}/.local/bin'
 fnm_dir: '{{ home }}/.local/share/fnm'
@@ -18,7 +19,7 @@ doppler_args: --project jarvis --config prd
 only_tasks: "{{ (only | default('')).split(',') | select | list }}"
 setup_tasks: '{{ common_tasks + machine_tasks }}'
 databases_public: false
-vscode_root: '{{ configs_dir }}/vscode-web'
+vscode_root: '{{ apps_dir }}/vscode-web'
 vscode_sync_host: vscode-sync.trafficmanager.net
 vscode_settings_extra: {}
 

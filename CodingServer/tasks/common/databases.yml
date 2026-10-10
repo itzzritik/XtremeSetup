@@ -1,7 +1,7 @@
 ---
 - vars:
       app_name: databases
-      root: '{{ home }}/.jarvis/databases'
+      app_dir: '{{ apps_dir }}/databases'
       password_key: "JARVIS_DB_{{ db.name | upper | replace('-', '_') }}_PASSWORD"
   block:
       - name: '{{ app_name | upper }}: Ensure Passwords'
@@ -26,14 +26,14 @@
 
       - name: '{{ app_name | upper }}: Configure Directory'
         ansible.builtin.file:
-            path: '{{ root }}'
+            path: '{{ app_dir }}'
             state: directory
             owner: '{{ user }}'
             group: '{{ user }}'
 
       - name: '{{ app_name | upper }}: Write Compose File'
         ansible.builtin.copy:
-            dest: '{{ root }}/docker-compose.yml'
+            dest: '{{ app_dir }}/docker-compose.yml'
             owner: '{{ user }}'
             group: '{{ user }}'
             mode: '0600'
@@ -66,7 +66,7 @@
       - name: '{{ app_name | upper }}: Start Containers'
         ansible.builtin.command: docker compose up -d --pull always
         args:
-            chdir: '{{ root }}'
+            chdir: '{{ app_dir }}'
         register: compose_up
         changed_when: compose_up.stderr is search('Created|Recreated|Started')
 

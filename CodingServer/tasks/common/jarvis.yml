@@ -2,25 +2,31 @@
 - vars:
       app_name: jarvis
       root: '{{ configs_dir }}/jarvis'
+      app_dir: '{{ apps_dir }}/jarvis'
   block:
-      - name: '{{ app_name | upper }}: Configure Directory'
+      - name: '{{ app_name | upper }}: Configure Directories'
         ansible.builtin.file:
-            path: '{{ root }}'
+            path: '{{ dir }}'
             state: directory
             owner: '{{ user }}'
             group: '{{ user }}'
+        loop:
+            - '{{ root }}'
+            - '{{ app_dir }}'
+        loop_control:
+            loop_var: dir
 
       - name: '{{ app_name | upper }}: Install Script'
         ansible.builtin.copy:
             src: jarvis.py
-            dest: '{{ root }}/jarvis.py'
+            dest: '{{ app_dir }}/jarvis.py'
             owner: '{{ user }}'
             group: '{{ user }}'
         register: jarvis_script
 
       - name: '{{ app_name | upper }}: Write Token File'
         ansible.builtin.copy:
-            dest: '{{ root }}/env'
+            dest: '{{ app_dir }}/env'
             content: 'JARVIS_TOKEN={{ env.JARVIS_VOICE_TOKEN }}'
             owner: root
             group: root
@@ -42,13 +48,13 @@
 
                     [Service]
                     User={{ user }}
-                    EnvironmentFile={{ root }}/env
+                    EnvironmentFile={{ app_dir }}/env
                     Environment=AIONUI_URL=http://127.0.0.1:{{ services.aionui.port }}
                     Environment=JARVIS_MEDIA_URL=https://media.{{ env.JARVIS_DOMAIN }}
                     Environment=JARVIS_PORT={{ services[app_name].port }}
                     Environment=JARVIS_REQUEST_URL=https://request.{{ env.JARVIS_DOMAIN }}
                     Environment=JARVIS_STATE={{ root }}/state.json
-                    ExecStart=/usr/bin/python3 {{ root }}/jarvis.py
+                    ExecStart=/usr/bin/python3 {{ app_dir }}/jarvis.py
                     Restart=on-failure
                     RestartSec=3s
 
