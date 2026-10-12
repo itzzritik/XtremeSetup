@@ -35,7 +35,7 @@ else echo "SOURCE=none"; fi
 Use only facts from it, never guess. If `SOURCE=none`, say the profile could not be loaded. To force fresh data, delete the cache file first. End the reply with the source on its own line, e.g. `Source: Profile Fetch`.
 
 ## MCP Servers
-- Defined only in `~/.jarvis/configs/agents/mcp/{name}/mcp.json`. `mcp-sync` makes every agent use exactly these servers, removing any others (applies from the next session). Ansible writes that folder from `CodingServer/templates/agents/mcp/` in the XtremeSetup repo: to add, change or remove one, edit it there, never the folder or an agent's own MCP config.
+- Defined only in `~/.jarvis/configs/agents/mcp/{name}.json`. `mcp-sync` makes every agent use exactly these servers, removing any others (applies from the next session). Ansible writes that folder from `CodingServer/templates/agents/mcp/` in the XtremeSetup repo: to add, change or remove one, edit it there, never the folder or an agent's own MCP config.
 - They contain secrets: never print, quote or log them.
 - Format: `{"type": "http", "url": "...", "headers": {...}}` or `{"type": "stdio", "command": "...", "args": [...], "env": {...}}`
 - Home and media tools (Seerr, Jellyfin, qBittorrent, Home Assistant) all come from the one `jarvis` server, the gateway at `https://mcp.myjarvis.in/mcp`, with tool names prefixed `seerr-`, `jellyfin-`, `qbittorrent-`, `homeassistant-`. New home services go into that gateway (`mcp_settings` in `Proxmox/tasks/instances/docker_lxc/media.yml`), never as a new agent MCP.

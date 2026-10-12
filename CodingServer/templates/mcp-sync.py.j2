@@ -38,8 +38,8 @@ def write(path, text):
 
 def load_servers():
     servers = {}
-    for path in sorted(glob.glob(f'{SOURCE}/*/mcp.json')):
-        name = os.path.basename(os.path.dirname(path))
+    for path in sorted(glob.glob(f'{SOURCE}/*.json')):
+        name = os.path.basename(path).removesuffix('.json')
         try:
             spec = json.loads(read(path))
             required = 'url' if spec['type'] == 'http' else 'command'

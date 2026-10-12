@@ -36,13 +36,10 @@
       - become: true
         become_user: '{{ user }}'
         block:
-            - name: '{{ app_name | upper }}: Configure MCP Folders'
+            - name: '{{ app_name | upper }}: Configure MCP Folder'
               ansible.builtin.file:
-                  path: '{{ mcp_sync.source }}/{{ server }}'
+                  path: '{{ mcp_sync.source }}'
                   state: directory
-              loop: '{{ mcp_templates }}'
-              loop_control:
-                  loop_var: server
 
             - name: '{{ app_name | upper }}: Link Agent Configs'
               ansible.builtin.shell: |
@@ -87,7 +84,7 @@
             - name: '{{ app_name | upper }}: Write MCP Servers'
               ansible.builtin.template:
                   src: 'agents/mcp/{{ server }}.json.j2'
-                  dest: '{{ mcp_sync.source }}/{{ server }}/mcp.json'
+                  dest: '{{ mcp_sync.source }}/{{ server }}.json'
               loop: '{{ mcp_templates }}'
               loop_control:
                   loop_var: server
@@ -140,12 +137,6 @@
             dest: '{{ mcp_sync.bin }}'
             mode: '0755'
 
-      - name: '{{ app_name | upper }}: Find MCP Folders'
-        ansible.builtin.find:
-            paths: '{{ mcp_sync.source }}'
-            file_type: directory
-        register: mcp_folders
-
       - name: '{{ app_name | upper }}: Configure Sync Service'
         ansible.builtin.include_tasks: '{{ lib }}/service.yml'
         vars:
@@ -176,9 +167,6 @@
 
                     [Path]
                     PathModified={{ mcp_sync.source }}
-                    {% for folder in mcp_folders.files | map(attribute='path') | map('basename') | sort %}
-                    PathModified={{ mcp_sync.source }}/{{ folder }}
-                    {% endfor %}
 
                     [Install]
                     WantedBy=multi-user.target
