@@ -28,6 +28,7 @@ services:
     aionui: { subdomain: vibe, port: 41789 }
     jarvis: { subdomain: jarvis, port: 41790 }
     opencode: { subdomain: opencode, port: 34521 }
+    playwright: { port: 18931 }
 
 databases:
     - { name: pg, type: postgres, image: 'postgres:18-alpine', port: 15432 }

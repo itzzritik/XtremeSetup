@@ -33,6 +33,34 @@
             content: |
                 {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "{{ user_context }} codex"}]}]}}
   block:
+      - name: '{{ app_name | upper }}: Read Playwright Version'
+        ansible.builtin.slurp:
+            src: '{{ npm_root }}/@playwright/mcp/package.json'
+        register: playwright_package
+
+      - name: '{{ app_name | upper }}: Configure Playwright Service'
+        ansible.builtin.include_tasks: '{{ lib }}/service.yml'
+        vars:
+            service:
+                name: playwright-mcp
+                content: |
+                    [Unit]
+                    Description=Playwright MCP {{ (playwright_package.content | b64decode | from_json).version }}, shared by every agent
+                    After=network.target
+
+                    [Service]
+                    Type=simple
+                    User={{ user }}
+                    Environment=PATH={{ user_path }}
+                    ExecStart={{ node_bin }}/playwright-mcp --browser chromium --headless --no-sandbox --isolated --idle-timeout 600000 --output-dir /tmp/agents/playwright-mcp --host 127.0.0.1 --port {{ services.playwright.port }}
+                    Restart=always
+                    RestartSec=5
+                    MemoryMax={{ memory.playwright }}
+                    OOMPolicy=continue
+
+                    [Install]
+                    WantedBy=multi-user.target
+
       - become: true
         become_user: '{{ user }}'
         block:

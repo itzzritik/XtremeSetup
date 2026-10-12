@@ -1,14 +1,4 @@
 {
-  "type": "stdio",
-  "command": "playwright-mcp",
-  "args": [
-    "--browser",
-    "chromium",
-    "--headless",
-    "--no-sandbox",
-    "--idle-timeout",
-    "600000",
-    "--output-dir",
-    "/tmp/agents/playwright-mcp"
-  ]
+  "type": "http",
+  "url": "http://localhost:{{ services.playwright.port }}/mcp"
 }

@@ -9,6 +9,7 @@ memory:
     user_slice: 18G
     vscode: 10G
     aionui: 4G
+    playwright: 4G
 machine_tasks:
     - oracle/kernel
     - oracle/firewall

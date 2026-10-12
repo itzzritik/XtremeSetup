@@ -10,6 +10,7 @@ memory:
     user_slice: 5G
     vscode: 6G
     aionui: 4G
+    playwright: 2G
 vscode_settings_extra:
     terminal.integrated.profiles.linux:
         Proxmox: { path: ssh, args: [proxmox], icon: server }
