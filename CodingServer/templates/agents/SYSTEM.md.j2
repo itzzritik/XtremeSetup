@@ -40,6 +40,9 @@ Use only facts from it, never guess. If `SOURCE=none`, say the profile could not
 - Format: `{"type": "http", "url": "...", "headers": {...}}` or `{"type": "stdio", "command": "...", "args": [...], "env": {...}}`
 - Home and media tools (Seerr, Jellyfin, qBittorrent, Home Assistant) all come from the one `jarvis` server, the gateway at `https://mcp.myjarvis.in/mcp`, with tool names prefixed `seerr-`, `jellyfin-`, `qbittorrent-`, `homeassistant-`. New home services go into that gateway (`mcp_settings` in `Proxmox/tasks/instances/docker_lxc/media.yml`), never as a new agent MCP.
 
+## Skills
+- One folder for every agent: `~/.jarvis/configs/agents/skills/{name}/SKILL.md`. Each agent's skills folder links to it, so add, change or remove skills there.
+
 ## Smart Home (Home Assistant)
 When the user asks to turn on/off/toggle devices or check status:
 - Act immediately on Turn 1 with zero deliberation. Never call `homeassistant-homeassistant__GetLiveContext`, never inspect schemas, and never read rule files.

@@ -18,6 +18,9 @@
           - { path: '{{ home }}/.gemini/antigravity-cli/antigravity-oauth-token', target: .gemini/antigravity-cli/antigravity-oauth-token, type: file }
           - { path: '{{ agent_paths.opencode }}', target: .opencode/config, type: dir }
           - { path: '{{ home }}/.local/share/opencode', target: .opencode/data, type: dir }
+          - { path: '{{ home }}/.agents/skills', target: skills, type: dir }
+          - { path: '{{ home }}/.claude/skills', target: skills, type: dir }
+          - { path: '{{ agent_paths.gemini_config }}/skills', target: skills, type: dir }
       mcp_templates: "{{ query('fileglob', playbook_dir ~ '/templates/agents/mcp/*.json.j2') | map('basename') | map('replace', '.json.j2', '') | list }}"
       mcp_sync:
           bin: /usr/local/bin/mcp-sync
