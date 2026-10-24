@@ -1,0 +1,471 @@
+- vars:
+      id: '{{ env.JARVIS_SERVICES.pixel.id }}'
+      instance:
+          hostname: pixel
+          memory: 4096
+          swap: 512
+          cores: 4
+          disk: 32
+          storage: local-lvm
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+          mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
+      paths:
+          app: '{{ env.JARVIS_DIR }}/apps/pixel'
+          media: /mnt/ssd/pixel
+          android: /mnt/ssd/pixel/.android
+          data: /root/pixel/data
+      redroid:
+          version: 14.0.0
+          base: redroid/redroid@sha256:a3e654caad74faed03cd5ead057a989e06f507778cda678e5d3b9772e0092f1c
+          gapps: -mtg
+          image: redroid/redroid:14.0.0_mindthegapps_magisk
+          # this commit pins Magisk v30.7 and MindTheGapps 20240226 by md5
+          script_commit: a4951b782fc8e06c845d9553bf07bb643fd8c158
+      # last known working: Google Photos 7.97.0.1000520730 from Play, 25 October 2026
+      module:
+          file: GPhotosUnlimited-v4.zip
+          sha256: 3f8cbc84398f66da7c486df09fe955a4937b87dc3e372e38e0824e46e850e7b4
+          version: v4
+      display: { width: 2560, height: 1600, dpi: 320 }
+      lawnchair:
+          url: https://github.com/LawnchairLauncher/lawnchair/releases/download/v15.0.0-beta3.0/Lawnchair.15.0.0.Beta.3.0.apk
+          sha256: d4200d0985169fd79ba1bd225d653f2a2fe7b50aa07cb0d05ca64c7623f86059
+      font:
+          url: https://raw.githubusercontent.com/google/fonts/bd8f81ddb5c74d5c8897b36ad88b440266245103/ofl/googlesansflex/GoogleSansFlex%5BROND,opsz,slnt,wdth,wght%5D.ttf
+          sha256: a9ac770798857d5e8ac593ced42b22e40a7c08cec98319f92b0eccc2783a77ba
+      wallpaper:
+          url: https://raw.githubusercontent.com/osmanonurkoc/OEM_Wallpaper_Images/d16b0d9c950f9a19dd3be52ea137aaa867bab092/Pixel_Wallaper_Images/res/drawable-xxxhdpi-v4/pixel9fold_1.jpeg
+          sha256: 23e78f124e06b7e4433717d07446486ece9a1db1c395824b77d0439e9d00e505
+      motionphoto2:
+          url: https://github.com/PetrVys/MotionPhoto2/releases/download/v2.7.8/MotionPhoto2_Linux_v2.7.8.zip
+          sha256: ba11b19ff20f98386bc4aa9bcac2b29da87b30efbab68213197f3d00e050204a
+      sync:
+          drop_dir: /media/pixel
+          upload_dir: /media/pixel/.android/0/DCIM/Camera
+          merge_tmp_dir: /media/pixel/.merging
+          camera_dir: /storage/emulated/0/DCIM/Camera
+          photos_db: '{{ paths.data }}/data/com.google.android.apps.photos/databases/gphotos0.db'
+          state_file: /root/pixel/sync-state.json
+          status_file: /media/pixel/STATUS.txt
+          container: pixel
+          motionphoto2: /usr/local/bin/motionphoto2
+          delete: true
+          batch_size: 500
+          stable_seconds: 300
+          pair_wait_seconds: 900
+          confirm_wait_seconds: 3600
+          watchdog_seconds: 600
+          timezone: '{{ env.JARVIS_TZ }}'
+      ports:
+          - { port: 5555, from: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.proxmox.id }}' }
+          - { port: '{{ env.JARVIS_SERVICES.pixel.port }}', from: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.traefik.id }}' }
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        command: pct status {{ id }}
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Load Binder Module'
+        modprobe:
+            name: binder_linux
+            params: devices=binder,hwbinder,vndbinder
+            persistent: present
+
+      - name: '{{ instance.hostname | upper }}: Create Host Directories'
+        file:
+            path: '{{ dir_item.path }}'
+            state: directory
+            owner: '{{ dir_item.owner | default(omit) }}'
+            group: '{{ dir_item.owner | default(omit) }}'
+            mode: '{{ dir_item.mode }}'
+        loop:
+            - { path: '{{ paths.media }}', mode: '0777' }
+            - { path: '{{ paths.android }}', owner: 1023, mode: '0770' }
+            - { path: '{{ paths.android }}/0', owner: 1023, mode: '2770' }
+            - { path: '{{ paths.android }}/0/DCIM', owner: 1023, mode: '0770' }
+            - { path: '{{ paths.android }}/0/DCIM/Camera', owner: 1023, mode: '0775' }
+            - { path: '{{ paths.app }}/redroid', mode: '0775' }
+            - { path: '{{ paths.app }}/web', mode: '0775' }
+        loop_control:
+            loop_var: dir_item
+            label: '{{ dir_item.path }}'
+
+      - name: '{{ instance.hostname | upper }}: Link Uploading Folder'
+        file:
+            path: '{{ paths.media }}/uploading'
+            src: .android/0/DCIM/Camera
+            state: link
+
+      - name: '{{ instance.hostname | upper }}: Write App Files'
+        copy:
+            dest: '{{ paths.app }}/{{ file_item.name }}'
+            content: '{{ file_item.content | default(omit) }}'
+            src: '{{ file_item.src | default(omit) }}'
+            mode: '0644'
+        register: app_files
+        loop_control:
+            loop_var: file_item
+            label: '{{ file_item.name }}'
+        loop:
+            - name: compose.yml
+              content: |
+                  services:
+                    pixel:
+                      build:
+                        context: ./redroid
+                        args: { BASE: '{{ redroid.image }}' }
+                      image: pixel-redroid:{{ redroid.version }}
+                      container_name: pixel
+                      privileged: true
+                      restart: unless-stopped
+                      ports: ['5555:5555']
+                      volumes:
+                        - {{ paths.data }}:/data
+                        - /media/pixel/.android:/data/media
+                      command:
+                        - androidboot.use_memfd=true
+                        - androidboot.redroid_gpu_mode=host
+                        - androidboot.redroid_gpu_node=/dev/dri/renderD128
+                        - androidboot.redroid_width={{ display.width }}
+                        - androidboot.redroid_height={{ display.height }}
+                        - androidboot.redroid_dpi={{ display.dpi }}
+                        - androidboot.redroid_fps=30
+                    web:
+                      build: ./web
+                      image: pixel-web:0.8.1
+                      container_name: pixel-web
+                      restart: unless-stopped
+                      ports: ['{{ env.JARVIS_SERVICES.pixel.port }}:8000']
+                      depends_on: [pixel]
+            - name: redroid/Dockerfile
+              content: "{{ lookup('file', 'pixel_lxc/redroid.Dockerfile') }}\n"
+            - name: web/Dockerfile
+              content: "{{ lookup('file', 'pixel_lxc/Dockerfile') }}\n"
+            - name: web/pixel.css
+              content: "{{ lookup('file', 'pixel_lxc/pixel.css') }}\n"
+            - name: web/pixel.js
+              content: "{{ lookup('file', 'pixel_lxc/pixel.js') }}\n"
+            - name: pixel_sync.py
+              content: "{{ lookup('file', 'pixel_lxc/pixel_sync.py') }}\n"
+            - name: '{{ module.file }}'
+              src: 'pixel_lxc/{{ module.file }}'
+            - name: pixel-sync.json
+              content: '{{ sync | to_nice_json }}'
+            - name: pixel-sync.service
+              content: |
+                  [Unit]
+                  Description=Move dropped media into the Pixel and clean up confirmed uploads
+                  Requires=docker.service
+                  After=docker.service
+
+                  [Service]
+                  Type=oneshot
+                  ExecStart=/usr/bin/python3 /opt/pixel/pixel_sync.py /opt/pixel/pixel-sync.json
+            - name: pixel-sync.timer
+              content: |
+                  [Unit]
+                  Description=Run Pixel sync every minute
+
+                  [Timer]
+                  OnBootSec=2min
+                  OnUnitActiveSec=1min
+
+                  [Install]
+                  WantedBy=timers.target
+
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
+        when: instance_check.rc != 0
+        block:
+            - name: '{{ instance.hostname | upper }}: Download Template'
+              shell: |
+                  pveam update >&2
+                  TEMPLATE=$(pveam available | grep -oP 'ubuntu-(2[02468]|[3-9][02468])\.04-standard[^\s]+' | sort -V | tail -1)
+                  pveam download local "$TEMPLATE" >&2 || true
+                  echo "$TEMPLATE"
+              register: template_result
+              changed_when: false
+
+            - name: '{{ instance.hostname | upper }}: Create LXC'
+              command: >
+                  pct create {{ id }} local:vztmpl/{{ template_result.stdout | trim }}
+                  --hostname {{ instance.hostname }}
+                  --cores {{ instance.cores }}
+                  --memory {{ instance.memory }}
+                  --swap {{ instance.swap }}
+                  --rootfs {{ instance.storage }}:{{ instance.disk }}
+                  --net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
+                  --unprivileged 0
+                  --features nesting=1,fuse=1
+                  --onboot 1
+
+            - name: '{{ instance.hostname | upper }}: Configure LXC'
+              blockinfile:
+                  path: '/etc/pve/lxc/{{ id }}.conf'
+                  marker: '# {mark} ANSIBLE MANAGED BLOCK'
+                  block: |
+                      mp1: {{ paths.media }},mp=/media/pixel
+                      mp2: {{ paths.app }},mp=/opt/pixel,ro=1
+                      lxc.apparmor.profile: unconfined
+                      lxc.cgroup2.devices.allow: a
+                      lxc.mount.auto: proc:rw sys:rw cgroup:rw
+
+            - name: '{{ instance.hostname | upper }}: Start LXC'
+              command: pct start {{ id }}
+
+            - name: '{{ instance.hostname | upper }}: Wait for Network'
+              shell: pct exec {{ id }} -- ping -c 1 -W 2 {{ env.JARVIS_DNS_SERVERS[0] }}
+              register: network_check
+              until: network_check.rc == 0
+              retries: 10
+              delay: 3
+
+            - name: '{{ instance.hostname | upper }}: Install Docker & Dependencies'
+              shell: |
+                  pct exec {{ id }} --keep-env 0 -- bash -c '
+                  export DEBIAN_FRONTEND=noninteractive
+                  apt-get update && apt-get -y upgrade
+                  apt-get install -y ca-certificates curl gnupg git lzip python3-venv libimage-exiftool-perl
+                  install -m 0755 -d /etc/apt/keyrings
+                  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+                  chmod a+r /etc/apt/keyrings/docker.gpg
+                  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+                  apt-get update
+                  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+                  systemctl enable --now docker
+                  '
+
+            - name: '{{ instance.hostname | upper }}: Enable Console Autologin'
+              shell: >
+                  pct exec {{ id }} -- bash -c "mkdir -p /etc/systemd/system/container-getty@1.service.d &&
+                  echo -e '[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 \$TERM' > /etc/systemd/system/container-getty@1.service.d/override.conf &&
+                  systemctl daemon-reload && systemctl restart container-getty@1.service"
+
+      - name: '{{ instance.hostname | upper }}: Pass GPU'
+        shell: |
+            pct config {{ id }} | grep -q '^dev0: /dev/dri/renderD128' && exit 0
+            pct set {{ id }} -dev0 /dev/dri/renderD128 -dev1 /dev/dri/card1
+            pct reboot {{ id }}
+            until pct exec {{ id }} -- ping -c 1 -W 2 {{ env.JARVIS_DNS_SERVERS[0] }} >/dev/null 2>&1; do sleep 3; done
+            echo CHANGED
+        register: pixel_gpu
+        changed_when: "'CHANGED' in pixel_gpu.stdout"
+
+      - name: '{{ instance.hostname | upper }}: Restrict Ports'
+        shell: |
+            pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+            conf=/etc/systemd/system/docker.service.d/firewall.conf
+            want='[Service]'
+            {% for p in ports %}
+            rule{{ loop.index }}="DOCKER-USER -i eth0 -p tcp --dport {{ p.port }} ! -s {{ p.from }} -j DROP"
+            want="$want
+            ExecStartPost=/bin/sh -c \"iptables -C $rule{{ loop.index }} 2>/dev/null || iptables -I $rule{{ loop.index }}\""
+            {% endfor %}
+            if [ "$(cat $conf 2>/dev/null)" != "$want" ]; then
+                mkdir -p ${conf%/*} && echo "$want" > $conf && systemctl daemon-reload
+                echo CHANGED
+            fi
+            {% for p in ports %}
+            iptables -C $rule{{ loop.index }} 2>/dev/null || { iptables -I $rule{{ loop.index }}; echo CHANGED; }
+            {% endfor %}
+            EOF
+        register: pixel_firewall
+        changed_when: "'CHANGED' in pixel_firewall.stdout"
+
+      - name: '{{ instance.hostname | upper }}: Build Images'
+        shell: |
+            pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+            set -e
+            if ! docker image inspect {{ redroid.image }} >/dev/null 2>&1; then
+                docker pull -q {{ redroid.base }} && docker tag {{ redroid.base }} redroid/redroid:{{ redroid.version }}-latest
+                [ -d /root/pixel/redroid-script ] || git clone -q https://github.com/ayasa520/redroid-script.git /root/pixel/redroid-script
+                cd /root/pixel/redroid-script && git checkout -q {{ redroid.script_commit }}
+                [ -d .venv ] || { python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt; }
+                USER=root SUDO_USER=root HOME=/root .venv/bin/python redroid.py -a {{ redroid.version }} {{ redroid.gapps }} -m > /root/pixel/build.log 2>&1
+                base=1
+                echo CHANGED
+            fi
+            if [ -n "${base:-}" ] || {{ (app_files.results | selectattr('file_item.name', 'match', 'redroid/') | selectattr('changed') | list | length > 0) | lower }} || ! docker image inspect pixel-redroid:{{ redroid.version }} >/dev/null 2>&1; then
+                docker compose -f /opt/pixel/compose.yml build -q pixel
+                echo CHANGED
+            fi
+            if {{ (app_files.results | selectattr('file_item.name', 'match', 'web/') | selectattr('changed') | list | length > 0) | lower }} || ! docker image inspect pixel-web:0.8.1 >/dev/null 2>&1; then
+                docker compose -f /opt/pixel/compose.yml build -q web
+                echo CHANGED
+            fi
+            EOF
+        register: pixel_images
+        changed_when: "'CHANGED' in pixel_images.stdout"
+
+      - name: '{{ instance.hostname | upper }}: Install MotionPhoto2'
+        shell: |
+            pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+            set -e
+            bin={{ sync.motionphoto2 }}
+            echo "{{ motionphoto2.sha256 }}  $bin" | sha256sum -c --quiet - 2>/dev/null && exit 0
+            tmp=$(mktemp -d) && cd $tmp
+            curl -fsSL -o mp2.zip {{ motionphoto2.url }} && python3 -m zipfile -e mp2.zip .
+            echo "{{ motionphoto2.sha256 }}  motionphoto2" | sha256sum -c --quiet -
+            install -m 0755 motionphoto2 $bin && rm -rf $tmp
+            echo CHANGED
+            EOF
+        register: pixel_motionphoto2
+        changed_when: "'CHANGED' in pixel_motionphoto2.stdout"
+
+      - name: '{{ instance.hostname | upper }}: Start Containers'
+        command: pct exec {{ id }} --keep-env 0 -- docker compose -f /opt/pixel/compose.yml up -d
+        register: pixel_compose
+        changed_when: pixel_compose.stderr is search('Creat|Recreat|Start')
+
+      - name: '{{ instance.hostname | upper }}: Configure Android'
+        shell: |
+            pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+            set -e
+            x() { docker exec pixel /system/bin/sh -c "$1"; }
+            booted() { for i in $(seq 1 75); do [ "$(x 'getprop sys.boot_completed' 2>/dev/null)" = 1 ] && return 0; sleep 4; done; return 1; }
+            booted
+            changed=0
+            if ! x '[ -f /data/adb/magisk/util_functions.sh ]'; then
+                x 'd=/data/adb/magisk; t=/data/local/tmp/magisk; rm -rf $t; mkdir -p $t; cd $t
+                   unzip -q /system/etc/init/magisk/magisk.apk "assets/*" "lib/x86_64/*"
+                   cp assets/*.sh assets/stub.apk $d/
+                   for f in lib/x86_64/lib*.so; do n=${f##*/lib}; cp $f $d/${n%.so}; done
+                   chmod 0755 $d/*; chown -R 0:0 $d; rm -rf $t'
+                changed=1
+            fi
+            if [ "$(x "/sbin/magisk --sqlite \"SELECT value FROM settings WHERE key='zygisk'\"")" != value=1 ]; then
+                x "/sbin/magisk --sqlite \"REPLACE INTO settings (key,value) VALUES('zygisk',1)\""
+                changed=1
+            fi
+            if ! x 'grep -qx version={{ module.version }} /data/adb/modules/unlimitedphotos/module.prop 2>/dev/null'; then
+                zip={{ paths.data }}/local/tmp/GPhotosUnlimited.zip
+                cp /opt/pixel/{{ module.file }} $zip
+                echo "{{ module.sha256 }}  $zip" | sha256sum -c --quiet -
+                x '/sbin/magisk --install-module /data/local/tmp/GPhotosUnlimited.zip >/dev/null'
+                rm -f $zip
+                changed=1
+            fi
+            fetch() { curl -fsSL -o "$2" "$1" && echo "$3  $2" | sha256sum -c --quiet -; }
+            font={{ paths.data }}/adb/modules/pixelfont
+            if ! echo "{{ font.sha256 }}  $font/system/fonts/Roboto-Regular.ttf" | sha256sum -c --quiet - 2>/dev/null; then
+                mkdir -p $font/system/fonts
+                fetch "{{ font.url }}" $font/system/fonts/Roboto-Regular.ttf {{ font.sha256 }}
+                cp $font/system/fonts/Roboto-Regular.ttf $font/system/fonts/RobotoStatic-Regular.ttf
+                printf 'id=pixelfont\nname=Google Sans Flex\nversion=1\nversionCode=1\nauthor=jarvis\ndescription=Google Sans Flex as the system font\n' > $font/module.prop
+                changed=1
+            fi
+            wall={{ paths.data }}/system/users/0
+            if ! echo "{{ wallpaper.sha256 }}  $wall/wallpaper_orig" | sha256sum -c --quiet - 2>/dev/null; then
+                fetch "{{ wallpaper.url }}" /tmp/wallpaper.jpg {{ wallpaper.sha256 }}
+                for f in wallpaper_orig wallpaper; do install -o 1000 -g 1000 -m 0600 /tmp/wallpaper.jpg $wall/$f; done
+                rm -f /tmp/wallpaper.jpg $wall/wallpaper_info.xml
+                changed=1
+            fi
+            boot={{ paths.data }}/adb/service.d/pixel-battery.sh
+            want='#!/system/bin/sh
+            until [ "$(getprop sys.boot_completed)" = 1 ]; do sleep 2; done
+            dumpsys battery set ac 1
+            dumpsys battery set level 100'
+            if [ "$(cat $boot 2>/dev/null)" != "$want" ]; then
+                mkdir -p ${boot%/*} && echo "$want" > $boot && chmod 0755 $boot
+                changed=1
+            fi
+            if [ "$(x 'getprop persist.sys.timezone')" != {{ env.JARVIS_TZ }} ]; then
+                x 'setprop persist.sys.timezone {{ env.JARVIS_TZ }}'
+                changed=1
+            fi
+            if [ $changed = 1 ]; then
+                docker restart pixel >/dev/null && sleep 10 && booted
+                echo CHANGED
+            fi
+            EOF
+        register: pixel_android
+        changed_when: "'CHANGED' in pixel_android.stdout"
+
+      - name: '{{ instance.hostname | upper }}: Configure Home Screen'
+        shell: |
+            pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+            set -e
+            x() { docker exec pixel /system/bin/sh -c "$1"; }
+            if ! x 'pm path app.lawnchair' >/dev/null 2>&1; then
+                apk={{ paths.data }}/local/tmp/lawnchair.apk
+                curl -fsSL -o $apk {{ lawnchair.url }}
+                echo "{{ lawnchair.sha256 }}  $apk" | sha256sum -c --quiet -
+                x 'pm install -r /data/local/tmp/lawnchair.apk' >/dev/null
+                rm -f $apk
+                echo CHANGED
+            fi
+            home=$(x 'cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME' | grep -m1 '^ *app.lawnchair/' | tr -d ' ')
+            if ! x 'cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME' | grep -q "$home"; then
+                x "cmd package set-home-activity $home" >/dev/null
+                echo CHANGED
+            fi
+            if ! x 'cmd uimode night' | grep -q 'yes'; then
+                x 'cmd uimode night yes' >/dev/null
+                echo CHANGED
+            fi
+            for db in {{ paths.data }}/data/com.android.launcher3/databases/launcher_*.db; do
+                [ -f "$db" ] || continue
+                if [ "$(python3 -c "import sqlite3, sys; print(sqlite3.connect(sys.argv[1]).execute('select count(*) from favorites where container = -101').fetchone()[0])" "$db")" != 0 ]; then
+                    x 'am force-stop com.android.launcher3'
+                    python3 -c "import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute('delete from favorites where container = -101'); c.commit()" "$db"
+                    x 'am force-stop com.android.launcher3'
+                    echo CHANGED
+                fi
+            done
+            if ! x 'pm list packages -d' | grep -q 'com.google.android.setupwizard'; then
+                x 'pm disable-user --user 0 com.google.android.setupwizard' >/dev/null
+                echo CHANGED
+            fi
+            EOF
+        register: pixel_home
+        changed_when: "'CHANGED' in pixel_home.stdout"
+
+      - name: '{{ instance.hostname | upper }}: Enable Sync Timer'
+        shell: |
+            pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+            if {{ (app_files.results | selectattr('file_item.name', 'match', 'pixel-sync\.(service|timer)') | selectattr('changed') | list | length > 0) | lower }}; then
+                systemctl daemon-reload && echo CHANGED
+            fi
+            systemctl is-enabled --quiet pixel-sync.timer 2>/dev/null || {
+                systemctl link /opt/pixel/pixel-sync.service >/dev/null && systemctl enable --now /opt/pixel/pixel-sync.timer >/dev/null && echo CHANGED
+            }
+            EOF
+        register: pixel_timer
+        changed_when: "'CHANGED' in pixel_timer.stdout"
+
+      - name: '{{ instance.hostname | upper }}: Check Google Setup'
+        shell: |
+            pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+            echo "accounts: $(docker exec pixel /system/bin/sh -c "dumpsys account | grep -c 'Account {'")"
+            echo "photos: $(docker exec pixel pm path com.google.android.apps.photos >/dev/null 2>&1 && echo true || echo false)"
+            python3 -c "
+            import sqlite3
+            try:
+                row = sqlite3.connect('file:{{ paths.data }}/data/com.google.android.gsf/databases/gservices.db?mode=ro', uri=True).execute(\"select value from main where name = 'android_id'\").fetchone()
+            except sqlite3.Error:
+                row = None
+            print(\"gsf: '\" + (row[0] if row else '') + \"'\")"
+            EOF
+        register: pixel_google
+        changed_when: false
+        until: (pixel_google.stdout | from_yaml).accounts > 0 or (pixel_google.stdout | from_yaml).gsf | length > 0
+        retries: 30
+        delay: 10
+
+      - name: '{{ instance.hostname | upper }}: Show Manual Steps'
+        vars:
+            google: '{{ pixel_google.stdout | from_yaml }}'
+            host_cmd: 'pct exec {{ id }} --keep-env 0 -- docker'
+        debug:
+            msg: "{{ ['Google account and Photos are set up.'] if google.accounts > 0 and google.photos else [
+                '1. Register device id ' ~ google.gsf ~ ' at https://www.google.com/android/uncertified/',
+                '2. Then on the Proxmox host: ' ~ host_cmd ~ ' exec pixel pm clear com.google.android.gms && ' ~ host_cmd ~ ' exec pixel pm clear com.android.vending && ' ~ host_cmd ~ ' restart pixel',
+                '3. Open https://' ~ env.JARVIS_SERVICES.pixel.subdomains[0] ~ '.' ~ env.JARVIS_DOMAIN ~ ', sign in to Play Store, install Google Photos, turn off auto-update',
+                '4. Open Photos and turn on Backup at Original quality'] }}"
+
+  rescue:
+      - debug:
+            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
+  become: true

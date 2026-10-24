@@ -247,3 +247,11 @@ JARVIS_SERVICES:
         logo: filebrowser-quantum.svg
         port: 5244
         subdomains: [files]
+
+    pixel:
+        id: 254
+        name: Pixel
+        subtitle: Google Photos Uploader
+        logo: google-photos.svg
+        port: 8000
+        subdomains: [pixel]

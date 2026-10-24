@@ -51,4 +51,5 @@
       #       - docker_lxc
       #       - storage_lxc
       #       - pihole_lxc
+      #       - pixel_lxc
       #   when: not (item.endswith('_vm') and not run_vms)
