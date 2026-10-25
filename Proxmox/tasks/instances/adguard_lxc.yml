@@ -1,0 +1,88 @@
+- vars:
+      id: '{{ env.JARVIS_SERVICES.adguard.id }}'
+      instance:
+          hostname: adguard
+          memory: 512
+          cores: 1
+          disk: 4
+          ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
+          gateway: '{{ env.JARVIS_GATEWAY }}'
+          mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
+      traefik_ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.traefik.id }}'
+      adguard:
+          schema_version: 34
+          http:
+              address: 0.0.0.0:80
+          dns:
+              ratelimit: 0
+              upstream_dns: ['1.1.1.1', '1.0.0.1', '9.9.9.9']
+          filtering:
+              rewrites:
+                  - { domain: '{{ env.JARVIS_DOMAIN }}', answer: '{{ traefik_ip }}', enabled: true }
+                  - { domain: '*.{{ env.JARVIS_DOMAIN }}', answer: '{{ traefik_ip }}', enabled: true }
+          filters:
+              - { id: 1, enabled: true, name: AdGuard DNS filter, url: 'https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt' }
+  block:
+      - name: '{{ instance.hostname | upper }}: Check if Instance exists'
+        command: pct status {{ id }}
+        register: instance_check
+        failed_when: false
+        changed_when: false
+
+      - name: '{{ instance.hostname | upper }}: Provision Instance'
+        when: instance_check.rc != 0
+        block:
+            - name: '{{ instance.hostname | upper }}: Install using community script'
+              shell: |
+                  export mode="default"
+                  export var_os="debian"
+                  export var_version="13"
+                  export var_ctid="{{ id }}"
+                  export var_hostname="{{ instance.hostname }}"
+                  export var_cpu="{{ instance.cores }}"
+                  export var_ram="{{ instance.memory }}"
+                  export var_disk="{{ instance.disk }}"
+                  export var_net="{{ instance.ip }}/24"
+                  export var_gateway="{{ instance.gateway }}"
+                  export var_unprivileged="1"
+                  export TERM=xterm
+                  echo y | bash -c "$(curl -fsSL {{ env.JARVIS_COMMUNITY_SCRIPTS_URL }}/ct/adguard.sh)"
+              args:
+                  executable: /bin/bash
+
+            - name: '{{ instance.hostname | upper }}: Configure MAC Address'
+              command: pct set {{ id }} -net0 name=eth0,bridge=vmbr0,ip={{ instance.ip }}/24,gw={{ instance.gateway }},hwaddr={{ instance.mac }}
+
+      - name: '{{ instance.hostname | upper }}: Apply Config'
+        shell: |
+            pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+            want=/opt/AdGuardHome/AdGuardHome.ansible.yaml
+            cat > $want.new <<'YAML'
+            {{ adguard | to_nice_yaml(indent=2) }}
+            YAML
+            cmp -s $want.new $want && { rm $want.new; exit 0; }
+            mv $want.new $want
+            systemctl stop AdGuardHome
+            cp $want /opt/AdGuardHome/AdGuardHome.yaml
+            systemctl start AdGuardHome
+            echo CHANGED
+            EOF
+        register: config_result
+        changed_when: "'CHANGED' in config_result.stdout"
+
+      - name: '{{ instance.hostname | upper }}: Verify DNS'
+        shell: |
+            set -e
+            [ "$(dig +short +time=3 @{{ instance.ip }} dns.{{ env.JARVIS_DOMAIN }})" = {{ traefik_ip }} ]
+            [ "$(dig +short +time=3 @{{ instance.ip }} doubleclick.net)" = 0.0.0.0 ]
+            [ -n "$(dig +short +time=3 @{{ instance.ip }} cloudflare.com)" ]
+        register: dns_check
+        until: dns_check.rc == 0
+        retries: 10
+        delay: 3
+        changed_when: false
+
+  rescue:
+      - debug:
+            msg: '{{ instance.hostname }} ({{ id }}) failed to deploy'
+  become: true

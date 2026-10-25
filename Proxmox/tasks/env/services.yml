@@ -98,15 +98,13 @@ JARVIS_SERVICES:
         subdomains: [home]
         skip_auth: true
 
-    pihole:
+    adguard:
         id: 252
-        name: Pihole
+        name: AdGuard
         subtitle: DNS & Ad Blocker
-        logo: pi-hole.svg
+        logo: adguard-home.svg
         port: 80
-        path: /admin
         subdomains: [dns]
-        middlewares: [pihole-redirect]
 
     docker:
         id: 253
