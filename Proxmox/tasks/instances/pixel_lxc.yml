@@ -418,6 +418,12 @@
                 x 'pm disable-user --user 0 com.google.android.setupwizard' >/dev/null
                 echo CHANGED
             fi
+            apps=$(x 'pm list packages --user 0')
+            for pkg in org.chromium.webview_shell com.android.quicksearchbox com.android.calendar com.android.camera2 com.android.gallery3d; do
+                echo "$apps" | grep -qx "package:$pkg" || continue
+                x "pm uninstall --user 0 $pkg" >/dev/null
+                echo CHANGED
+            done
             EOF
         register: pixel_home
         changed_when: "'CHANGED' in pixel_home.stdout"
