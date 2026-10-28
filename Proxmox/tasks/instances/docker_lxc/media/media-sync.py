@@ -199,7 +199,8 @@ def sync_prowlarr(cfg):
     apps = request(f'{base}/applications', headers=headers)
     for app in SPEC['arrs']:
         values = {'prowlarrUrl': f"http://{HOST}:{cfg['port']}", 'baseUrl': f"http://{HOST}:{app['port']}",
-                  'apiKey': arr_key(app['name']), 'syncCategories': app['sync_categories']}
+                  'apiKey': arr_key(app['name']), 'syncCategories': app['sync_categories'],
+                  'syncRejectBlocklistedTorrentHashesWhileGrabbing': True}
         current_app = next((a for a in apps if a['name'] == app['prowlarr_name']), None)
         if current_app is not None and current_app.get('syncLevel') == 'fullSync' and fields_match(current_app['fields'], values):
             try:
@@ -368,6 +369,19 @@ def sync_profiles(cfg):
     for profile, movie_ids in moves.items():
         request(f'{base}/movie/editor', 'PUT', {'movieIds': movie_ids, 'qualityProfileId': profiles[profile]}, headers)
         log(f'CHANGED radarr profile {profile}: {len(movie_ids)} movies')
+
+
+def sync_stalled(cfg):
+    cutoff = time.time() - cfg['hours'] * 3600
+    torrents = request(f"http://{HOST}:{SPEC['qbittorrent']['port']}/api/v2/torrents/info?filter=downloading")
+    dead = {t['hash'].upper(): t['name'] for t in torrents if t['state'] in ('metaDL', 'stalledDL') and t['last_activity'] < cutoff}
+    for app in SPEC['arrs']:
+        base = f"http://{HOST}:{app['port']}/api/v3"
+        headers = {'X-Api-Key': arr_key(app['name'])}
+        queue = {q['downloadId']: q['id'] for q in request(f'{base}/queue?pageSize=1000', headers=headers)['records'] if q.get('downloadId') in dead}
+        for download_id, queue_id in queue.items():
+            request(f'{base}/queue/{queue_id}?removeFromClient=true&blocklist=true', 'DELETE', headers=headers)
+            log(f"CHANGED {app['name']} blocklisted stalled {dead[download_id]}")
 
 
 def sync_jellyfin(cfg):
