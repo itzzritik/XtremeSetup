@@ -55,6 +55,13 @@
               args:
                   creates: '{{ bun_bin }}/bun'
 
+            - name: '{{ app_name | upper }}: Allow npm Install Scripts'
+              ansible.builtin.blockinfile:
+                  path: '{{ home }}/.npmrc'
+                  marker: '# {mark} JARVIS'
+                  create: true
+                  block: "allow-scripts={{ npm_packages | join(',') }}"
+
             - name: '{{ app_name | upper }}: Install Node, npm Packages and Chromium'
               ansible.builtin.shell: |
                   set -eo pipefail
@@ -67,7 +74,7 @@
                   stale=$(npm outdated -g --json 2>/dev/null | jq -r 'keys[]' || true)
                   for pkg in {{ npm_packages | map('quote') | join(' ') }}; do
                       grep -qxF -- "$pkg" <<< "$have" && ! grep -qxF -- "$pkg" <<< "$stale" && continue
-                      npm install -g "$pkg" --allow-scripts="$pkg" >/dev/null 2>&1
+                      npm install -g "$pkg" >/dev/null 2>&1
                       echo "CHANGED $pkg"
                   done
                   out=$(node {{ playwright_cli }} install chromium 2>&1)
