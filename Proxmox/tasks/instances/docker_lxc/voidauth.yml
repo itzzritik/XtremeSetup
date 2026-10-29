@@ -1,7 +1,7 @@
 - vars:
       app_name: voidauth
       mapped_uid: '{{ instance.subuid | int + 1000 }}'
-      image: 'voidauth/voidauth:1.16.0'
+      image: 'voidauth/voidauth:1.17.1'
       config:
           root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
           local: '{{ instance.configs }}/{{ app_name }}'

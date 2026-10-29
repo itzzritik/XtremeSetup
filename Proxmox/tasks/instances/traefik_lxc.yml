@@ -13,8 +13,8 @@
       paths:
           config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}'
           cloudflared_config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/cloudflared'
-      traefik_version: '3.7.13'
-      cloudflared_version: '2026.9.3'
+      traefik_version: '3.7.16'
+      cloudflared_version: '2026.10.5'
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
         command: pct status {{ id }}

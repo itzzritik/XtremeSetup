@@ -12,7 +12,7 @@
       paths:
           config: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/etc'
           data: '{{ env.JARVIS_CONFIGS_DIR }}/{{ instance.hostname }}/lib'
-      jellyfin_version: '12.1'
+      jellyfin_version: '12.4'
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
         command: pct status {{ id }}

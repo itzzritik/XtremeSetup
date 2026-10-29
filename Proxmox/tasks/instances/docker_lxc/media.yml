@@ -77,7 +77,7 @@
             environment: ['LOG_LEVEL=info']
             config_mount: ''
           - name: qbittorrent
-            image: lscr.io/linuxserver/qbittorrent:5.2.4_v2.0.15-ls479
+            image: lscr.io/linuxserver/qbittorrent:5.3.0_v2.1.2-ls485
             lsio: true
             ports: ['{{ svc.qbittorrent.port }}:8080', '6881:6881', '6881:6881/udp']
             environment: ['DOCKER_MODS=ghcr.io/vuetorrent/vuetorrent-lsio-mod:latest', 'WEBUI_PORT=8080']
@@ -85,42 +85,42 @@
             volumes: ['{{ library }}']
             health: ['CMD', 'curl', '-fs', 'http://localhost:8080']
           - name: radarr
-            image: mdhiggins/radarr-sma:latest@sha256:6f156d617313da465a0c5b9274ee2f3afd579efe7b75d5cd4a93c0be3c0ed0e2
+            image: mdhiggins/radarr-sma:latest@sha256:a4535f75d673789a6ae1d103decdfcb718f7a60e3d8d415ff00de1208574dde6
             lsio: true
             ports: ['{{ svc.radarr.port }}:7878']
             environment: ['SMA_USE_REPO=true']
             volumes: ['{{ library }}', '{{ instance.configs }}/{{ stack_name }}/radarr/sma:/usr/local/sma/config']
             health: ['CMD', 'curl', '-fs', 'http://localhost:7878/ping']
           - name: sonarr
-            image: mdhiggins/sonarr-sma:latest@sha256:a99f35f9616965035c84f53870f801dafa575e5918367aac44cef9b0d3f0943d
+            image: mdhiggins/sonarr-sma:latest@sha256:95c1bb0275c223e2584b201be5713e46db53b567508fcee5ec251b782e8ab4fe
             lsio: true
             ports: ['{{ svc.sonarr.port }}:8989']
             environment: ['SMA_USE_REPO=true']
             volumes: ['{{ library }}', '{{ instance.configs }}/{{ stack_name }}/sonarr/sma:/usr/local/sma/config']
             health: ['CMD', 'curl', '-fs', 'http://localhost:8989/ping']
           - name: prowlarr
-            image: lscr.io/linuxserver/prowlarr:2.6.5.5623-ls162
+            image: lscr.io/linuxserver/prowlarr:2.7.0.5723-ls166
             lsio: true
             ports: ['{{ svc.prowlarr.port }}:9696']
             health: ['CMD', 'curl', '-fs', 'http://localhost:9696/ping']
           - name: bazarr
-            image: lscr.io/linuxserver/bazarr:v1.6.2-ls366
+            image: lscr.io/linuxserver/bazarr:v1.6.2-ls370
             lsio: true
             ports: ['{{ svc.bazarr.port }}:6767']
             volumes: ['{{ library }}']
             health: ['CMD', 'curl', '-fs', 'http://localhost:6767/']
           - name: jellyseerr
-            image: ghcr.io/seerr-team/seerr:v3.5.0
+            image: ghcr.io/seerr-team/seerr:v3.5.1
             init: true
             ports: ['{{ svc.jellyseerr.port }}:5055']
             environment: ['LOG_LEVEL=info', 'NODE_OPTIONS=--require=/app/config/tmdb-alias.js', "TMDB_ALIAS={{ lookup('file', 'media/tmdb-alias.js') | hash('md5') }}"]
             config_mount: /app/config
             health: ['CMD-SHELL', 'wget -q --spider http://localhost:5055/api/v1/status || exit 1']
           - name: recyclarr
-            image: ghcr.io/recyclarr/recyclarr:8.7.2
+            image: ghcr.io/recyclarr/recyclarr:8.8.1
             environment: ['CRON_SCHEDULE=@daily']
           - name: mcp
-            image: samanhappy/mcphub:1.1.1@sha256:73a47c739c7808af923f46ce6b56eaa1f73ddd9c3ce6f41f884dc575aaa27aa0
+            image: samanhappy/mcphub:1.1.13@sha256:37de83286591ea0af7b4ab6adbcd30938bbad07f93d82d5e781bd75897d229b0
             ports: ['{{ svc.mcp.port }}:3000']
             environment:
                 - 'ADMIN_PASSWORD={{ env.JARVIS_MCP_API_KEY }}'
@@ -136,7 +136,7 @@
                   env: { SEERR_URL: 'http://{{ instance.ip }}:{{ svc.jellyseerr.port }}', SEERR_API_KEY: '{{ env.JARVIS_MCP_API_KEY }}' }
               jellyfin:
                   command: npx
-                  args: [-y, '@jaredtrent/jellyfin-mcp@2026.924.1', --read-only, --toolsets, 'discovery,media,analytics']
+                  args: [-y, '@jaredtrent/jellyfin-mcp@2026.1015.1', --read-only, --toolsets, 'discovery,media,analytics']
                   env:
                       JELLYFIN_URL: '{{ media_sync.jellyfin.url }}'
                       JELLYFIN_API_KEY: '{{ env.JARVIS_MCP_API_KEY }}'
@@ -152,7 +152,7 @@
                   headers: { Authorization: 'Bearer {{ env.JARVIS_HOMEASSISTANT_KEY }}' }
                   owner: admin
           bearerKeys:
-              - { id: jarvis, name: Jarvis, token: '{{ env.JARVIS_MCP_API_KEY }}', enabled: true, kind: system, accessType: all }
+              - { id: jarvis, name: Jarvis, tokenHash: "{{ env.JARVIS_MCP_API_KEY | hash('sha256') }}", tokenPrefix: '{{ env.JARVIS_MCP_API_KEY[:10] }}', enabled: true, kind: system, accessType: all }
           systemConfig:
               routing: { enableBearerAuth: true, skipAuth: false }
       media_sync:

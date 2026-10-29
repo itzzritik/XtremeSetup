@@ -1,7 +1,7 @@
 - vars:
       app_name: openlist
       mapped_uid: '{{ instance.subuid | int + 1000 }}'
-      image: 'openlistteam/openlist:v4.2.6-aio'
+      image: 'openlistteam/openlist:v4.2.9-aio'
       config:
           root: '{{ env.JARVIS_CONFIGS_DIR }}/{{ app_name }}'
           local: '{{ instance.configs }}/{{ app_name }}'
