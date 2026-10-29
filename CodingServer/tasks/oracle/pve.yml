@@ -1,0 +1,43 @@
+---
+- vars:
+      app_name: pve
+      key: '{{ home }}/.ssh/proxmox'
+  block:
+      - become: true
+        become_user: '{{ user }}'
+        block:
+            - name: '{{ app_name | upper }}: Generate Host Key'
+              ansible.builtin.command: "ssh-keygen -q -t ed25519 -N '' -C {{ user }}@{{ inventory_hostname }} -f {{ key }}"
+              args:
+                  creates: '{{ key }}'
+
+            - name: '{{ app_name | upper }}: Read Host Key'
+              ansible.builtin.slurp:
+                  src: '{{ key }}.pub'
+              register: host_key
+
+            - name: '{{ app_name | upper }}: Configure SSH Alias'
+              ansible.builtin.blockinfile:
+                  path: '{{ home }}/.ssh/config'
+                  marker: '# {mark} PROXMOX'
+                  create: true
+                  mode: '0600'
+                  block: |
+                      Host proxmox
+                          HostName ssh.{{ env.JARVIS_DOMAIN }}
+                          User root
+                          IdentityFile {{ key }}
+                          IdentitiesOnly yes
+                          StrictHostKeyChecking accept-new
+                          ServerAliveInterval 15
+                          ProxyCommand cloudflared access ssh --hostname %h --service-token-id {{ env.JARVIS_CF_ACCESS_CLIENT_ID }} --service-token-secret {{ env.JARVIS_CF_ACCESS_CLIENT_SECRET }}
+              no_log: true
+
+      - name: '{{ app_name | upper }}: Authorize Key on Host'
+        ansible.builtin.shell: grep -qxF "$KEY" /root/.ssh/authorized_keys || { echo "$KEY" >> /root/.ssh/authorized_keys && echo CHANGED; }
+        environment:
+            KEY: '{{ host_key.content | b64decode | trim }}'
+        register: host_authorized
+        changed_when: "'CHANGED' in host_authorized.stdout"
+        delegate_to: pve
+        become: false
