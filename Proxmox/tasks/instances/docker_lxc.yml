@@ -128,6 +128,12 @@
         register: docker_firewall
         changed_when: "'CHANGED' in docker_firewall.stdout"
 
+      - name: '{{ instance.hostname | upper }}: Schedule Unhealthy Restart'
+        cron:
+            name: Restart docker LXC containers whose health check fails
+            minute: '*/5'
+            job: "pct exec {{ id }} --keep-env 0 -- sh -c 'docker ps -q -f health=unhealthy | xargs -r docker restart' 2>&1 | logger -t docker-heal"
+
       - name: '{{ instance.hostname | upper }}: Deploy Apps'
         include_tasks: 'docker_lxc/{{ docker_app_item }}.yml'
         loop:
