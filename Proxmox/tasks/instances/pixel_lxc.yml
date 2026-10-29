@@ -3,8 +3,9 @@
       instance:
           hostname: pixel
           memory: 4096
-          swap: 512
+          swap: 2048
           cores: 4
+          cpuunits: 25
           disk: 32
           storage: local-lvm
           ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
@@ -90,12 +91,6 @@
         loop_control:
             loop_var: dir_item
             label: '{{ dir_item.path }}'
-
-      - name: '{{ instance.hostname | upper }}: Link Uploading Folder'
-        file:
-            path: '{{ paths.media }}/uploading'
-            src: .android/0/DCIM/Camera
-            state: link
 
       - name: '{{ instance.hostname | upper }}: Write App Files'
         copy:
@@ -241,6 +236,15 @@
                   pct exec {{ id }} -- bash -c "mkdir -p /etc/systemd/system/container-getty@1.service.d &&
                   echo -e '[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 \$TERM' > /etc/systemd/system/container-getty@1.service.d/override.conf &&
                   systemctl daemon-reload && systemctl restart container-getty@1.service"
+
+      - name: '{{ instance.hostname | upper }}: Set Resources'
+        shell: |
+            conf=$(pct config {{ id }})
+            echo "$conf" | grep -qx 'swap: {{ instance.swap }}' && echo "$conf" | grep -qx 'cpuunits: {{ instance.cpuunits }}' && exit 0
+            pct set {{ id }} -swap {{ instance.swap }} -cpuunits {{ instance.cpuunits }}
+            echo CHANGED
+        register: pixel_resources
+        changed_when: "'CHANGED' in pixel_resources.stdout"
 
       - name: '{{ instance.hostname | upper }}: Pass GPU'
         shell: |

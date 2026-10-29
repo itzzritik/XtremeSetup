@@ -4,6 +4,7 @@
           hostname: home
           memory: 4096
           cores: 2
+          cpuunits: 1024
           storage: local-lvm
           bridge: vmbr0
           ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ id }}'
@@ -139,6 +140,14 @@
               retries: 30
               delay: 5
               register: network_verify
+
+      - name: '{{ instance.hostname | upper }}: Set CPU Priority'
+        shell: |
+            qm config {{ id }} | grep -qx 'cpuunits: {{ instance.cpuunits }}' && exit 0
+            qm set {{ id }} --cpuunits {{ instance.cpuunits }}
+            echo CHANGED
+        register: home_cpu
+        changed_when: "'CHANGED' in home_cpu.stdout"
 
       - name: '{{ instance.hostname | upper }}: Verify Home Assistant API is ready'
         uri:

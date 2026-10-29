@@ -340,6 +340,11 @@ def main(config_path):
             for p in sorted(Path(cfg['upload_dir']).iterdir()):
                 st = p.stat()
                 uploading.append([p.name, st.st_ino, st.st_size, st.st_mtime_ns])
+            link = Path(cfg['drop_dir'], 'uploading')
+            if uploading and not os.path.lexists(link):
+                link.symlink_to(os.path.relpath(cfg['upload_dir'], cfg['drop_dir']))
+            elif not uploading and link.is_symlink():
+                link.unlink()
             if uploading != state.get('uploading'):
                 # Android's FUSE keeps stale entries for files changed outside it
                 Path('/proc/sys/vm/drop_caches').write_text('2')
