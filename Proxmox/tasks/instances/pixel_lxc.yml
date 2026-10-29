@@ -136,6 +136,7 @@
                       build: ./web
                       image: pixel-web:0.8.1
                       container_name: pixel-web
+                      security_opt: [apparmor=unconfined]
                       restart: unless-stopped
                       ports: ['{{ env.JARVIS_SERVICES.pixel.port }}:8000']
                       depends_on: [pixel]
