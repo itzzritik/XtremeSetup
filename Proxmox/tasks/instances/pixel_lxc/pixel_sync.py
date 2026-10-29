@@ -127,7 +127,8 @@ def scan_drop(cfg, state, now):
             entry = seen.get(str(path))
             if not entry or (entry['size'], entry['mtime']) != (st.st_size, st.st_mtime):
                 entry = seen[str(path)] = {'size': st.st_size, 'mtime': st.st_mtime, 'since': now}
-            found[path] = now - entry['since'] >= cfg['stable_seconds']
+            # Finder pre-creates empty placeholders and fills them later
+            found[path] = st.st_size > 0 and now - entry['since'] >= cfg['stable_seconds']
     for key in [k for k in seen if Path(k) not in found]:
         del seen[key]
     return found
@@ -161,7 +162,7 @@ def pair_live(stable, ids, skipped):
 def plan_ingest(cfg, state, stable, ids, now):
     partner = pair_live(stable, ids, state['skipped_movs'])
     paired_videos = set(partner.values())
-    items, waiting = [], 0
+    items = []
     for path in sorted(stable, key=lambda p: state['seen'][str(p)]['since']):
         cid, ext = ids.get(path, ''), path.suffix.lower()
         if str(path) in state['skipped_movs'] or str(path) in state['in_google'] or path in paired_videos:
@@ -170,11 +171,10 @@ def plan_ingest(cfg, state, stable, ids, now):
             items.append((path, partner[path]))
             continue
         if cid and ext in LIVE_IMAGE_EXT | LIVE_VIDEO_EXT and now - state['pair_wait'].setdefault(str(path), now) < cfg['pair_wait_seconds']:
-            waiting += 1
             continue
         items.append((path, None))
     state['pair_wait'] = {k: v for k, v in state['pair_wait'].items() if Path(k).exists()}
-    return items, waiting
+    return items
 
 
 def merge_pair(cfg, image, video):
@@ -211,9 +211,9 @@ def ingest(cfg, state, conn, now):
     found = {p: ok for p, ok in scan_drop(cfg, state, now).items() if p.suffix.lower() not in SIDECAR_EXT}
     stable = [p for p, ok in found.items() if ok]
     ids = content_ids([p for p in stable if p.suffix.lower() in LIVE_IMAGE_EXT | LIVE_VIDEO_EXT], state['seen'])
-    items, waiting = plan_ingest(cfg, state, stable, ids, now)
+    items = plan_ingest(cfg, state, stable, ids, now)
     queued = {(st.st_dev, st.st_ino) for st in (p.stat() for p in upload.iterdir() if p.is_file())}
-    room, moved = cfg['batch_size'] - len(queued), 0
+    room = cfg['batch_size'] - len(queued)
     for image, video in items:
         if room <= 0:
             break
@@ -242,10 +242,9 @@ def ingest(cfg, state, conn, now):
             video.unlink()
             state['totals']['merged'] = state['totals'].get('merged', 0) + 1
         log(f'queued {dst.name}' + (f' (motion photo from {image.name} + {video.name})' if len(sources) == 2 else ''))
-        room, moved = room - 1, moved + 1
+        room -= 1
     state['skipped_movs'] = {k: v for k, v in state['skipped_movs'].items() if Path(k).exists()}
     state['in_google'] = {k: v for k, v in state['in_google'].items() if Path(k).exists()}
-    return {'moved': moved, 'waiting': len(found), 'live_waiting': waiting}
 
 
 def process_deletes(cfg, state, conn, now, blocked):
@@ -253,7 +252,6 @@ def process_deletes(cfg, state, conn, now, blocked):
     cloud = confirmed_in_cloud(conn, cfg['camera_dir'])
     present = {p.name: p for p in upload.iterdir() if p.is_file()}
     state['confirmed'] = confirmed = {k: v for k, v in confirmed.items() if k in present and k in cloud}
-    deleted = 0
     for name, path in present.items():
         if name not in cloud:
             continue
@@ -280,11 +278,9 @@ def process_deletes(cfg, state, conn, now, blocked):
             continue
         path.unlink()
         del confirmed[name]
-        deleted += 1
         state['totals']['deleted'] = state['totals'].get('deleted', 0) + 1
         state['last_deleted'] = {'name': name, 'at': now}
         log(f'deleted {name}: confirmed in Google Photos')
-    return deleted
 
 
 def photo_key(path):
@@ -325,55 +321,35 @@ def prune_dirs(cfg):
                     pass
 
 
-def write_status(cfg, state, stats, now):
-    def fmt(ts):
-        return datetime.fromtimestamp(ts, ZoneInfo(cfg['timezone'])).strftime('%-d %B %Y, %-I:%M%p').replace('AM', 'am').replace('PM', 'pm')
-
-    upload = Path(cfg['upload_dir'])
-    last = state.get('last_deleted')
-    lines = {
-        'updated': fmt(now),
-        'mode': 'live (deletes after confirmation)' if cfg['delete'] else 'log-only (nothing is deleted)',
-        'android': 'healthy' if stats.get('healthy') else 'not ready',
-        'waiting_in_pixel': stats.get('waiting', 0),
-        'in_uploading': sum(1 for p in upload.iterdir() if p.is_file()) if upload.exists() else 0,
-        'live_photos_merged_total': state['totals'].get('merged', 0),
-        'live_photos_waiting_for_pair': stats.get('live_waiting', 0),
-        'live_photo_videos_skipped': ', '.join(f'{Path(k).name} ({v})' for k, v in state['skipped_movs'].items()) or 'none',
-        'already_in_google_kept': ', '.join(Path(k).name for k in state['in_google']) or 'none',
-        'deleted_total': state['totals'].get('deleted', 0),
-        'last_deleted': f"{last['name']} at {fmt(last['at'])}" if last else 'none',
-        'deletes_blocked': stats.get('blocked') or 'no',
-        'last_error': state.get('last_error') or 'none',
-    }
-    tmp = Path(cfg['status_file']).with_name('.STATUS.txt.tmp')
-    tmp.write_text(''.join(f'{k}: {v}\n' for k, v in lines.items()))
-    os.replace(tmp, cfg['status_file'])
-
-
 def main(config_path):
     cfg = json.loads(Path(config_path).read_text())
     state = load_json(cfg['state_file'], {})
     for key in ('seen', 'pair_wait', 'skipped_movs', 'in_google', 'confirmed', 'totals', 'health'):
         state.setdefault(key, {})
-    now, stats = time.time(), {}
+    now = time.time()
     try:
-        stats['healthy'] = watchdog(cfg, state, now)
-        conn, stats['blocked'] = open_db(cfg) if stats['healthy'] else (None, 'Android is not ready')
+        conn, blocked = open_db(cfg) if watchdog(cfg, state, now) else (None, 'Android is not ready')
         if conn:
             with conn:
-                stats.update(ingest(cfg, state, conn, now))
-                stats['deleted'] = process_deletes(cfg, state, conn, now, stats['blocked'])
+                ingest(cfg, state, conn, now)
+                process_deletes(cfg, state, conn, now, blocked)
             clean_sidecars(cfg, state, now)
             prune_dirs(cfg)
             conn.close()
-            if stats.get('moved') or stats.get('deleted'):
-                android(cfg, f"am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://{cfg['camera_dir']}")
+            uploading = []
+            for p in sorted(Path(cfg['upload_dir']).iterdir()):
+                st = p.stat()
+                uploading.append([p.name, st.st_ino, st.st_size, st.st_mtime_ns])
+            if uploading != state.get('uploading'):
+                # Android's FUSE keeps stale entries for files changed outside it
+                Path('/proc/sys/vm/drop_caches').write_text('2')
+                scan = android(cfg, f"am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://{cfg['camera_dir']}")
+                if scan.returncode == 0:
+                    state['uploading'] = uploading
         state['last_error'] = ''
     except Exception as e:
         state['last_error'] = f'{datetime.now(ZoneInfo(cfg["timezone"])):%-d %B %Y %H:%M} {e!r}'
         log(f'error: {e!r}')
-    write_status(cfg, state, stats, now)
     save_json(cfg['state_file'], state)
 
 

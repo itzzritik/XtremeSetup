@@ -47,7 +47,6 @@
           camera_dir: /storage/emulated/0/DCIM/Camera
           photos_db: '{{ paths.data }}/data/com.google.android.apps.photos/databases/gphotos0.db'
           state_file: /root/pixel/sync-state.json
-          status_file: /media/pixel/STATUS.txt
           container: pixel
           motionphoto2: /usr/local/bin/motionphoto2
           delete: true
