@@ -18,6 +18,11 @@
             path: '/media/ssd/Media'
             auth_required: false
             comment: 'Media Library (Guest Access)'
+      sftp:
+          root: '/media/ssd'
+          port: 2022
+          user: nas
+      rclone_version: '1.75.2'
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
         command: pct status {{ id }}
@@ -230,11 +235,82 @@
                   systemctl restart rpcbind nfs-kernel-server
                   "
 
+      - name: '{{ instance.hostname | upper }}: SFTP Setup'
+        block:
+            - name: '{{ instance.hostname | upper }}: Install Rclone {{ rclone_version }}'
+              shell: |
+                  pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+                  [ "$(rclone version 2>/dev/null | awk 'NR==1{print $2}')" = 'v{{ rclone_version }}' ] && exit 0
+                  wget -qO /tmp/rclone.deb https://downloads.rclone.org/v{{ rclone_version }}/rclone-v{{ rclone_version }}-linux-amd64.deb
+                  DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/rclone.deb >/dev/null && rm -f /tmp/rclone.deb
+                  echo CHANGED
+                  EOF
+              register: rclone_binary
+              changed_when: "'CHANGED' in rclone_binary.stdout"
+
+            - name: '{{ instance.hostname | upper }}: Generate SFTP Host Key'
+              shell: |
+                  pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+                  [ -f /etc/rclone/sftp_host_ed25519 ] && exit 0
+                  mkdir -p /etc/rclone && ssh-keygen -q -t ed25519 -N '' -C {{ instance.hostname }} -f /etc/rclone/sftp_host_ed25519
+                  echo CHANGED
+                  EOF
+              register: sftp_key
+              changed_when: "'CHANGED' in sftp_key.stdout"
+
+            - name: '{{ instance.hostname | upper }}: Configure SFTP Service'
+              shell: |
+                  pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+                  put() { [ "$(cat $1 2>/dev/null)" = "$3" ] && return; (umask 077; printf '%s\n' "$3" > $1.new) && chmod $2 $1.new && mv $1.new $1 && echo CHANGED; }
+                  put /etc/rclone/sftp.env 600 'RCLONE_USER={{ sftp.user }}
+                  RCLONE_PASS={{ env.JARVIS_NAS_PASSWORD }}'
+                  put /etc/systemd/system/rclone-sftp.service 644 '[Unit]
+                  Description=rclone SFTP
+                  After=network-online.target
+                  Wants=network-online.target
+                  RequiresMountsFor={{ sftp.root }}
+
+                  [Service]
+                  EnvironmentFile=/etc/rclone/sftp.env
+                  ExecStart=/usr/bin/rclone serve sftp {{ sftp.root }} --addr :{{ sftp.port }} --key /etc/rclone/sftp_host_ed25519 --authorized-keys= --dir-cache-time 1s
+                  UMask=0002
+                  ProtectSystem=strict
+                  ReadWritePaths={{ sftp.root }}
+                  ProtectHome=yes
+                  PrivateTmp=yes
+                  NoNewPrivileges=yes
+                  CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_FSETID
+                  Restart=always
+                  RestartSec=5
+
+                  [Install]
+                  WantedBy=multi-user.target'
+                  put /etc/cron.d/rclone-partial 644 "0 4 * * * root find {{ sftp.root }} -xdev -type f -regextype posix-extended -regex '.*\.[0-9a-f]{8}\.partial' -mmin +1440 -delete"
+                  EOF
+              register: sftp_service
+              changed_when: "'CHANGED' in sftp_service.stdout"
+              no_log: true
+
+            - name: '{{ instance.hostname | upper }}: Start SFTP Service'
+              shell: |
+                  pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+                  if {{ 'true' if rclone_binary is changed or sftp_key is changed or sftp_service is changed else 'false' }}; then
+                      systemctl daemon-reload && systemctl enable rclone-sftp && systemctl restart rclone-sftp
+                      echo CHANGED
+                  elif ! systemctl is-active -q rclone-sftp; then
+                      systemctl enable --now rclone-sftp
+                      echo CHANGED
+                  fi
+                  EOF
+              register: sftp_start
+              changed_when: "'CHANGED' in sftp_start.stdout"
+
       - name: '{{ instance.hostname | upper }}: Verify Services'
         shell: |
             pct exec {{ id }} -- bash -c '
             echo "SMB: $(systemctl is-active smbd)"
             echo "NFS: $(systemctl is-active nfs-kernel-server)"
+            echo "SFTP: $(systemctl is-active rclone-sftp)"
             '
         changed_when: false
         register: service_status

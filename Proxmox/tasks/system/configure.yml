@@ -35,6 +35,12 @@
   shell: sshd -t && systemctl reload ssh
   when: sshd_config is changed
 
+- name: '{{ prefix }}: Load BBR'
+  modprobe: { name: tcp_bbr, persistent: present }
+
+- name: '{{ prefix }}: Use BBR'
+  sysctl: { name: net.ipv4.tcp_congestion_control, value: bbr, sysctl_file: /etc/sysctl.d/99-jarvis.conf }
+
 - name: '{{ prefix }}: Install Security Tools'
   apt: { name: [argon2, python3-bcrypt] }
 

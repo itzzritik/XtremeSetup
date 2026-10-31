@@ -9,6 +9,7 @@
           gateway: '{{ env.JARVIS_GATEWAY }}'
           mac: '{{ env.JARVIS_MAC_PREFIX }}:{{ "%02x" | format(id | int) }}'
       traefik_ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.traefik.id }}'
+      storage_ip: '{{ env.JARVIS_NETWORK_PREFIX }}.{{ env.JARVIS_SERVICES.storage.id }}'
       adguard:
           schema_version: 34
           http:
@@ -20,6 +21,8 @@
               rewrites:
                   - { domain: '{{ env.JARVIS_DOMAIN }}', answer: '{{ traefik_ip }}', enabled: true }
                   - { domain: '*.{{ env.JARVIS_DOMAIN }}', answer: '{{ traefik_ip }}', enabled: true }
+                  - { domain: 'smb.{{ env.JARVIS_DOMAIN }}', answer: '{{ storage_ip }}', enabled: true }
+                  - { domain: 'nas.{{ env.JARVIS_DOMAIN }}', answer: '{{ storage_ip }}', enabled: true }
           filters:
               - { id: 1, enabled: true, name: AdGuard DNS filter, url: 'https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt' }
   block:

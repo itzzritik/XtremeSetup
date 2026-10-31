@@ -5,6 +5,9 @@ domain: '{{ env.RITIK_DOMAIN }}'
 machine: Oracle Cloud VM
 telegram_key: '{{ env.JARVIS_CODE_TELEGRAM_KEY }}'
 databases_public: true
+nas:
+    host: 192.168.68.245
+    port: 2022
 memory:
     user_slice: 18G
     vscode: 10G

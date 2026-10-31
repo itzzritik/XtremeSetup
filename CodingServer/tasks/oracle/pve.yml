@@ -2,6 +2,11 @@
 - vars:
       app_name: pve
       key: '{{ home }}/.ssh/proxmox'
+      edge: '{{ hostvars[inventory_hostname].ansible_host }}'
+      tunnel:
+          user: tunnel
+          key: /root/.ssh/oracle_tunnel
+          ssh_port: 2222
   block:
       - become: true
         become_user: '{{ user }}'
@@ -24,14 +29,14 @@
                   mode: '0600'
                   block: |
                       Host proxmox
-                          HostName ssh.{{ env.JARVIS_DOMAIN }}
+                          HostName 127.0.0.1
+                          Port {{ tunnel.ssh_port }}
+                          HostKeyAlias proxmox
                           User root
                           IdentityFile {{ key }}
                           IdentitiesOnly yes
                           StrictHostKeyChecking accept-new
                           ServerAliveInterval 15
-                          ProxyCommand cloudflared access ssh --hostname %h --service-token-id {{ env.JARVIS_CF_ACCESS_CLIENT_ID }} --service-token-secret {{ env.JARVIS_CF_ACCESS_CLIENT_SECRET }}
-              no_log: true
 
       - name: '{{ app_name | upper }}: Authorize Key on Host'
         ansible.builtin.shell: grep -qxF "$KEY" /root/.ssh/authorized_keys || { echo "$KEY" >> /root/.ssh/authorized_keys && echo CHANGED; }
@@ -41,3 +46,90 @@
         changed_when: "'CHANGED' in host_authorized.stdout"
         delegate_to: pve
         become: false
+
+      - name: '{{ app_name | upper }}: Generate Tunnel Key'
+        ansible.builtin.command: "ssh-keygen -q -t ed25519 -N '' -C tunnel@pve -f {{ tunnel.key }}"
+        args:
+            creates: '{{ tunnel.key }}'
+        delegate_to: pve
+        become: false
+
+      - name: '{{ app_name | upper }}: Read Tunnel Key'
+        ansible.builtin.slurp:
+            src: '{{ tunnel.key }}.pub'
+        register: tunnel_key
+        delegate_to: pve
+        become: false
+
+      - name: '{{ app_name | upper }}: Create Tunnel User'
+        ansible.builtin.user:
+            name: '{{ tunnel.user }}'
+            shell: /usr/sbin/nologin
+            system: true
+
+      - name: '{{ app_name | upper }}: Authorize Tunnel Key'
+        ansible.posix.authorized_key:
+            user: '{{ tunnel.user }}'
+            key: '{{ tunnel_key.content | b64decode | trim }}'
+            key_options: restrict,port-forwarding
+            exclusive: true
+
+      - name: '{{ app_name | upper }}: Configure Tunnel SSH'
+        ansible.builtin.copy:
+            dest: /etc/ssh/sshd_config.d/20-tunnel.conf
+            content: |
+                Match User {{ tunnel.user }}
+                    AllowTcpForwarding remote
+                    GatewayPorts clientspecified
+                    PermitListen 127.0.0.1:{{ tunnel.ssh_port }} 0.0.0.0:{{ nas.port }}
+                    PermitTTY no
+                    X11Forwarding no
+                    AllowAgentForwarding no
+                    ForceCommand /usr/sbin/nologin
+                    ClientAliveInterval 15
+                    ClientAliveCountMax 3
+            validate: /usr/sbin/sshd -t -f %s
+        register: tunnel_sshd
+
+      - name: '{{ app_name | upper }}: Reload SSH'
+        ansible.builtin.systemd_service:
+            name: ssh
+            state: reloaded
+        when: tunnel_sshd is changed
+
+      - name: '{{ app_name | upper }}: Read Edge Host Key'
+        ansible.builtin.slurp:
+            src: /etc/ssh/ssh_host_ed25519_key.pub
+        register: edge_host_key
+
+      - name: '{{ app_name | upper }}: Pin Edge Host Key'
+        ansible.builtin.copy:
+            dest: /root/.ssh/oracle_known_hosts
+            content: "{{ edge }} {{ (edge_host_key.content | b64decode).split()[:2] | join(' ') }}\n"
+            mode: '0644'
+        delegate_to: pve
+        become: false
+
+      - name: '{{ app_name | upper }}: Configure Tunnel Service'
+        ansible.builtin.include_tasks:
+            file: '{{ lib }}/service.yml'
+            apply:
+                delegate_to: pve
+                become: false
+        vars:
+            service:
+                name: oracle-tunnel
+                content: |
+                    [Unit]
+                    Description=SSH tunnel to Oracle
+                    After=network-online.target
+                    Wants=network-online.target
+                    StartLimitIntervalSec=0
+
+                    [Service]
+                    ExecStart=/usr/bin/ssh -N -i {{ tunnel.key }} -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/root/.ssh/oracle_known_hosts -R 127.0.0.1:{{ tunnel.ssh_port }}:localhost:22 -R 0.0.0.0:{{ nas.port }}:{{ nas.host }}:{{ nas.port }} {{ tunnel.user }}@{{ edge }}
+                    Restart=always
+                    RestartSec=5
+
+                    [Install]
+                    WantedBy=multi-user.target

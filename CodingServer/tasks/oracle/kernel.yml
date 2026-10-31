@@ -6,6 +6,7 @@
         ansible.posix.sysctl:
             name: '{{ param.key }}'
             value: '{{ param.value }}'
+            sysctl_file: /etc/sysctl.d/99-jarvis.conf
             sysctl_set: true
             reload: true
         loop:
@@ -13,6 +14,7 @@
             - { key: fs.inotify.max_user_instances, value: '256' }
             - { key: vm.swappiness, value: '10' }
             - { key: kernel.apparmor_restrict_unprivileged_userns, value: '0' }
+            - { key: net.ipv4.tcp_congestion_control, value: bbr }
         loop_control:
             loop_var: param
             label: '{{ param.key }}={{ param.value }}'

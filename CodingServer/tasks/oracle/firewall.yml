@@ -19,7 +19,15 @@
             loop_var: port
         register: firewall_rules
 
+      - name: '{{ app_name | upper }}: Limit NAS Connections'
+        ansible.builtin.shell: |
+            rule="INPUT -p tcp --dport {{ nas.port }} -m conntrack --ctstate NEW -m hashlimit --hashlimit-name nas --hashlimit-mode srcip --hashlimit-above 30/minute --hashlimit-burst 60 -j DROP"
+            iptables -C $rule 2>/dev/null && exit 0
+            iptables -I $rule && echo CHANGED
+        register: nas_limit
+        changed_when: "'CHANGED' in nas_limit.stdout"
+
       - name: '{{ app_name | upper }}: Save Rules'
         ansible.builtin.command: netfilter-persistent save
         changed_when: true
-        when: firewall_rules is changed
+        when: firewall_rules is changed or nas_limit is changed
