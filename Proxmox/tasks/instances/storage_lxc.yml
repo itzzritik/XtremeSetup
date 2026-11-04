@@ -321,6 +321,35 @@
               register: s3_start
               changed_when: "'CHANGED' in s3_start.stdout"
 
+            - name: '{{ instance.hostname | upper }}: Publish Free Space'
+              shell: |
+                  pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+                  put() { [ "$(cat $1 2>/dev/null)" = "$3" ] && return; printf '%s\n' "$3" > $1.new && chmod $2 $1.new && mv $1.new $1 && echo CHANGED; }
+                  changed=$( {
+                  put /etc/systemd/system/nas-space.service 644 '[Unit]
+                  Description=Publish NAS size and free space for dokky (S3 has no free space call)
+                  RequiresMountsFor={{ sftp.root }}
+
+                  [Service]
+                  Type=oneshot
+                  ExecStart=/bin/sh -c "df -B1 --output=size,avail {{ sftp.root }} | tail -1 > {{ sftp.root }}/.dokky-space.new && mv {{ sftp.root }}/.dokky-space.new {{ sftp.root }}/.dokky-space"'
+                  put /etc/systemd/system/nas-space.timer 644 '[Unit]
+                  Description=Publish NAS free space every minute
+
+                  [Timer]
+                  OnBootSec=10s
+                  OnUnitActiveSec=1min
+                  AccuracySec=10s
+
+                  [Install]
+                  WantedBy=timers.target'
+                  } )
+                  if [ -n "$changed" ]; then systemctl daemon-reload && systemctl enable nas-space.timer >/dev/null 2>&1 && systemctl restart nas-space.timer && echo CHANGED
+                  elif ! systemctl is-active -q nas-space.timer; then systemctl enable --now nas-space.timer >/dev/null 2>&1 && echo CHANGED; fi
+                  EOF
+              register: s3_space
+              changed_when: "'CHANGED' in s3_space.stdout"
+
       - name: '{{ instance.hostname | upper }}: SFTP Setup'
         block:
             - name: '{{ instance.hostname | upper }}: Install Rclone {{ rclone_version }}'
