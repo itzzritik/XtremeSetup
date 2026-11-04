@@ -8,6 +8,8 @@ databases_public: true
 nas:
     host: 192.168.68.245
     port: 2022
+    s3_port: 7070
+    wireguard: { port: 51820, edge_ip: 10.66.0.1, nas_ip: 10.66.0.2 }
 memory:
     user_slice: 18G
     vscode: 10G
@@ -18,5 +20,6 @@ machine_tasks:
     - oracle/firewall
     - oracle/cloudflared
     - oracle/pve
+    - oracle/nas
     - oracle/backups
     - oracle/cost

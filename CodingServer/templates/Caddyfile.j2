@@ -125,3 +125,14 @@
     respond 404
 }
 {% endif %}
+{% if nas is defined %}
+
+nas.{{ env.JARVIS_DOMAIN }} {
+    reverse_proxy {{ nas.wireguard.nas_ip }}:{{ nas.s3_port }} {
+        flush_interval -1
+        transport http {
+            dial_timeout 5s
+        }
+    }
+}
+{% endif %}

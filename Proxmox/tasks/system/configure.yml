@@ -41,6 +41,9 @@
 - name: '{{ prefix }}: Use BBR'
   sysctl: { name: net.ipv4.tcp_congestion_control, value: bbr, sysctl_file: /etc/sysctl.d/99-jarvis.conf }
 
+- name: '{{ prefix }}: Load WireGuard'
+  modprobe: { name: wireguard, persistent: present }
+
 - name: '{{ prefix }}: Install Security Tools'
   apt: { name: [argon2, python3-bcrypt] }
 
