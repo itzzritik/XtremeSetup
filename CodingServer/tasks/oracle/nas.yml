@@ -1,0 +1,105 @@
+---
+- vars:
+      app_name: nas
+      wg: '{{ nas.wireguard }}'
+      lxc: "{{ nas.host.split('.') | last }}"
+      edge: '{{ hostvars[inventory_hostname].ansible_host }}'
+      apt_packages:
+          - wireguard-tools
+  block:
+      - name: '{{ app_name | upper }}: Install Packages'
+        ansible.builtin.include_tasks: '{{ lib }}/apt.yml'
+
+      - name: '{{ app_name | upper }}: Generate Edge Key'
+        ansible.builtin.shell: umask 077 && wg genkey > /etc/wireguard/nas.key
+        args:
+            creates: /etc/wireguard/nas.key
+
+      - name: '{{ app_name | upper }}: Read Edge Key'
+        ansible.builtin.shell: wg pubkey < /etc/wireguard/nas.key
+        register: edge_key
+        changed_when: false
+
+      - name: '{{ app_name | upper }}: Prepare NAS Key'
+        ansible.builtin.shell: |
+            pct exec {{ lxc }} --keep-env 0 -- bash -se <<'EOF'
+            command -v wg >/dev/null || { DEBIAN_FRONTEND=noninteractive apt-get install -y wireguard-tools >/dev/null && echo CHANGED; }
+            [ -f /etc/wireguard/nas.key ] || { (umask 077; mkdir -p /etc/wireguard && wg genkey > /etc/wireguard/nas.key) && echo CHANGED; }
+            wg pubkey < /etc/wireguard/nas.key
+            EOF
+        register: nas_key
+        changed_when: "'CHANGED' in nas_key.stdout"
+        delegate_to: pve
+        become: false
+
+      - name: '{{ app_name | upper }}: Configure Edge Tunnel'
+        ansible.builtin.copy:
+            dest: /etc/wireguard/nas.conf
+            mode: '0600'
+            content: |
+                [Interface]
+                Address = {{ wg.edge_ip }}/30
+                MTU = 1420
+                ListenPort = {{ wg.port }}
+                PostUp = wg set %i private-key /etc/wireguard/nas.key
+
+                [Peer]
+                PublicKey = {{ nas_key.stdout_lines | last }}
+                AllowedIPs = {{ wg.nas_ip }}/32
+        register: edge_tunnel
+
+      - name: '{{ app_name | upper }}: Start Edge Tunnel'
+        ansible.builtin.systemd_service:
+            name: wg-quick@nas
+            enabled: true
+            state: "{{ 'restarted' if edge_tunnel is changed else 'started' }}"
+
+      - name: '{{ app_name | upper }}: Configure NAS Tunnel'
+        ansible.builtin.shell: |
+            pct exec {{ lxc }} --keep-env 0 -- bash -se <<'EOF'
+            conf='[Interface]
+            Address = {{ wg.nas_ip }}/30
+            MTU = 1420
+            PostUp = wg set %i private-key /etc/wireguard/nas.key
+
+            [Peer]
+            PublicKey = {{ edge_key.stdout | trim }}
+            Endpoint = {{ edge }}:{{ wg.port }}
+            AllowedIPs = {{ wg.edge_ip }}/32
+            PersistentKeepalive = 25'
+            if [ "$(cat /etc/wireguard/nas.conf 2>/dev/null)" != "$conf" ]; then
+                (umask 077; printf '%s\n' "$conf" > /etc/wireguard/nas.conf)
+                systemctl enable wg-quick@nas && systemctl restart wg-quick@nas
+                echo CHANGED
+            elif ! systemctl is-active -q wg-quick@nas; then
+                systemctl enable --now wg-quick@nas
+                echo CHANGED
+            fi
+            EOF
+        register: nas_tunnel
+        changed_when: "'CHANGED' in nas_tunnel.stdout"
+        delegate_to: pve
+        become: false
+
+      - name: '{{ app_name | upper }}: Read Instance Identity'
+        ansible.builtin.uri:
+            url: http://169.254.169.254/opc/v2/instance/
+            headers:
+                Authorization: Bearer Oracle
+        register: instance
+
+      - name: '{{ app_name | upper }}: Open Cloud Firewall'
+        ansible.builtin.command:
+            argv:
+                - '{{ playbook_dir }}/files/oci-ingress'
+                - '{{ instance.json.id }}'
+                - '{{ instance.json.compartmentId }}'
+                - '{{ rules | to_json }}'
+        vars:
+            rules:
+                - { protocol: udp, port: '{{ wg.port | int }}', description: NAS WireGuard }
+                - { protocol: tcp, port: 443, description: NAS S3 via Caddy }
+        register: cloud_firewall
+        changed_when: "'CHANGED' in cloud_firewall.stdout"
+        delegate_to: localhost
+        become: false

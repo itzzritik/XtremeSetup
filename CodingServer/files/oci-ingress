@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+import json
+import os
+import subprocess
+import sys
+
+PROTOCOLS = {"tcp": "6", "udp": "17"}
+
+
+def oci(*args):
+    env = dict(os.environ, SUPPRESS_LABEL_WARNING="True")
+    r = subprocess.run(["oci", "--auth", "security_token", *args], capture_output=True, text=True, env=env)
+    if r.returncode:
+        sys.exit(f"oci {' '.join(args[:3])} failed, run `oci session authenticate`: {r.stderr.strip()[-300:]}")
+    return json.loads(r.stdout)["data"]
+
+
+def opens(rule, protocol, port):
+    opts = rule.get("tcp-options") or rule.get("udp-options") or {}
+    ports = opts.get("destination-port-range") or {}
+    return rule["protocol"] == PROTOCOLS[protocol] and ports.get("min") == port and ports.get("max") == port
+
+
+instance, compartment, wanted = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
+subnet = oci("compute", "instance", "list-vnics", "--instance-id", instance, "--compartment-id", compartment)[0]["subnet-id"]
+seclist = oci("network", "subnet", "get", "--subnet-id", subnet)["security-list-ids"][0]
+rules = oci("network", "security-list", "get", "--security-list-id", seclist)["ingress-security-rules"]
+missing = [w for w in wanted if not any(opens(r, w["protocol"], int(w["port"])) for r in rules)]
+for w in missing:
+    rules.append({
+        "protocol": PROTOCOLS[w["protocol"]],
+        "source": "0.0.0.0/0",
+        "isStateless": False,
+        "description": w["description"],
+        f"{w['protocol']}Options": {"destinationPortRange": {"min": int(w["port"]), "max": int(w["port"])}},
+    })
+if missing:
+    oci("network", "security-list", "update", "--security-list-id", seclist, "--ingress-security-rules", json.dumps(rules), "--force")
+    print("CHANGED")

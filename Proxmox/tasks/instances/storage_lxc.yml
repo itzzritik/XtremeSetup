@@ -2,7 +2,7 @@
       id: '{{ env.JARVIS_SERVICES.storage.id }}'
       instance:
           hostname: storage
-          memory: 1024
+          memory: 2048
           swap: 256
           cores: 2
           storage: local-lvm
@@ -23,6 +23,11 @@
           port: 2022
           user: nas
       rclone_version: '1.75.2'
+      s3:
+          root: '/srv/s3'
+          bucket: ssd
+          port: 7070
+          version: '1.10.0'
   block:
       - name: '{{ instance.hostname | upper }}: Check if Instance exists'
         command: pct status {{ id }}
@@ -235,6 +240,87 @@
                   systemctl restart rpcbind nfs-kernel-server
                   "
 
+      - name: '{{ instance.hostname | upper }}: Set Memory'
+        shell: |
+            [ "$(pct config {{ id }} | awk '/^memory:/{print $2}')" = '{{ instance.memory }}' ] && exit 0
+            pct set {{ id }} --memory {{ instance.memory }} && echo CHANGED
+        register: memory_set
+        changed_when: "'CHANGED' in memory_set.stdout"
+
+      - name: '{{ instance.hostname | upper }}: Tune Network'
+        shell: |
+            pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+            conf='net.ipv4.tcp_congestion_control = bbr
+            net.ipv4.tcp_rmem = 4096 131072 16777216
+            net.ipv4.tcp_wmem = 4096 65536 16777216'
+            [ "$(cat /etc/sysctl.d/99-nas.conf 2>/dev/null)" = "$conf" ] && exit 0
+            printf '%s\n' "$conf" > /etc/sysctl.d/99-nas.conf && sysctl -q -p /etc/sysctl.d/99-nas.conf && echo CHANGED
+            EOF
+        register: network_tune
+        changed_when: "'CHANGED' in network_tune.stdout"
+
+      - name: '{{ instance.hostname | upper }}: S3 Setup'
+        block:
+            - name: '{{ instance.hostname | upper }}: Install VersityGW {{ s3.version }}'
+              shell: |
+                  pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+                  [ "$(versitygw --version 2>/dev/null | awk '/^Version/{print $3}')" = '{{ s3.version }}' ] && exit 0
+                  wget -qO /tmp/versitygw.deb https://github.com/versity/versitygw/releases/download/v{{ s3.version }}/versitygw_{{ s3.version }}_linux_amd64.deb
+                  DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/versitygw.deb >/dev/null && rm -f /tmp/versitygw.deb
+                  echo CHANGED
+                  EOF
+              register: s3_binary
+              changed_when: "'CHANGED' in s3_binary.stdout"
+
+            - name: '{{ instance.hostname | upper }}: Configure S3 Service'
+              shell: |
+                  pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+                  put() { [ "$(cat $1 2>/dev/null)" = "$3" ] && return; (umask 077; printf '%s\n' "$3" > $1.new) && chmod $2 $1.new && mv $1.new $1 && echo CHANGED; }
+                  mkdir -p /etc/versitygw {{ s3.root }}
+                  [ "$(readlink {{ s3.root }}/{{ s3.bucket }})" = '{{ sftp.root }}' ] || { ln -sfn {{ sftp.root }} {{ s3.root }}/{{ s3.bucket }} && echo CHANGED; }
+                  put /etc/versitygw/nas.env 600 'ROOT_ACCESS_KEY_ID={{ env.JARVIS_NAS_S3_ACCESS_KEY }}
+                  ROOT_SECRET_ACCESS_KEY={{ env.JARVIS_NAS_S3_SECRET_KEY }}'
+                  put /etc/systemd/system/versitygw-nas.service 644 '[Unit]
+                  Description=VersityGW S3 for the NAS
+                  After=network-online.target
+                  Wants=network-online.target
+                  RequiresMountsFor={{ sftp.root }}
+
+                  [Service]
+                  EnvironmentFile=/etc/versitygw/nas.env
+                  ExecStart=/usr/bin/versitygw --port :{{ s3.port }} posix --bucketlinks {{ s3.root }}
+                  UMask=0002
+                  LimitNOFILE=65536
+                  ProtectSystem=strict
+                  ReadWritePaths={{ sftp.root }} {{ s3.root }}
+                  ProtectHome=yes
+                  PrivateTmp=yes
+                  NoNewPrivileges=yes
+                  CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_FSETID
+                  Restart=always
+                  RestartSec=5
+
+                  [Install]
+                  WantedBy=multi-user.target'
+                  EOF
+              register: s3_service
+              changed_when: "'CHANGED' in s3_service.stdout"
+              no_log: true
+
+            - name: '{{ instance.hostname | upper }}: Start S3 Service'
+              shell: |
+                  pct exec {{ id }} --keep-env 0 -- bash -se <<'EOF'
+                  if {{ 'true' if s3_binary is changed or s3_service is changed else 'false' }}; then
+                      systemctl daemon-reload && systemctl enable versitygw-nas && systemctl restart versitygw-nas
+                      echo CHANGED
+                  elif ! systemctl is-active -q versitygw-nas; then
+                      systemctl enable --now versitygw-nas
+                      echo CHANGED
+                  fi
+                  EOF
+              register: s3_start
+              changed_when: "'CHANGED' in s3_start.stdout"
+
       - name: '{{ instance.hostname | upper }}: SFTP Setup'
         block:
             - name: '{{ instance.hostname | upper }}: Install Rclone {{ rclone_version }}'
@@ -311,6 +397,7 @@
             echo "SMB: $(systemctl is-active smbd)"
             echo "NFS: $(systemctl is-active nfs-kernel-server)"
             echo "SFTP: $(systemctl is-active rclone-sftp)"
+            echo "S3: $(systemctl is-active versitygw-nas)"
             '
         changed_when: false
         register: service_status
