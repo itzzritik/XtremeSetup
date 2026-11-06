@@ -30,7 +30,7 @@ For questions about the user's personal details, career, resume, background, tec
 ```bash
 f=/tmp/agents/profile_cache.json
 if find "$f" -mmin -1440 2>/dev/null | grep -q .; then echo "SOURCE=Profile Cache"
-elif mkdir -p /tmp/agents && curl -fsSL --max-time 15 https://json.ritik.me -o "$f.tmp" && jq -e . "$f.tmp" >/dev/null && mv "$f.tmp" "$f"; then echo "SOURCE=Profile Fetch"
+elif mkdir -p /tmp/agents && curl -fsSL --max-time 15 http://cv.ritik.me/json -o "$f.tmp" && jq -e . "$f.tmp" >/dev/null && mv "$f.tmp" "$f"; then echo "SOURCE=Profile Fetch"
 elif [ -f "$f" ]; then echo "SOURCE=Profile Cache (Fetch Failed)"
 else echo "SOURCE=none"; fi
 [ -f "$f" ] && cat "$f"
