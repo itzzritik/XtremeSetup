@@ -17,13 +17,16 @@ PHOTO_EXT = {'.jpg', '.jpeg', '.png', '.heic', '.heif', '.webp', '.gif', '.bmp',
 VIDEO_EXT = {'.mp4', '.mov', '.m4v', '.3gp', '.3g2', '.mkv', '.avi', '.mts', '.m2ts',
              '.wmv', '.webm', '.mpg', '.mpeg', '.asf'}
 SIDECAR_EXT = {'.aae'}
+SIDECAR_NAME = re.compile(r'IMG_A\d+\.DAT', re.IGNORECASE)
 LIVE_IMAGE_EXT = {'.heic', '.heif', '.jpg', '.jpeg'}
 LIVE_VIDEO_EXT = {'.mov', '.mp4'}
 REQUIRED_COLUMNS = {
     'local_media': {'filepath', 'size_bytes', 'dedup_key'},
     'media': {'dedup_key', 'canonical_media_key', 'trash_timestamp', 'is_deleted'},
 }
-IN_CLOUD = "COALESCE(m.canonical_media_key, '') != '' AND COALESCE(m.trash_timestamp, 0) = 0 AND COALESCE(m.is_deleted, 0) = 0"
+MERGE_PREFIX = '.merging-'
+FINDER_COPY_XATTR = 'com.apple.finder.copy.source'
+IN_CLOUD ="COALESCE(m.canonical_media_key, '') != '' AND COALESCE(m.trash_timestamp, 0) = 0 AND COALESCE(m.is_deleted, 0) = 0"
 
 
 def log(msg):
@@ -59,6 +62,13 @@ def sha1_key(path):
     return base64.urlsafe_b64encode(digest.digest()).decode().rstrip('=')
 
 
+def inode(path):
+    try:
+        return os.stat(path).st_ino
+    except OSError:
+        return None
+
+
 def restart_android(cfg, health, now, why):
     if now - health.get('last_restart', 0) <= 3 * cfg['watchdog_seconds']:
         return
@@ -81,6 +91,17 @@ def watchdog(cfg, state, now):
         health['system_server'], health['started'] = pid, started
         if previous[0] and pid != previous[0] and started == previous[1]:
             restart_android(cfg, health, now, 'android restarted its system on its own')
+            return False
+        host = str(inode(cfg['upload_dir']))
+        if android(cfg, f"stat -c %i {cfg['camera_dir']}", 30).stdout.strip() != host:
+            if android(cfg, f"stat -c %i {cfg['android_upload_src']}", 30).stdout.strip() != host:
+                restart_android(cfg, health, now, 'uploading folder was replaced')
+                return False
+            # mounted after boot so it reaches the storage views Android builds at boot
+            dst = cfg['android_upload_dir']
+            android(cfg, f"mkdir -p {dst}; umount {dst} 2>/dev/null; mount --bind {cfg['android_upload_src']} {dst}", 30)
+            state.pop('uploading', None)
+            log('attached uploading folder to Android')
             return False
         health['last_ok'] = now
         return True
@@ -113,22 +134,34 @@ def confirmed_in_cloud(conn, camera_dir):
     return {Path(path).name: (size, key) for path, size, key in rows}
 
 
+def finder_copying(path):
+    try:
+        return any(FINDER_COPY_XATTR in name for name in os.listxattr(path))
+    except OSError:
+        return False
+
+
 def scan_drop(cfg, state, now):
     drop = Path(cfg['drop_dir'])
-    skip = {Path(cfg['upload_dir']), Path(cfg['merge_tmp_dir'])}
-    seen, found = state['seen'], {}
+    skip = {Path(cfg['upload_dir'])}
+    seen, found, busy = state['seen'], {}, {}
     for root, dirs, files in os.walk(drop):
         dirs[:] = [d for d in dirs if not d.startswith('.') and Path(root, d) not in skip]
+        busy[root] = busy.get(os.path.dirname(root), False) or finder_copying(root)
         for name in files:
             path = Path(root, name)
-            if name.startswith('.') or path.suffix.lower() not in PHOTO_EXT | VIDEO_EXT | SIDECAR_EXT:
+            if name.startswith(MERGE_PREFIX):
+                path.unlink()
+                continue
+            if name.startswith('.') or not (path.suffix.lower() in PHOTO_EXT | VIDEO_EXT or is_sidecar(path)):
                 continue
             st = path.stat()
             entry = seen.get(str(path))
             if not entry or (entry['size'], entry['mtime']) != (st.st_size, st.st_mtime):
                 entry = seen[str(path)] = {'size': st.st_size, 'mtime': st.st_mtime, 'since': now}
             # Finder pre-creates empty placeholders and fills them later
-            found[path] = st.st_size > 0 and now - entry['since'] >= cfg['stable_seconds']
+            found[path] = (st.st_size > 0 and now - entry['since'] >= cfg['stable_seconds']
+                           and not busy[root] and not finder_copying(path))
     for key in [k for k in seen if Path(k) not in found]:
         del seen[key]
     return found
@@ -165,7 +198,7 @@ def plan_ingest(cfg, state, stable, ids, now):
     items = []
     for path in sorted(stable, key=lambda p: state['seen'][str(p)]['since']):
         cid, ext = ids.get(path, ''), path.suffix.lower()
-        if str(path) in state['skipped_movs'] or str(path) in state['in_google'] or path in paired_videos:
+        if str(path) in state['skipped_movs'] or path in paired_videos:
             continue
         if path in partner:
             items.append((path, partner[path]))
@@ -178,7 +211,7 @@ def plan_ingest(cfg, state, stable, ids, now):
 
 
 def merge_pair(cfg, image, video):
-    out = Path(cfg['merge_tmp_dir']) / image.name
+    out = image.with_name(MERGE_PREFIX + image.name)
     try:
         result = run([cfg['motionphoto2'], '--input-image', str(image), '--input-video', str(video), '--output-file', str(out)], 600)
         tag = run(['exiftool', '-s3', '-XMP-GCamera:MotionPhoto', str(out)]).stdout.strip() if out.exists() else ''
@@ -190,10 +223,10 @@ def merge_pair(cfg, image, video):
     return None, ((result.stderr or result.stdout).strip().splitlines() or ['merge failed'])[-1]
 
 
-def move_no_overwrite(src, dst_dir):
-    n = 0
+def move_no_overwrite(src, dst_dir, name):
+    n, name = 0, Path(name)
     while True:
-        dst = dst_dir / (src.name if n == 0 else f'{src.stem} ({n}){src.suffix}')
+        dst = dst_dir / (name.name if n == 0 else f'{name.stem} ({n}){name.suffix}')
         try:
             os.link(src, dst)
             break
@@ -203,17 +236,32 @@ def move_no_overwrite(src, dst_dir):
     return dst
 
 
+def mark_emptied(state, drop, path):
+    for parent in path.parents[:len(path.relative_to(drop).parts) - 1]:
+        state['emptied'][str(parent)] = inode(parent)
+
+
+def queued_keys(state, upload):
+    cache, fresh = state['queue_keys'], {}
+    for p in upload.iterdir():
+        if p.is_file():
+            st = p.stat()
+            sig = [st.st_ino, st.st_size, st.st_mtime]
+            fresh[p.name] = cache[p.name] if cache.get(p.name, [None])[0] == sig else [sig, sha1_key(p)]
+    state['queue_keys'] = fresh
+    return {key: name for name, (_, key) in fresh.items()}
+
+
 def ingest(cfg, state, conn, now):
-    upload, tmp = Path(cfg['upload_dir']), Path(cfg['merge_tmp_dir'])
-    tmp.mkdir(exist_ok=True)
-    for leftover in tmp.iterdir():
-        leftover.unlink()
-    found = {p: ok for p, ok in scan_drop(cfg, state, now).items() if p.suffix.lower() not in SIDECAR_EXT}
-    stable = [p for p, ok in found.items() if ok]
+    drop, upload = Path(cfg['drop_dir']), Path(cfg['upload_dir'])
+    scanned = scan_drop(cfg, state, now)
+    stable = [p for p, ok in scanned.items() if ok and not is_sidecar(p)]
     ids = content_ids([p for p in stable if p.suffix.lower() in LIVE_IMAGE_EXT | LIVE_VIDEO_EXT], state['seen'])
     items = plan_ingest(cfg, state, stable, ids, now)
     queued = {(st.st_dev, st.st_ino) for st in (p.stat() for p in upload.iterdir() if p.is_file())}
-    room = cfg['batch_size'] - len(queued)
+    keys = queued_keys(state, upload)
+    cloud = confirmed_in_cloud(conn, cfg['camera_dir'])
+    room = cfg['batch_size'] - sum(1 for p in upload.iterdir() if p.is_file() and p.name not in cloud)
     for image, video in items:
         if room <= 0:
             break
@@ -230,21 +278,34 @@ def ingest(cfg, state, conn, now):
         if (st.st_dev, st.st_ino) in queued:
             src.unlink()
             continue
-        if in_cloud(conn, sha1_key(src)):
-            state['in_google'][str(image)] = 'already in Google Photos'
-            if src != image:
-                src.unlink()
-            log(f'already in Google Photos, keeping {image.name} in place')
+        key = sha1_key(src)
+        if key in keys:
+            for p in {src, *sources}:
+                p.unlink()
+            for p in sources:
+                mark_emptied(state, drop, p)
+            log(f'removed {image.name}: same file already queued as {keys[key]}')
             continue
-        dst = move_no_overwrite(src, upload)
+        if in_cloud(conn, key):
+            for p in {src, *sources}:
+                p.unlink()
+            for p in sources:
+                mark_emptied(state, drop, p)
+            state['totals']['already_in_google'] = state['totals'].get('already_in_google', 0) + 1
+            log(f'removed {image.name}: same file already in Google Photos')
+            continue
+        dst = move_no_overwrite(src, upload, image.name)
+        keys[key] = dst.name
         if video and src != image:
             image.unlink()
             video.unlink()
             state['totals']['merged'] = state['totals'].get('merged', 0) + 1
+        for p in sources:
+            mark_emptied(state, drop, p)
         log(f'queued {dst.name}' + (f' (motion photo from {image.name} + {video.name})' if len(sources) == 2 else ''))
         room -= 1
     state['skipped_movs'] = {k: v for k, v in state['skipped_movs'].items() if Path(k).exists()}
-    state['in_google'] = {k: v for k, v in state['in_google'].items() if Path(k).exists()}
+    return scanned
 
 
 def process_deletes(cfg, state, conn, now, blocked):
@@ -283,24 +344,20 @@ def process_deletes(cfg, state, conn, now, blocked):
         log(f'deleted {name}: confirmed in Google Photos')
 
 
+def is_sidecar(path):
+    return path.suffix.lower() in SIDECAR_EXT or SIDECAR_NAME.fullmatch(path.name) is not None
+
+
 def photo_key(path):
-    return re.sub(r'^IMG_[EO](?=\d)', 'IMG_', re.sub(r' \(\d+\)$', '', path.stem.upper()))
+    return re.sub(r'^IMG_[EOA](?=\d)', 'IMG_', re.sub(r' \(\d+\)$', '', path.stem.upper()))
 
 
-def clean_sidecars(cfg, state, now):
-    drop, upload = Path(cfg['drop_dir']), Path(cfg['upload_dir'])
-    media, sidecars = {photo_key(p) for p in upload.iterdir() if p.is_file()}, []
-    for root, dirs, files in os.walk(drop):
-        dirs[:] = [d for d in dirs if not d.startswith('.')]
-        for name in files:
-            path = Path(root, name)
-            if path.suffix.lower() in SIDECAR_EXT:
-                sidecars.append(path)
-            elif path.suffix.lower() in PHOTO_EXT | VIDEO_EXT:
-                media.add(photo_key(path))
-    for path in sidecars:
-        entry = state['seen'].get(str(path))
-        if photo_key(path) in media or not entry or now - entry['since'] < cfg['stable_seconds']:
+def clean_sidecars(cfg, state, found):
+    upload = Path(cfg['upload_dir'])
+    media = {photo_key(p) for p in upload.iterdir() if p.is_file()}
+    media |= {photo_key(p) for p in found if not is_sidecar(p)}
+    for path, ok in found.items():
+        if not ok or not is_sidecar(path) or photo_key(path) in media:
             continue
         if not cfg['delete']:
             log(f'would delete {path.name} (its photos are all uploaded, log-only mode)')
@@ -310,41 +367,43 @@ def clean_sidecars(cfg, state, now):
         log(f'deleted {path.name}: its photos are all uploaded')
 
 
-def prune_dirs(cfg):
-    drop, keep = Path(cfg['drop_dir']), {Path(cfg['upload_dir']), Path(cfg['merge_tmp_dir'])}
-    for root, dirs, _ in os.walk(drop, topdown=False):
-        for d in dirs:
-            if not d.startswith('.') and Path(root, d) not in keep:
-                try:
-                    Path(root, d).rmdir()
-                except OSError:
-                    pass
+def prune_dirs(state):
+    emptied = state['emptied']
+    for d in sorted(emptied, key=len, reverse=True):
+        if inode(d) == emptied[d]:
+            try:
+                if os.listdir(d) == ['.DS_Store']:
+                    os.unlink(os.path.join(d, '.DS_Store'))
+                os.rmdir(d)
+            except OSError:
+                pass
+    state['emptied'] = {d: ino for d, ino in emptied.items() if inode(d) == ino}
 
 
 def main(config_path):
     cfg = json.loads(Path(config_path).read_text())
     state = load_json(cfg['state_file'], {})
-    for key in ('seen', 'pair_wait', 'skipped_movs', 'in_google', 'confirmed', 'totals', 'health'):
+    for key in ('seen', 'pair_wait', 'skipped_movs', 'confirmed', 'totals', 'health', 'emptied', 'queue_keys'):
         state.setdefault(key, {})
     now = time.time()
     try:
+        upload = Path(cfg['upload_dir'])
+        if not upload.is_dir():
+            upload.mkdir()
+            upload.chmod(0o777)
+            log('uploading folder was missing, recreated it')
         conn, blocked = open_db(cfg) if watchdog(cfg, state, now) else (None, 'Android is not ready')
         if conn:
             with conn:
-                ingest(cfg, state, conn, now)
+                found = ingest(cfg, state, conn, now)
                 process_deletes(cfg, state, conn, now, blocked)
-            clean_sidecars(cfg, state, now)
-            prune_dirs(cfg)
+            clean_sidecars(cfg, state, found)
+            prune_dirs(state)
             conn.close()
             uploading = []
-            for p in sorted(Path(cfg['upload_dir']).iterdir()):
+            for p in sorted(upload.iterdir()):
                 st = p.stat()
                 uploading.append([p.name, st.st_ino, st.st_size, st.st_mtime_ns])
-            link = Path(cfg['drop_dir'], 'uploading')
-            if uploading and not os.path.lexists(link):
-                link.symlink_to(os.path.relpath(cfg['upload_dir'], cfg['drop_dir']))
-            elif not uploading and link.is_symlink():
-                link.unlink()
             if uploading != state.get('uploading'):
                 # Android's FUSE keeps stale entries for files changed outside it
                 Path('/proc/sys/vm/drop_caches').write_text('2')

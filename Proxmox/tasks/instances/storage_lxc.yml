@@ -147,7 +147,7 @@
                   fruit:veto_appledouble = yes
                   fruit:delete_empty_adfiles = yes
                   fruit:wipe_intentionally_left_blank_rfork = yes
-                  veto files = /._*/.DS_Store/
+                  veto files = /._*/
                   delete veto files = yes
 
                   {% for share in shares %}
