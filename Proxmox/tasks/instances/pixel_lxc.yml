@@ -14,7 +14,7 @@
       paths:
           app: '{{ env.JARVIS_DIR }}/apps/pixel'
           media: /mnt/ssd/pixel
-          android: /mnt/ssd/pixel/.android
+          uploading: /mnt/ssd/pixel/uploading
           data: /root/pixel/data
       redroid:
           version: 14.0.0
@@ -43,8 +43,9 @@
           sha256: ba11b19ff20f98386bc4aa9bcac2b29da87b30efbab68213197f3d00e050204a
       sync:
           drop_dir: /media/pixel
-          upload_dir: /media/pixel/.android/0/DCIM/Camera
-          merge_tmp_dir: /media/pixel/.merging
+          upload_dir: /media/pixel/uploading
+          android_upload_src: /pixel-uploading
+          android_upload_dir: /data/media/0/DCIM/Camera
           camera_dir: /storage/emulated/0/DCIM/Camera
           photos_db: '{{ paths.data }}/data/com.google.android.apps.photos/databases/gphotos0.db'
           state_file: /root/pixel/sync-state.json
@@ -82,10 +83,7 @@
             mode: '{{ dir_item.mode }}'
         loop:
             - { path: '{{ paths.media }}', mode: '0777' }
-            - { path: '{{ paths.android }}', owner: 1023, mode: '0770' }
-            - { path: '{{ paths.android }}/0', owner: 1023, mode: '2770' }
-            - { path: '{{ paths.android }}/0/DCIM', owner: 1023, mode: '0770' }
-            - { path: '{{ paths.android }}/0/DCIM/Camera', owner: 1023, mode: '0775' }
+            - { path: '{{ paths.uploading }}', mode: '0777' }
             - { path: '{{ paths.app }}/redroid', mode: '0775' }
             - { path: '{{ paths.app }}/web', mode: '0775' }
         loop_control:
@@ -117,7 +115,7 @@
                       ports: ['5555:5555']
                       volumes:
                         - {{ paths.data }}:/data
-                        - /media/pixel/.android:/data/media
+                        - {{ sync.upload_dir }}:{{ sync.android_upload_src }}
                       command:
                         - androidboot.use_memfd=true
                         - androidboot.redroid_gpu_mode=host
