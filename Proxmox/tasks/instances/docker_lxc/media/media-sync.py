@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import base64
+import datetime
 import hashlib
 import json
 import os
@@ -382,6 +383,40 @@ def sync_stalled(cfg):
         for download_id, queue_id in queue.items():
             request(f'{base}/queue/{queue_id}?removeFromClient=true&blocklist=true', 'DELETE', headers=headers)
             log(f"CHANGED {app['name']} blocklisted stalled {dead[download_id]}")
+
+
+def sync_orphans(cfg):
+    qbit = SPEC['qbittorrent']
+    torrents = request(f"http://{HOST}:{qbit['port']}/api/v2/torrents/info")
+    tracked = {os.path.relpath(t['content_path'], t['save_path']).split(os.sep)[0] for t in torrents}
+    cutoff = time.time() - cfg['minutes'] * 60
+    for app in SPEC['arrs']:
+        folder = qbit['categories'][app['category']]
+        host_folder = cfg['host_root'] + folder[len(cfg['root']):]
+        base = f"http://{HOST}:{app['port']}/api/v3"
+        headers = {'X-Api-Key': arr_key(app['name'])}
+        for entry in sorted(os.listdir(host_folder)) if os.path.isdir(host_folder) else []:
+            if entry in tracked or os.path.getmtime(os.path.join(host_folder, entry)) > cutoff:
+                continue
+            path = f'{folder}/{entry}'
+            items = request(f"{base}/manualimport?{urllib.parse.urlencode({'folder': path, 'filterExistingFiles': 'true'})}", headers=headers)
+            if not any((i.get('movie') or i.get('series')) and not i.get('rejections') for i in items):
+                continue
+            command = 'DownloadedMoviesScan' if app['kind'] == 'radarr' else 'DownloadedEpisodesScan'
+            request(f'{base}/command', 'POST', {'name': command, 'path': path, 'importMode': 'Move'}, headers)
+            log(f"CHANGED {app['name']} imported orphaned download {entry}")
+        # SMA leaves '.rnm.' in the name when its own rename call to the arr fails
+        if app['kind'] == 'radarr':
+            files = [m['movieFile'] for m in request(f'{base}/movie', headers=headers) if m.get('movieFile')]
+            key, command, field = 'movieId', 'RenameMovie', 'movieIds'
+        else:
+            files = [f for s in request(f'{base}/series', headers=headers) for f in request(f"{base}/episodefile?seriesId={s['id']}", headers=headers)]
+            key, command, field = 'seriesId', 'RenameSeries', 'seriesIds'
+        stuck = sorted({f[key] for f in files if '.rnm.' in f['relativePath']
+                        and datetime.datetime.fromisoformat(f['dateAdded'].replace('Z', '+00:00')).timestamp() < cutoff})
+        if stuck:
+            request(f'{base}/command', 'POST', {'name': command, field: stuck}, headers)
+            log(f"CHANGED {app['name']} renamed {len(stuck)} items left with SMA's .rnm name")
 
 
 def sync_jellyfin(cfg):
