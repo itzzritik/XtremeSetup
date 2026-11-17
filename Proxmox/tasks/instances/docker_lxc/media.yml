@@ -176,6 +176,10 @@
                   - { profile: '{{ movie_profiles.regional }}', languages: '{{ regional_languages }}' }
           stalled:
               hours: 48
+          orphans:
+              root: /media
+              host_root: /mnt/ssd/Media
+              minutes: 60
           qbittorrent:
               port: '{{ svc.qbittorrent.port }}'
               categories:
@@ -556,3 +560,15 @@
             name: Blocklist torrents with no data for days so the arrs grab another release
             minute: '*/15'
             job: 'python3 {{ env.JARVIS_DIR }}/media-sync.py {{ env.JARVIS_DIR }}/media-stalled.json 2>&1 | logger -t media-stalled'
+
+      - name: '{{ stack_name | upper }}: Write Orphan Import Spec'
+        copy:
+            content: "{{ media_sync | combine({'steps': ['orphans']}) | to_json }}\n"
+            dest: '{{ env.JARVIS_DIR }}/media-orphans.json'
+            mode: '0600'
+
+      - name: '{{ stack_name | upper }}: Schedule Orphan Import'
+        cron:
+            name: Import finished downloads the client no longer tracks
+            minute: '*/15'
+            job: 'python3 {{ env.JARVIS_DIR }}/media-sync.py {{ env.JARVIS_DIR }}/media-orphans.json 2>&1 | logger -t media-orphans'
