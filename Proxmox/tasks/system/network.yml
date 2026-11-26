@@ -1,0 +1,54 @@
+---
+- set_fact:
+      prefix: 'NETWORK'
+
+- name: '{{ prefix }}: Install Wi-Fi Tools'
+  apt: { name: [wpasupplicant, wireless-regdb] }
+
+# The pixel LXC's Android init empties kernel.modprobe, so the WPA2 cipher never autoloads.
+- name: '{{ prefix }}: Load WPA2 Cipher'
+  modprobe: { name: ccm, persistent: present }
+
+- name: '{{ prefix }}: Configure Wi-Fi'
+  copy:
+      dest: /etc/wpa_supplicant/wpa_supplicant-wlp3s0.conf
+      mode: '0600'
+      content: |
+          country=IN
+          network={
+              ssid="{{ env.JARVIS_WIFI_SSID }}"
+              psk="{{ env.JARVIS_WIFI_PASSWORD }}"
+          }
+  no_log: true
+
+- name: '{{ prefix }}: Enable IP Forwarding'
+  sysctl: { name: net.ipv4.ip_forward, value: '1', sysctl_file: /etc/sysctl.d/99-jarvis.conf }
+
+- name: '{{ prefix }}: Install Failover Script'
+  copy:
+      content: "{{ lookup('file', 'network/failover.py') }}\n"
+      dest: '{{ env.JARVIS_DIR }}/network-failover.py'
+      mode: '0755'
+  register: failover_script
+
+- name: '{{ prefix }}: Create Failover Service'
+  copy:
+      dest: /etc/systemd/system/jarvis-network-failover.service
+      content: |
+          [Unit]
+          Description=Jarvis Ethernet to Wi-Fi Failover
+          After=network.target
+          [Service]
+          ExecStart=/usr/bin/python3 {{ env.JARVIS_DIR }}/network-failover.py eno1 wlp3s0 vmbr0
+          Restart=always
+          RestartSec=5
+          [Install]
+          WantedBy=multi-user.target
+  register: failover_service
+
+- name: '{{ prefix }}: Enable Failover Service'
+  systemd:
+      name: jarvis-network-failover
+      enabled: true
+      state: "{{ 'restarted' if failover_script.changed or failover_service.changed else 'started' }}"
+      daemon_reload: true

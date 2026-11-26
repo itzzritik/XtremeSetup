@@ -39,6 +39,8 @@
             - configure
             - journal
             - watchdog
+            - power
+            - network
             - health_monitor
             - docker_cli
 

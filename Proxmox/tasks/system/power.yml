@@ -1,0 +1,15 @@
+---
+- set_fact:
+      prefix: 'POWER'
+
+- name: '{{ prefix }}: Read After Power Loss'
+  slurp:
+      src: '/sys/class/firmware-attributes/hp-bioscfg/attributes/After Power Loss/current_value'
+  register: after_power_loss
+
+# HP's BIOS rejects writes from Linux (WMI error 0x4), so only F10 setup can change it.
+- name: '{{ prefix }}: Verify Auto Power On'
+  assert:
+      that: (after_power_loss.content | b64decode | trim) == 'Power On'
+      fail_msg: 'BIOS "After Power Loss" must be "Power On". Set it in F10 setup.'
+      quiet: true
