@@ -100,6 +100,8 @@ def watchdog(cfg, state, now):
             # mounted after boot so it reaches the storage views Android builds at boot
             dst = cfg['android_upload_dir']
             android(cfg, f"mkdir -p {dst}; umount {dst} 2>/dev/null; mount --bind {cfg['android_upload_src']} {dst}", 30)
+            # Android's FUSE caches the old Camera folder until its dentry is evicted
+            Path('/proc/sys/vm/drop_caches').write_text('2')
             state.pop('uploading', None)
             log('attached uploading folder to Android')
             return False
@@ -295,6 +297,8 @@ def ingest(cfg, state, conn, now):
             log(f'removed {image.name}: same file already in Google Photos')
             continue
         dst = move_no_overwrite(src, upload, image.name)
+        # Android's media service reads as its own user, so owner-only drops never upload
+        dst.chmod(0o666)
         keys[key] = dst.name
         if video and src != image:
             image.unlink()
