@@ -44,6 +44,7 @@
       sync:
           drop_dir: /media/pixel
           upload_dir: /media/pixel/uploading
+          failed_dir: /media/pixel/failed
           android_upload_src: /pixel-uploading
           android_upload_dir: /data/media/0/DCIM/Camera
           camera_dir: /storage/emulated/0/DCIM/Camera

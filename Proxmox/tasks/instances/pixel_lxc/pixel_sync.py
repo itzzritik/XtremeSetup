@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -21,7 +22,7 @@ SIDECAR_NAME = re.compile(r'IMG_A\d+\.DAT', re.IGNORECASE)
 LIVE_IMAGE_EXT = {'.heic', '.heif', '.jpg', '.jpeg'}
 LIVE_VIDEO_EXT = {'.mov', '.mp4'}
 REQUIRED_COLUMNS = {
-    'local_media': {'filepath', 'size_bytes', 'dedup_key'},
+    'local_media': {'filepath', 'size_bytes', 'dedup_key', 'has_upload_permanently_failed'},
     'media': {'dedup_key', 'canonical_media_key', 'trash_timestamp', 'is_deleted'},
 }
 MERGE_PREFIX = '.merging-'
@@ -145,7 +146,7 @@ def finder_copying(path):
 
 def scan_drop(cfg, state, now):
     drop = Path(cfg['drop_dir'])
-    skip = {Path(cfg['upload_dir'])}
+    skip = {Path(cfg['upload_dir']), Path(cfg['failed_dir'])}
     seen, found, busy = state['seen'], {}, {}
     for root, dirs, files in os.walk(drop):
         dirs[:] = [d for d in dirs if not d.startswith('.') and Path(root, d) not in skip]
@@ -252,6 +253,21 @@ def queued_keys(state, upload):
             fresh[p.name] = cache[p.name] if cache.get(p.name, [None])[0] == sig else [sig, sha1_key(p)]
     state['queue_keys'] = fresh
     return {key: name for name, (_, key) in fresh.items()}
+
+
+def park_rejected(cfg, conn):
+    upload, failed = Path(cfg['upload_dir']), Path(cfg['failed_dir'])
+    rows = conn.execute('SELECT filepath, size_bytes FROM local_media WHERE filepath LIKE ? AND has_upload_permanently_failed = 1',
+                        (cfg['camera_dir'] + '/%',))
+    for path, size in rows:
+        src = upload / Path(path).name
+        if not src.is_file() or src.stat().st_size != size:
+            continue
+        if not failed.is_dir():
+            failed.mkdir()
+            failed.chmod(0o777)
+        move_no_overwrite(src, failed, src.name)
+        log(f'parked {src.name} in {failed.name}: Google Photos rejected it')
 
 
 def ingest(cfg, state, conn, now):
@@ -384,6 +400,33 @@ def prune_dirs(state):
     state['emptied'] = {d: ino for d, ino in emptied.items() if inode(d) == ino}
 
 
+def clean_drop(cfg, now):
+    drop, upload = Path(cfg['drop_dir']), Path(cfg['upload_dir'])
+    leftovers = [p for p in drop.iterdir() if not p.name.startswith('.') and p not in (upload, Path(cfg['failed_dir']))]
+    if not leftovers or any(upload.iterdir()):
+        return
+    paths = list(leftovers)
+    for top in leftovers:
+        if top.is_dir() and not top.is_symlink():
+            for root, dirs, files in os.walk(top):
+                paths += [Path(root, name) for name in dirs + files]
+    for p in paths:
+        if p.is_file() and (p.suffix.lower() in PHOTO_EXT | VIDEO_EXT or is_sidecar(p)):
+            return
+        # ctime, since copies keep the source mtime
+        if now - p.lstat().st_ctime < cfg['stable_seconds'] or finder_copying(p):
+            return
+    for p in leftovers:
+        if not cfg['delete']:
+            log(f'would delete {p.name} (nothing left to upload, log-only mode)')
+            continue
+        if p.is_dir() and not p.is_symlink():
+            shutil.rmtree(p)
+        else:
+            p.unlink()
+        log(f'deleted {p.name}: nothing left to upload')
+
+
 def main(config_path):
     cfg = json.loads(Path(config_path).read_text())
     state = load_json(cfg['state_file'], {})
@@ -399,10 +442,12 @@ def main(config_path):
         conn, blocked = open_db(cfg) if watchdog(cfg, state, now) else (None, 'Android is not ready')
         if conn:
             with conn:
+                park_rejected(cfg, conn)
                 found = ingest(cfg, state, conn, now)
                 process_deletes(cfg, state, conn, now, blocked)
             clean_sidecars(cfg, state, found)
             prune_dirs(state)
+            clean_drop(cfg, now)
             conn.close()
             uploading = []
             for p in sorted(upload.iterdir()):
